@@ -1,0 +1,75 @@
+/*
+ * Copyright (c) 2021 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#pragma once
+
+#include "nocopyable.h"
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
+
+namespace OHOS {
+namespace DistributedFile {
+namespace Utils {
+#define DECLARE_SINGLETON(MyClass) \
+public:                            \
+    ~MyClass();                    \
+                                   \
+private:                           \
+    friend Singleton<MyClass>;     \
+    MyClass();
+
+template<typename T>
+class Singleton : public NoCopyable {
+public:
+    static T &GetInstance();
+    static void StopInstance();
+
+protected:
+    /**
+     * @note We depend on the IPC manager to serialize the start and the stop procedure
+     */
+    virtual void Start() = 0;
+
+    /**
+     * @note Be very careful when freeing memory! Threads may call stop and other member functions simultaneously
+     */
+    virtual void Stop() = 0;
+};
+
+template<typename T>
+T &Singleton<T>::GetInstance()
+{
+    static T *instance = nullptr;
+    static std::once_flag once;
+    std::call_once(once, [pinstance{&instance}]() mutable {
+        (*pinstance) = new T();
+        (*pinstance)->Start();
+    });
+    return *instance;
+}
+
+template<typename T>
+void Singleton<T>::StopInstance()
+{
+    static std::once_flag once;
+    std::call_once(once, []() {
+        auto instance = &GetInstance();
+        instance->Stop();
+    });
+}
+} // namespace Utils
+} // namespace DistributedFile
+} // namespace OHOS
