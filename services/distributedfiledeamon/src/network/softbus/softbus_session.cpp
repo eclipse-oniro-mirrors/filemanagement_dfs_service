@@ -54,7 +54,7 @@ int32_t SoftbusSession::GetHandle() const
     return socket_fd;
 }
 
-std::array<char, KEY_SIZE_MAX> SoftbusSession::GetKey() const
+array<char, KEY_SIZE_MAX> SoftbusSession::GetKey() const
 {
     array<char, KEY_SIZE_MAX> key;
     int32_t ret = ::GetSessionKey(sessionId_, key.data(), key.size());

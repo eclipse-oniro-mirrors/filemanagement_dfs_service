@@ -34,7 +34,7 @@ private:                           \
 template<typename T>
 class Singleton : public NoCopyable {
 public:
-    static T &GetInstance();
+    static std::shared_ptr<T> GetInstance();
     static void StopInstance();
 
 protected:
@@ -49,16 +49,25 @@ protected:
     virtual void Stop() = 0;
 };
 
+/**
+ * @brief
+ *
+ * @tparam T
+ * @return T&
+ *
+ * @note We use call_once to ensure the atomicity of new() and start()
+ * @note Memory leaking of T is exactly what we want. Now T will be available along the program's life-time
+ */
 template<typename T>
-T &Singleton<T>::GetInstance()
+std::shared_ptr<T> Singleton<T>::GetInstance()
 {
-    static T *instance = nullptr;
+    static std::shared_ptr<T> *dummy = nullptr;
     static std::once_flag once;
-    std::call_once(once, [pinstance{&instance}]() mutable {
-        (*pinstance) = new T();
-        (*pinstance)->Start();
+    std::call_once(once, []() mutable {
+        dummy = new std::shared_ptr<T>(new T());
+        (*dummy)->Start();
     });
-    return *instance;
+    return *dummy;
 }
 
 template<typename T>
@@ -66,7 +75,7 @@ void Singleton<T>::StopInstance()
 {
     static std::once_flag once;
     std::call_once(once, []() {
-        auto instance = &GetInstance();
+        auto instance = GetInstance();
         instance->Stop();
     });
 }

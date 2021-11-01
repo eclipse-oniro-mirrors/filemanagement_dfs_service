@@ -20,6 +20,8 @@
 
 namespace OHOS {
 namespace DistributedFile {
+using namespace std;
+
 constexpr int KEY_MAX_LEN = 32;
 constexpr int HMDFS_ACCOUNT_HASH_MAX_LEN = 21;
 constexpr int POLL_TIMEOUT_MS = 200;
@@ -86,7 +88,7 @@ enum Notify {
     NOTIFY_CNT,
 };
 
-void KernelTalker::SinkSessionTokernel(std::shared_ptr<BaseSession> session)
+void KernelTalker::SinkSessionTokernel(shared_ptr<BaseSession> session)
 {
     int socketFd = session->GetHandle();
     auto masterkey = session->GetKey();
@@ -99,7 +101,7 @@ void KernelTalker::SinkSessionTokernel(std::shared_ptr<BaseSession> session)
     UpdateSocketParam cmd = {
         .cmd = CMD_UPDATE_SOCKET,
         .newfd = socketFd,
-        .localIid = DeviceManagerAgent::GetInstance().GetLocalDeviceInfo().GetIid(),
+        .localIid = DeviceManagerAgent::GetInstance()->GetLocalDeviceInfo().GetIid(),
         .status = status,
         .protocol = TCP_TRANSPORT_PROTO,
         .linkType = 0,
@@ -126,7 +128,7 @@ void KernelTalker::SinkInitCmdToKernel(uint64_t iid)
     SetCmd(cmd);
 }
 
-void KernelTalker::SinkOfflineCmdToKernel(std::string cid)
+void KernelTalker::SinkOfflineCmdToKernel(string cid)
 {
     OfflineParam cmd = {
         .cmd = CMD_OFF_LINE,
@@ -142,7 +144,7 @@ void KernelTalker::SinkOfflineCmdToKernel(std::string cid)
     SetCmd(cmd);
 }
 
-std::unordered_set<int> KernelTalker::GetKernelSesions()
+unordered_set<int> KernelTalker::GetKernelSesions()
 {
     return {};
 }
@@ -154,7 +156,7 @@ void KernelTalker::CreatePollThread()
         LOGE("pollTread is not null");
         return;
     }
-    pollThread_ = std::make_unique<std::thread>(&KernelTalker::PollRun, this);
+    pollThread_ = make_unique<thread>(&KernelTalker::PollRun, this);
     LOGI("Create pollThread OK");
 }
 
@@ -185,7 +187,7 @@ void KernelTalker::PollRun()
         LOGE("mountPoint is not exist! bad weak_ptr");
         return; // ! 抛异常
     }
-    std::string ctrlPath = spt->GetMountArgument().GetCtrlPath();
+    string ctrlPath = spt->GetMountArgument().GetCtrlPath();
     cmdFd = open(ctrlPath.c_str(), O_RDWR);
     if (cmdFd < 0) {
         LOGE("Open node file error %{public}d", errno);
@@ -235,7 +237,7 @@ void KernelTalker::HandleAllNotify(int fd)
 void KernelTalker::NotifyHandler(NotifyParam &param)
 {
     int cmd = param.notify;
-    std::string cidStr(param.remoteCid, CID_MAX_LEN);
+    string cidStr(param.remoteCid, CID_MAX_LEN);
     switch (cmd) {
         case NOTIFY_HS_DONE:
             LOGI("NOTIFY_HS_DONE, remote cid %{public}s", cidStr.c_str());

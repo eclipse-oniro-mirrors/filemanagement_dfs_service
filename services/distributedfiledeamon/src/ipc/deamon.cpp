@@ -54,7 +54,7 @@ void Deamon::OnStart()
     try {
         PublishSA();
         StartManagers();
-    } catch (const std::exception &e) {
+    } catch (const exception &e) {
         LOGE("%{public}s", e.what());
     }
 
@@ -70,7 +70,7 @@ void Deamon::OnStop()
     LOGI("Stop finished successfully");
 }
 
-int32_t Deamon::EchoServerDemo(const std::string &echoStr)
+int32_t Deamon::EchoServerDemo(const string &echoStr)
 {
     return 0;
 }

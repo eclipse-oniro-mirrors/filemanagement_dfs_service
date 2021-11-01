@@ -27,8 +27,8 @@
 
 namespace OHOS {
 namespace DistributedFile {
-class DeviceManagerAgent final : public OHOS::DistributedHardware::DmInitCallback,
-                                 public OHOS::DistributedHardware::DeviceStateCallback,
+class DeviceManagerAgent final : public DistributedHardware::DmInitCallback,
+                                 public DistributedHardware::DeviceStateCallback,
                                  public std::enable_shared_from_this<DeviceManagerAgent>,
                                  public Utils::Singleton<DeviceManagerAgent> {
     DECLARE_SINGLETON(DeviceManagerAgent);
@@ -37,10 +37,10 @@ public:
     void JoinGroup(std::weak_ptr<MountPoint> mp);
     void QuitGroup(std::weak_ptr<MountPoint> mp);
 
-    void OnDeviceOnline(const OHOS::DistributedHardware::DmDeviceInfo &deviceInfo) override;
-    void OnDeviceOffline(const OHOS::DistributedHardware::DmDeviceInfo &deviceInfo) override;
-    void OnDeviceChanged(const OHOS::DistributedHardware::DmDeviceInfo &deviceInfo) override;
-    void OnDeviceReady(const OHOS::DistributedHardware::DmDeviceInfo &deviceInfo) override {}
+    void OnDeviceOnline(const DistributedHardware::DmDeviceInfo &deviceInfo) override;
+    void OnDeviceOffline(const DistributedHardware::DmDeviceInfo &deviceInfo) override;
+    void OnDeviceChanged(const DistributedHardware::DmDeviceInfo &deviceInfo) override;
+    void OnDeviceReady(const DistributedHardware::DmDeviceInfo &deviceInfo) override {}
 
     void OnRemoteDied() override;
 

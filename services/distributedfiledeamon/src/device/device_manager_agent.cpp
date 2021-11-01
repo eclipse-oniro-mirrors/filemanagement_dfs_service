@@ -45,7 +45,7 @@ void DeviceManagerAgent::Stop()
     UnregisterFromExternalDm();
 }
 
-void DeviceManagerAgent::JoinGroup(std::weak_ptr<MountPoint> mp)
+void DeviceManagerAgent::JoinGroup(weak_ptr<MountPoint> mp)
 {
     auto smp = mp.lock();
     if (!smp) {
@@ -66,7 +66,7 @@ void DeviceManagerAgent::JoinGroup(std::weak_ptr<MountPoint> mp)
     agent->Start();
 }
 
-void DeviceManagerAgent::QuitGroup(std::weak_ptr<MountPoint> mp)
+void DeviceManagerAgent::QuitGroup(weak_ptr<MountPoint> mp)
 {
     auto smp = mp.lock();
     if (!smp) {
@@ -90,7 +90,7 @@ void DeviceManagerAgent::QuitGroup(std::weak_ptr<MountPoint> mp)
 void DeviceManagerAgent::OnDeviceOnline(const DistributedHardware::DmDeviceInfo &deviceInfo)
 {
     LOGI("OnDeviceOnline begin");
-    auto dm = &DeviceManagerAgent::GetInstance();
+    auto dm = DeviceManagerAgent::GetInstance();
     unique_lock<mutex> lock(dm->mpToNetworksMutex_);
     for (auto &&networkAgent : dm->mpToNetworks_) {
         DeviceInfo info(deviceInfo);
@@ -102,7 +102,7 @@ void DeviceManagerAgent::OnDeviceOnline(const DistributedHardware::DmDeviceInfo 
 void DeviceManagerAgent::OnDeviceOffline(const DistributedHardware::DmDeviceInfo &deviceInfo)
 {
     LOGI("OnDeviceOffline begin");
-    auto dm = &DeviceManagerAgent::GetInstance();
+    auto dm = DeviceManagerAgent::GetInstance();
 
     unique_lock<mutex> lock(dm->mpToNetworksMutex_);
     for (auto &&networkAgent : dm->mpToNetworks_) {
@@ -147,7 +147,7 @@ DeviceInfo &DeviceManagerAgent::GetLocalDeviceInfo()
     return localDeviceInfo_;
 }
 
-std::vector<DeviceInfo> DeviceManagerAgent::GetRemoteDevicesInfo()
+vector<DeviceInfo> DeviceManagerAgent::GetRemoteDevicesInfo()
 {
     string extra = "";
     string pkgName = IDeamon::SERVICE_NAME;

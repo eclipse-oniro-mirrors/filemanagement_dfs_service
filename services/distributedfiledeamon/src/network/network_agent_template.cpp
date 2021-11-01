@@ -19,6 +19,7 @@
 
 namespace OHOS {
 namespace DistributedFile {
+using namespace std;
 namespace {
 constexpr int MAX_RETRY_COUNT = 7;
 constexpr int SLEEP_TIME = 1500;
@@ -44,10 +45,10 @@ void NetworkAgentTemplate::ConnectDeviceAsync(const DeviceInfo &info)
 {
     kernerlTalker_.SinkInitCmdToKernel(info.GetIid());
 
-    std::unique_lock<std::mutex> taskLock(taskMut_);
+    unique_lock<mutex> taskLock(taskMut_);
     tasks_.emplace_back();
     tasks_.back().RunLoopFlexible(
-        [&info, this](uint64_t &sleepTime) {
+        [info{DeviceInfo(info)}, this](uint64_t &sleepTime) {  // ! 不能使用this,待解决
             auto session = OpenSession(info);
             if (session == nullptr) {
                 LOGE("open session fail, retry, cid:%{public}s", info.GetCid().c_str());
@@ -61,7 +62,7 @@ void NetworkAgentTemplate::ConnectDeviceAsync(const DeviceInfo &info)
 
 void NetworkAgentTemplate::ConnectOnlineDevices()
 {
-    auto infos = DeviceManagerAgent::GetInstance().GetRemoteDevicesInfo();
+    auto infos = DeviceManagerAgent::GetInstance()->GetRemoteDevicesInfo();
     LOGI("Have %{public}d devices Online", infos.size());
     for (const auto &info : infos) {
         ConnectDeviceAsync(info);
@@ -75,9 +76,9 @@ void NetworkAgentTemplate::DisconnectDevice(const DeviceInfo &info)
     sessionPool_.RefreshSessionPoolBasedOnKernel();
 }
 
-void NetworkAgentTemplate::AcceptSession(std::shared_ptr<BaseSession> session)
+void NetworkAgentTemplate::AcceptSession(shared_ptr<BaseSession> session)
 {
-    std::unique_lock<std::mutex> taskLock(taskMut_);
+    unique_lock<mutex> taskLock(taskMut_);
     tasks_.emplace_back();
     tasks_.back().Run([=] {
         auto cid = session->GetCid();
@@ -89,13 +90,13 @@ void NetworkAgentTemplate::AcceptSession(std::shared_ptr<BaseSession> session)
 
 void NetworkAgentTemplate::GetSessionProcess(NotifyParam &param)
 {
-    std::string cidStr(param.remoteCid, CID_MAX_LEN);
+    string cidStr(param.remoteCid, CID_MAX_LEN);
     LOGI("NOTIFY_GET_SESSION, old fd %{public}d, remote cid %{public}s", param.fd, cidStr.c_str());
     sessionPool_.RefreshSessionPoolBasedOnKernel();
     GetSesion(cidStr);
 }
 
-void NetworkAgentTemplate::GetSesion(const std::string &cid)
+void NetworkAgentTemplate::GetSesion(const string &cid)
 {
     DeviceInfo deviceInfo;
     deviceInfo.SetCid(cid);

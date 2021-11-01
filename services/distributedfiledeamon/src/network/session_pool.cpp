@@ -17,9 +17,11 @@
 
 namespace OHOS {
 namespace DistributedFile {
-void SessionPool::HoldSession(std::shared_ptr<BaseSession> session)
+using namespace std;
+
+void SessionPool::HoldSession(shared_ptr<BaseSession> session)
 {
-    std::lock_guard lock(sessionPoolLock_);
+    lock_guard lock(sessionPoolLock_);
     talker_.SinkSessionTokernel(session);
     AddSessionToPool(session);
     RefreshSessionPoolBasedOnKernel();
@@ -27,7 +29,7 @@ void SessionPool::HoldSession(std::shared_ptr<BaseSession> session)
 
 void SessionPool::RefreshSessionPoolBasedOnKernel()
 {
-    std::lock_guard lock(sessionPoolLock_);
+    lock_guard lock(sessionPoolLock_);
     auto kernelSessions = talker_.GetKernelSesions();
     for (auto iter = usrSpaceSessionPool_.begin(); iter != usrSpaceSessionPool_.end();) {
         if (kernelSessions.count((*iter)->GetHandle() == 0)) {
@@ -39,7 +41,7 @@ void SessionPool::RefreshSessionPoolBasedOnKernel()
     }
 }
 
-void SessionPool::AddSessionToPool(std::shared_ptr<BaseSession> session)
+void SessionPool::AddSessionToPool(shared_ptr<BaseSession> session)
 {
     usrSpaceSessionPool_.push_back(session);
 }

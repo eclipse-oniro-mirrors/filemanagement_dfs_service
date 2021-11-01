@@ -25,7 +25,7 @@ namespace OHOS {
 namespace DistributedFile {
 using namespace std;
 
-std::atomic<uint32_t> MountPoint::idGen_;
+atomic<uint32_t> MountPoint::idGen_;
 
 MountPoint::MountPoint(const Utils::MountArgument &mountArg) : mountArg_(mountArg)
 {
@@ -77,7 +77,7 @@ Utils::MountArgument MountPoint::GetMountArgument() const
     return mountArg_;
 }
 
-std::string MountPoint::ToString() const
+string MountPoint::ToString() const
 {
     return "";
 }

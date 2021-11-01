@@ -20,23 +20,21 @@ namespace OHOS {
 namespace DistributedFile {
 using namespace std;
 
-DeviceInfo::DeviceInfo(const OHOS::DistributedHardware::DmDeviceInfo &nodeInfo)
+DeviceInfo::DeviceInfo(const DistributedHardware::DmDeviceInfo &nodeInfo)
 {
     cid_ = string(nodeInfo.deviceId);
 }
 
-DeviceInfo &DeviceInfo::operator=(const OHOS::DistributedHardware::DmDeviceInfo &nodeInfo)
+DeviceInfo &DeviceInfo::operator=(const DistributedHardware::DmDeviceInfo &nodeInfo)
 {
     cid_ = string(nodeInfo.deviceId);
     return *this;
 }
 
-DeviceInfo::DeviceInfo(DeviceInfo &&nodeInfo)
+DeviceInfo::DeviceInfo(const DeviceInfo &nodeInfo) : iid_(nodeInfo.iid_), cid_(nodeInfo.cid_)
 {
     initIidFlag_.store(nodeInfo.initIidFlag_.load());
     initCidFlag_.store(nodeInfo.initCidFlag_.load());
-    iid_ = nodeInfo.iid_;
-    cid_ = nodeInfo.cid_;
 }
 
 void DeviceInfo::SetIid(uint64_t iid)
@@ -49,7 +47,7 @@ void DeviceInfo::SetIid(uint64_t iid)
     }
 }
 
-void DeviceInfo::SetCid(const std::string cid)
+void DeviceInfo::SetCid(const string cid)
 {
     if (initCidFlag_ == false) {
         cid_ = cid;
@@ -66,7 +64,7 @@ uint64_t DeviceInfo::GetIid() const
     }
     return iid_;
 }
-const std::string &DeviceInfo::GetCid() const
+const string &DeviceInfo::GetCid() const
 {
     if (initCidFlag_ == false) {
         // TODO 抛异常

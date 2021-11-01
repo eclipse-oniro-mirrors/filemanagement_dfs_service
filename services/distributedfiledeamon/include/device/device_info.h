@@ -25,9 +25,9 @@ class DeviceInfo final {
 public:
     DeviceInfo() = default;
     ~DeviceInfo() = default;
-    explicit DeviceInfo(const OHOS::DistributedHardware::DmDeviceInfo &nodeInfo);
-    explicit DeviceInfo(DeviceInfo &&nodeInfo);
-    DeviceInfo &operator=(const OHOS::DistributedHardware::DmDeviceInfo &nodeInfo);
+    explicit DeviceInfo(const DistributedHardware::DmDeviceInfo &nodeInfo);
+    explicit DeviceInfo(const DeviceInfo &nodeInfo);
+    DeviceInfo &operator=(const DistributedHardware::DmDeviceInfo &nodeInfo);
 
     /**
      * @note Remove the concept iid later

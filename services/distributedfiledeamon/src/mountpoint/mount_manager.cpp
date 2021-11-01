@@ -36,7 +36,7 @@ MountManager::~MountManager()
     try {
         // Umount mountpoints in reverse order to eliminate dependencies
         for_each(mountPoints_.rbegin(), mountPoints_.rend(), [this](auto &cur_mp) { Umount(cur_mp); });
-    } catch (const std::exception &e) {
+    } catch (const exception &e) {
         LOGE("%{public}s", e.what());
     }
 }
@@ -56,7 +56,7 @@ void MountManager::Mount(unique_ptr<MountPoint> mp)
     }
 
     smp->Mount();
-    DeviceManagerAgent::GetInstance().JoinGroup(smp);
+    DeviceManagerAgent::GetInstance()->JoinGroup(smp);
     mountPoints_.push_back(smp);
 }
 
@@ -75,7 +75,7 @@ void MountManager::Umount(weak_ptr<MountPoint> wmp)
     }
 
     smp->Umount();
-    DeviceManagerAgent::GetInstance().QuitGroup(smp);
+    DeviceManagerAgent::GetInstance()->QuitGroup(smp);
     mountPoints_.erase(it);
 }
 } // namespace DistributedFile

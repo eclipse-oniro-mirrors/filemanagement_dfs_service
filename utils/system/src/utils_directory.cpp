@@ -47,12 +47,12 @@ void ForceCreateDirectory(const string &path, function<void(const string &)> onS
     } while (index != string::npos);
 }
 
-void ForceCreateDirectory(const std::string &path)
+void ForceCreateDirectory(const string &path)
 {
     ForceCreateDirectory(path, nullptr);
 }
 
-void ForceCreateDirectory(const std::string &path, mode_t mode)
+void ForceCreateDirectory(const string &path, mode_t mode)
 {
     ForceCreateDirectory(path, [mode](const string &subPath) {
         if (chmod(subPath.c_str(), mode) == -1) {
@@ -61,7 +61,7 @@ void ForceCreateDirectory(const std::string &path, mode_t mode)
     });
 }
 
-void ForceCreateDirectory(const std::string &path, mode_t mode, uid_t uid, gid_t gid)
+void ForceCreateDirectory(const string &path, mode_t mode, uid_t uid, gid_t gid)
 {
     ForceCreateDirectory(path, [mode, uid, gid](const string &subPath) {
         if (chmod(subPath.c_str(), mode) == -1 || chown(subPath.c_str(), uid, gid) == -1) {
@@ -70,7 +70,7 @@ void ForceCreateDirectory(const std::string &path, mode_t mode, uid_t uid, gid_t
     });
 }
 
-void ForceRemoveDirectory(const std::string &path)
+void ForceRemoveDirectory(const string &path)
 {
     if (!OHOS::ForceRemoveDirectory(path)) {
         throw system_error(errno, system_category());

@@ -27,7 +27,7 @@ namespace OHOS {
 namespace DistributedFile {
 using namespace std;
 
-SoftbusAgent::SoftbusAgent(std::weak_ptr<MountPoint> mountPoint) : NetworkAgentTemplate(mountPoint)
+SoftbusAgent::SoftbusAgent(weak_ptr<MountPoint> mountPoint) : NetworkAgentTemplate(mountPoint)
 {
     auto spt = mountPoint.lock();
     if (spt == nullptr) {
@@ -36,7 +36,7 @@ SoftbusAgent::SoftbusAgent(std::weak_ptr<MountPoint> mountPoint) : NetworkAgentT
         return;
     }
 
-    std::string path = spt->GetMountArgument().GetFullDst();
+    string path = spt->GetMountArgument().GetFullDst();
     SoftbusSessionName sessionName(path);
     sessionName_ = sessionName.ToString();
 }
@@ -54,10 +54,10 @@ void SoftbusAgent::JoinDomain()
     SoftbusSessionDispatcher::RegisterSessionListener(sessionName_, shared_from_this());
     int ret = ::CreateSessionServer(IDeamon::SERVICE_NAME.c_str(), sessionName_.c_str(), &sessionListener);
     if (ret != 0) { // ! 错误码
-        std::stringstream ss;
+        stringstream ss;
         ss << "Failed to CreateSessionServer, errno:" << ret;
         LOGE("%{public}s, sessionName:%{public}s", ss.str().c_str(), sessionName_.c_str());
-        throw std::runtime_error(ss.str());
+        throw runtime_error(ss.str());
     }
     LOGD("Succeed to JoinDomain, busName:%{public}s", sessionName_.c_str());
 }
@@ -66,10 +66,10 @@ void SoftbusAgent::QuitDomain()
 {
     int ret = ::RemoveSessionServer(IDeamon::SERVICE_NAME.c_str(), sessionName_.c_str());
     if (ret != 0) { // ! 错误码
-        std::stringstream ss;
+        stringstream ss;
         ss << "Failed to RemoveSessionServer, errno:" << ret;
         LOGE("%{public}s", ss.str().c_str());
-        throw std::runtime_error(ss.str());
+        throw runtime_error(ss.str());
     }
 
     SoftbusSessionDispatcher::UnregisterSessionListener(sessionName_.c_str(), shared_from_this());
@@ -80,7 +80,7 @@ void SoftbusAgent::StopTopHalf()
     QuitDomain();
 }
 void SoftbusAgent::StopBottomHalf() {}
-std::shared_ptr<BaseSession> SoftbusAgent::OpenSession(const DeviceInfo &info)
+shared_ptr<BaseSession> SoftbusAgent::OpenSession(const DeviceInfo &info)
 {
     SessionAttribute attr;
     attr.dataType = TYPE_BYTES;
@@ -94,10 +94,10 @@ std::shared_ptr<BaseSession> SoftbusAgent::OpenSession(const DeviceInfo &info)
         LOGE("Failed to open session, cid:%{public}s, sessionId:%{public}d", info.GetCid().c_str(), sessionId);
         return nullptr;
     }
-    return std::make_shared<SoftbusSession>(sessionId);
+    return make_shared<SoftbusSession>(sessionId);
 }
 
-void SoftbusAgent::CloseSession(std::shared_ptr<BaseSession> session)
+void SoftbusAgent::CloseSession(shared_ptr<BaseSession> session)
 {
     if (session == nullptr) {
         LOGE("Failed to close session, error:invalid session");
@@ -108,7 +108,7 @@ void SoftbusAgent::CloseSession(std::shared_ptr<BaseSession> session)
 
 int SoftbusAgent::OnSessionOpened(const int sessionId, const int result)
 {
-    auto session = std::make_shared<SoftbusSession>(sessionId);
+    auto session = make_shared<SoftbusSession>(sessionId);
     auto cid = session->GetCid();
     if (!session->IsFromServer()) {
         if (result != 0) {
@@ -128,7 +128,7 @@ int SoftbusAgent::OnSessionOpened(const int sessionId, const int result)
 
 void SoftbusAgent::OnSessionClosed(int sessionId)
 {
-    auto session = std::make_shared<SoftbusSession>(sessionId);
+    auto session = make_shared<SoftbusSession>(sessionId);
     auto cid = session->GetCid();
     LOGI("Session to %{public}s closed by unknown reason, Is %{public}s Side", cid.c_str(),
          (session->IsFromServer() == true) ? "Server" : "Client");

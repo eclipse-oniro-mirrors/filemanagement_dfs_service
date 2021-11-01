@@ -23,47 +23,49 @@
 
 namespace OHOS {
 namespace DistributedFile {
+using namespace std;
+
 constexpr int32_t SESSION_NAME_SIZE_MAX = 256;
 
-std::mutex SoftbusSessionDispatcher::softbusAgentMutex_;
-std::map<std::string, std::weak_ptr<SoftbusAgent>> SoftbusSessionDispatcher::busNameToAgent_;
+mutex SoftbusSessionDispatcher::softbusAgentMutex_;
+map<string, weak_ptr<SoftbusAgent>> SoftbusSessionDispatcher::busNameToAgent_;
 
-void SoftbusSessionDispatcher::RegisterSessionListener(const std::string busName,
-                                                       std::weak_ptr<SoftbusAgent> softbusAgent)
+void SoftbusSessionDispatcher::RegisterSessionListener(const string busName,
+                                                       weak_ptr<SoftbusAgent> softbusAgent)
 {
     if (busName == "") {
-        std::stringstream ss;
+        stringstream ss;
         ss << "Failed to register session to softbus";
         LOGE("%{public}s", ss.str().c_str());
-        throw std::runtime_error(ss.str());
+        throw runtime_error(ss.str());
     }
-    std::lock_guard<std::mutex> lock(softbusAgentMutex_);
+    lock_guard<mutex> lock(softbusAgentMutex_);
     auto agent = busNameToAgent_.find(busName);
     if (agent != busNameToAgent_.end()) {
-        std::stringstream ss;
+        stringstream ss;
         ss << "this softbusAgent is not exist, busName: " << busName.c_str();
         LOGE("%{public}s", ss.str().c_str());
-        throw std::runtime_error(ss.str());
+        throw runtime_error(ss.str());
     } else {
-        busNameToAgent_.insert(std::make_pair(busName, softbusAgent));
+        busNameToAgent_.insert(make_pair(busName, softbusAgent));
     }
     LOGD("RegisterSessionListener SUCCESS, busName:%{public}s", busName.c_str());
 }
-void SoftbusSessionDispatcher::UnregisterSessionListener(const std::string busName, std::weak_ptr<SoftbusAgent>)
+void SoftbusSessionDispatcher::UnregisterSessionListener(const string busName, weak_ptr<SoftbusAgent>)
 {
-    std::lock_guard<std::mutex> lock(softbusAgentMutex_);
+    lock_guard<mutex> lock(softbusAgentMutex_);
     auto agent = busNameToAgent_.find(busName);
     if (agent != busNameToAgent_.end()) {
         busNameToAgent_.erase(busName);
     } else {
-        std::stringstream ss;
+        stringstream ss;
         ss << "this softbusAgent is not exist, busName: " << busName.c_str();
         LOGE("%{public}s", ss.str().c_str());
-        throw std::runtime_error(ss.str());
+        throw runtime_error(ss.str());
     }
     LOGD("UnregisterSessionListener SUCCESS, busName:%{public}s", busName.c_str());
 }
-std::weak_ptr<SoftbusAgent> SoftbusSessionDispatcher::GetAgent(int sessionId)
+weak_ptr<SoftbusAgent> SoftbusSessionDispatcher::GetAgent(int sessionId)
 {
     char peeSessionName[SESSION_NAME_SIZE_MAX];
     int ret = GetPeerSessionName(sessionId, peeSessionName, sizeof(peeSessionName));
@@ -71,7 +73,7 @@ std::weak_ptr<SoftbusAgent> SoftbusSessionDispatcher::GetAgent(int sessionId)
         LOGE("Get my peer session name failed, session id is %{public}d.", sessionId);
         return {}; // ! TODO
     }
-    auto agent = busNameToAgent_.find(std::string(peeSessionName));
+    auto agent = busNameToAgent_.find(string(peeSessionName));
     if (agent != busNameToAgent_.end()) {
         LOGD("Get softbus Agent Success, busName:%{public}s", peeSessionName);
         return agent->second;
