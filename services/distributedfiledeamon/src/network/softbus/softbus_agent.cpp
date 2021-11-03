@@ -122,6 +122,7 @@ int SoftbusAgent::OnSessionOpened(const int sessionId, const int result)
         "accept sesion, sessionid:%{public}d, Is %{public}s Side, fd %{public}d, from cid %{public}s, result "
         "%{public}d",
         sessionId, (session->IsFromServer() == true) ? "Server" : "Client", socket_fd, cid.c_str(), result);
+    session->DisableSessionListener();
     AcceptSession(session);
     return 0;
 }

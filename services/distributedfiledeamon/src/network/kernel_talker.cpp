@@ -114,7 +114,6 @@ void KernelTalker::SinkSessionTokernel(shared_ptr<BaseSession> session)
     if (memcpy_s(cmd.cid, CID_MAX_LEN, cid.c_str(), CID_MAX_LEN)) {
         return; // !抛异常
     }
-    session->DisableSessionListener();
     SetCmd(cmd);
 }
 
