@@ -15,7 +15,9 @@ import("//build/ohos/sa_profile/sa_profile.gni")
 import("//foundation/storage/distributed_file_manager/distributedfile.gni")
 
 ohos_sa_profile("distributedfile_sa_profile") {
-  sources = [ "4901.xml" ]
+  sources = [ 
+      "4901.xml",
+      "4902.xml"]
   part_name = "storage_distributed_file_manager"
 }
 
@@ -31,5 +33,6 @@ group("services_target") {
     ":distributedfile_etc",
     ":distributedfile_sa_profile",
     "distributedfiledaemon:distributedfiledaemon_target",
+    "distributedfileservice:distributedfileservice_target",
   ]
 }

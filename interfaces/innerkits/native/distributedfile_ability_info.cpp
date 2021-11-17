@@ -12,25 +12,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef DAEMON_PROXY_H
-#define DAEMON_PROXY_H
 
-#include <iremote_proxy.h>
+#include "distributedfile_ability_info.h"
 
-#include "i_daemon.h"
+#include <string>
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-class DaemonProxy : public IRemoteProxy<IDaemon> {
-public:
-    explicit DaemonProxy(const sptr<IRemoteObject> &impl) : IRemoteProxy<IDaemon>(impl) {}
-    ~DaemonProxy() {}
 
-private:
-    static inline BrokerDelegator<DaemonProxy> delegator_;
-};
+bool DistributedFileInfo::ReadFromParcel(Parcel &parcel)
+{
+    return true;
+}
+
+bool DistributedFileInfo::Marshalling(Parcel &parcel) const
+{
+    return true;
+}
+
+DistributedFileInfo *DistributedFileInfo::Unmarshalling(Parcel &parcel)
+{
+    return nullptr;
+}
+
+void DistributedFileInfo::Dump(std::string prefix, int fd) {}
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS
-#endif // DAEMON_PROXY_H

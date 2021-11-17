@@ -14,9 +14,30 @@ import("//build/ohos.gni")
 import("//foundation/storage/distributed_file_manager/distributedfile.gni")
 
 ohos_shared_library("libdistributedfile_innerkits") {
-  include_dirs = [ "${innerkits_native_path}" ]
+  include_dirs = [ 
+    "//foundation/storage/distributed_file_manager/interfaces/innerkits/native",
+    "//foundation/storage/distributed_file_manager/services/distributedfileservice/include/ipc",
+    "//base/hiviewdfx/hilog/interfaces/native/innerkits/include",
+    "//utils/native/base/include",
+    "//foundation/communication/ipc/interfaces/innerkits/ipc_core/include",
+    "//foundation/storage/distributed_file_manager/utils/log/include"
+  ]
 
   sources = [
+    "//foundation/storage/distributed_file_manager/interfaces/innerkits/native/distributedfile_ability_info.cpp",
+    "//foundation/storage/distributed_file_manager/frameworks/native/service_proxy.cpp"
+  ]
+
+  configs = [ "//build/config/compiler:exceptions" ]
+
+   external_deps = [
+    "ipc:ipc_core",
+    "safwk:system_ability_fwk",
+  ]
+
+  deps = [
+      "//utils/native/base:utils",
+      "//foundation/storage/distributed_file_manager/utils/:libdistributedfileutils"
   ]
 
   part_name = "storage_distributed_file_manager"
