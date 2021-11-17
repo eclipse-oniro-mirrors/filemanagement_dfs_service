@@ -24,33 +24,31 @@ config("module_private_config") {
   ]
 }
 
-ohos_moduletest("DistributedFileDaemonServiceTest") {
+ohos_unittest("DeviceManagerAgentTest") {
   module_out_path = module_output_path
 
   sources = [
-    "${services_path}/distributedfiledaemon/src/mountpoint/mount_point.cpp"
   ]
 
-  sources += [ "src/distributedfiledaemon_service_test.cpp" ]
+  sources += [ "device/device_manager_agent_test.cpp" ]
 
   configs = [
     ":module_private_config",
     "${utils_path}:compiler_configs"
   ]
 
-  defines = [
-    "private=public"
-  ]
-
   deps = [
     "//third_party/googletest:gtest_main",
-    "//third_party/googletest:gmock",
     "${utils_path}:libdistributedfileutils",
     "//foundation/distributedhardware/devicemanager/interfaces/inner_kits/native_cpp:devicemanagersdk",
   ]
+
+  defines = [
+    "private=public"
+  ]
 }
 
-group("moduletest") {
+group("unittest") {
   testonly = true
-  deps = [":DistributedFileDaemonServiceTest"]
+  deps = [":DeviceManagerAgentTest"]
 }

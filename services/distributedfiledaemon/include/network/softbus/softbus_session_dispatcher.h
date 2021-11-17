@@ -13,41 +13,33 @@
  * limitations under the License.
  */
 
-#ifndef UTILS_MOUNT_ARGUMENT_H
-#define UTILS_MOUNT_ARGUMENT_H
+#ifndef SOFTBUS_SESSION_DISPATCHER_H
+#define SOFTBUS_SESSION_DISPATCHER_H
 
+#include <map>
+#include <memory>
+#include <mutex>
 #include <string>
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-namespace Utils {
-struct MountArgument final {
-    int userId_{0};
-
-    std::string account_;
-    bool needInitDir_{false};
-    bool useCache_{false};
-    bool caseSensitive_{true};
-    bool enableMergeView_{false};
-    bool enableFixupOwnerShip_{false};
-    bool enableOfflineStash_{true};
-    bool externalFS_{false};
-
-    std::string GetFullSrc() const;
-    std::string GetFullDst() const;
-    std::string GetCtrlPath() const;
-    std::string GetCachePath() const;
-    std::string OptionsToString() const;
-    unsigned long GetFlags() const;
-};
-
-class MountArgumentDescriptors final {
+class SoftbusAgent;
+class SoftbusSessionDispatcher final {
 public:
-    static MountArgument Alpha(int userId = 0);
+    SoftbusSessionDispatcher() = delete;
+    ~SoftbusSessionDispatcher() = delete;
+    static void RegisterSessionListener(const std::string busName, std::weak_ptr<SoftbusAgent>);
+    static void UnregisterSessionListener(const std::string busName);
+    static std::weak_ptr<SoftbusAgent> GetAgent(int sessionId);
+    static int OnSessionOpened(int sessionId, int result);
+    static void OnSessionClosed(int sessionId);
+
+private:
+    static std::mutex softbusAgentMutex_;
+    static std::map<std::string, std::weak_ptr<SoftbusAgent>> busNameToAgent_;
 };
-} // namespace Utils
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS
-#endif // UTILS_MOUNT_ARGUMENT_H
+#endif // SOFTBUS_SESSION_DISPATCHER_H

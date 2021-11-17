@@ -13,23 +13,16 @@
  * limitations under the License.
  */
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include <sys/mount.h>
-#include <system_error>
-
 #include "device/device_manager_agent.h"
-#include "mountpoint/mount_point.h"
-#include "utils_directory.h"
-#include "utils_log.h"
+#include <gtest/gtest.h>
+
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
 namespace Test {
 using namespace testing::ext;
-using namespace std;
 
-class DistributedFileDaemonServiceTest : public testing::Test {
+class DeviceManagerAgentTest : public testing::Test {
 public:
     static void SetUpTestCase(void);
     static void TearDownTestCase(void);
@@ -37,47 +30,38 @@ public:
     void TearDown();
 };
 
-void DistributedFileDaemonServiceTest::SetUpTestCase(void)
+void DeviceManagerAgentTest::SetUpTestCase(void)
 {
     // input testsuit setup step，setup invoked before all testcases
 }
 
-void DistributedFileDaemonServiceTest::TearDownTestCase(void)
+void DeviceManagerAgentTest::TearDownTestCase(void)
 {
     // input testsuit teardown step，teardown invoked after all testcases
 }
 
-void DistributedFileDaemonServiceTest::SetUp(void)
+void DeviceManagerAgentTest::SetUp(void)
 {
     // input testcase setup step，setup invoked before each testcases
 }
 
-void DistributedFileDaemonServiceTest::TearDown(void)
+void DeviceManagerAgentTest::TearDown(void)
 {
     // input testcase teardown step，teardown invoked after each testcases
 }
 
 /**
- * @tc.name: mount_test_001
- * @tc.desc: Verify the mount/umount function.
+ * @tc.name: integer_sub_001
+ * @tc.desc: Verify the sub function.
  * @tc.type: FUNC
  * @tc.require: Issue Number
  */
-HWTEST_F(DistributedFileDaemonServiceTest, mount_umount_test_001, TestSize.Level1)
+HWTEST_F(DeviceManagerAgentTest, test_001, TestSize.Level1)
 {
-    auto mp = make_unique<OHOS::DistributedFile::MountPoint>(OHOS::DistributedFile::Utils::MountArgumentDescriptors::Alpha(9527));
-
-    shared_ptr<OHOS::DistributedFile::MountPoint> smp = move(mp);
-
-    try {
-        smp->Mount();
-        smp->Umount();
-        LOGE("testcase run OK");
-    } catch (const exception &e) {
-        LOGE("%{public}s", e.what());
-        EXPECT_EQ(0, 1);
-    }
-    EXPECT_EQ(0, 0);
+    // step 1:调用函数获取结果
+    int actual = 4;
+    // Step 2:使用断言比较预期与实际结果
+    EXPECT_EQ(4, actual);
 }
 } // namespace Test
 } // namespace DistributedFile

@@ -13,17 +13,41 @@
  * limitations under the License.
  */
 
-#include "utils_log.h"
+#ifndef MOUNT_POINT_H
+#define MOUNT_POINT_H
+
+#include <atomic>
+#include <functional>
+
+#include "nocopyable.h"
+#include "utils_mount_argument.h"
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-std::string GetFileNameFromFullPath(const char *str)
-{
-    std::string fullPath(str);
-    size_t pos = fullPath.find_last_of("/");
-    return (pos == std::string::npos) ? std::string() : fullPath.substr(pos + 1);
-}
+class MountPoint final : public NoCopyable {
+public:
+    MountPoint(const Utils::MountArgument &mountArg);
+    ~MountPoint() = default;
+
+    uint32_t GetID() const
+    {
+        return id_;
+    };
+
+    std::string ToString() const;
+    Utils::MountArgument GetMountArgument() const;
+    bool operator==(const MountPoint &rop) const;
+
+private:
+    friend class MountManager;
+    Utils::MountArgument mountArg_;
+    void Mount() const;
+    void Umount() const;
+    static std::atomic<uint32_t> idGen_;
+    uint32_t id_{0};
+};
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS
+#endif // MOUNT_POINT_H

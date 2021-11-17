@@ -13,7 +13,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef UTILS_SINGLETON_H
+#define UTILS_SINGLETON_H
 
 #include "nocopyable.h"
 #include <memory>
@@ -21,6 +22,7 @@
 #include <shared_mutex>
 
 namespace OHOS {
+namespace Storage {
 namespace DistributedFile {
 namespace Utils {
 #define DECLARE_SINGLETON(MyClass) \
@@ -81,4 +83,6 @@ void Singleton<T>::StopInstance()
 }
 } // namespace Utils
 } // namespace DistributedFile
+} // namespace Storage
 } // namespace OHOS
+#endif // UTILS_SINGLETON_H

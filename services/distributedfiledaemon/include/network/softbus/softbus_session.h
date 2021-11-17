@@ -13,17 +13,29 @@
  * limitations under the License.
  */
 
-#include "utils_log.h"
+#ifndef SOFTBUS_SESSION_H
+#define SOFTBUS_SESSION_H
+
+#include "network/base_session.h"
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-std::string GetFileNameFromFullPath(const char *str)
-{
-    std::string fullPath(str);
-    size_t pos = fullPath.find_last_of("/");
-    return (pos == std::string::npos) ? std::string() : fullPath.substr(pos + 1);
-}
+class SoftbusSession final : public BaseSession {
+public:
+    SoftbusSession(int sessionId) : sessionId_(sessionId) {}
+    ~SoftbusSession() = default;
+    bool IsFromServer() const override;
+    std::string GetCid() const override;
+    int32_t GetHandle() const override;
+    std::array<char, KEY_SIZE_MAX> GetKey() const override;
+    void Release() const override;
+    void DisableSessionListener() const override;
+
+private:
+    int sessionId_;
+};
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS
+#endif // SOFTBUS_SESSION_H

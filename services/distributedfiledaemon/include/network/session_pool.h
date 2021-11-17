@@ -13,17 +13,35 @@
  * limitations under the License.
  */
 
-#include "utils_log.h"
+#ifndef SESSION_POOL_H
+#define SESSION_POOL_H
+
+#include <list>
+#include <memory>
+#include <mutex>
+#include <set>
+
+#include "network/base_session.h"
+#include "network/kernel_talker.h"
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-std::string GetFileNameFromFullPath(const char *str)
-{
-    std::string fullPath(str);
-    size_t pos = fullPath.find_last_of("/");
-    return (pos == std::string::npos) ? std::string() : fullPath.substr(pos + 1);
-}
+class SessionPool final : protected NoCopyable {
+public:
+    explicit SessionPool(KernelTalker &talker) : talker_(talker) {}
+    ~SessionPool() = default;
+    void HoldSession(std::shared_ptr<BaseSession> session);
+    void RefreshSessionPoolBasedOnKernel();
+
+private:
+    std::recursive_mutex sessionPoolLock_;
+    std::list<std::shared_ptr<BaseSession>> usrSpaceSessionPool_;
+    KernelTalker &talker_;
+
+    void AddSessionToPool(std::shared_ptr<BaseSession> session);
+};
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS
+#endif // SESSION_POOL_H

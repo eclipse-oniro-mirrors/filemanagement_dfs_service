@@ -30,6 +30,6 @@ group("services_target") {
   deps = [
     ":distributedfile_etc",
     ":distributedfile_sa_profile",
-    "distributedfiledeamon:distributedfiledeamon_target",
+    "distributedfiledaemon:distributedfiledaemon_target",
   ]
 }

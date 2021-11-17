@@ -12,34 +12,42 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef DEVICE_INFO_H
+#define DEVICE_INFO_H
 
-#ifndef UTILS_DIRECTORY_H
-#define UTILS_DIRECTORY_H
-
-#include <functional>
+#include <atomic>
 #include <string>
-#include <sys/stat.h>
-#include <sys/types.h>
 
-#include "nocopyable.h"
+#include "dm_device_info.h"
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-namespace Utils {
-enum Uid {
-    UID_ROOT = 0,
-    UID_SYSTEM = 1000,
-    UID_MEDIA_RW = 1023,
+class DeviceInfo final {
+public:
+    DeviceInfo() = default;
+    ~DeviceInfo() = default;
+    explicit DeviceInfo(const DistributedHardware::DmDeviceInfo &nodeInfo);
+    explicit DeviceInfo(const DeviceInfo &nodeInfo);
+    DeviceInfo &operator=(const DistributedHardware::DmDeviceInfo &nodeInfo);
+
+    /**
+     * @note Remove the concept iid later
+     */
+    void SetIid(const uint64_t iid);
+    void SetCid(const std::string &cid);
+
+    uint64_t GetIid() const;
+    const std::string &GetCid() const;
+
+private:
+    std::atomic<bool> initIidFlag_{false};
+    std::atomic<bool> initCidFlag_{false};
+
+    uint64_t iid_{0};
+    std::string cid_;
 };
-
-void ForceCreateDirectory(const std::string &path);
-void ForceCreateDirectory(const std::string &path, mode_t mode);
-void ForceCreateDirectory(const std::string &path, mode_t mode, uid_t uid, gid_t gid);
-
-void ForceRemoveDirectory(const std::string &path);
-} // namespace Utils
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS
-#endif // UTILS_DIRECTORY_H
+#endif // DEVICE_INFO_H

@@ -12,18 +12,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef DAEMON_PROXY_H
+#define DAEMON_PROXY_H
 
-#include "utils_log.h"
+#include <iremote_proxy.h>
+
+#include "i_daemon.h"
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-std::string GetFileNameFromFullPath(const char *str)
-{
-    std::string fullPath(str);
-    size_t pos = fullPath.find_last_of("/");
-    return (pos == std::string::npos) ? std::string() : fullPath.substr(pos + 1);
-}
+class DaemonProxy : public IRemoteProxy<IDaemon> {
+public:
+    explicit DaemonProxy(const sptr<IRemoteObject> &impl) : IRemoteProxy<IDaemon>(impl) {}
+    ~DaemonProxy() {}
+
+private:
+    static inline BrokerDelegator<DaemonProxy> delegator_;
+};
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS
+#endif // DAEMON_PROXY_H
