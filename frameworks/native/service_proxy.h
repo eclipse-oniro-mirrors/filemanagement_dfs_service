@@ -17,9 +17,9 @@
 #define DISTRIBUTEDFILE_SERVICE_PROXY_H
 
 #include "i_distributedfile_service.h"
-#include <iremote_proxy.h>
 #include "message_parcel.h"
-#include "singleton.h"
+#include <iremote_proxy.h>
+
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
@@ -36,6 +36,7 @@ public:
 
     int32_t GetBundleDistributedDir(const std::string &dirName) override;
     int32_t RemoveBundleDistributedDirs(const std::string &dirName) override;
+
 private:
     static inline BrokerDelegator<ServiceProxy> delegator_;
 };

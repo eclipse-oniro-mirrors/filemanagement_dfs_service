@@ -11,28 +11,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import("//build/ohos.gni")
-import("//build/ohos/sa_profile/sa_profile.gni")
 import("//foundation/storage/distributed_file_manager/distributedfile.gni")
 
-ohos_sa_profile("distributedfile_sa_profile") {
-  sources = [
-      "4901.xml",
-      "4902.xml"]
-  part_name = "storage_distributed_file_manager"
+config("private_config") {
+  include_dirs = [
+    "../../../frameworks/native",
+    "../../../services/distributedfileservice/include/ipc",
+  ]
+
+  configs = [ "//build/config/compiler:exceptions" ]
 }
 
-ohos_prebuilt_etc("distributedfile_etc") {
-  source = "distributedfile.cfg"
-  relative_install_dir = "init"
+config("public_config") {
+  include_dirs = [ "." ]
+}
+
+ohos_shared_library("libdistributedfile_innerkits") {
+  sources = [
+    "../../../frameworks/native/service_proxy.cpp"
+  ]
+
+  configs = [ ":private_config" ]
+
+  public_configs = [ ":public_config" ]
+
+  external_deps = [
+    "ipc:ipc_core",
+    "safwk:system_ability_fwk",
+  ]
+
+  deps = [
+      "${utils_path}:libdistributedfileutils",
+  ]
+
   part_name = "storage_distributed_file_manager"
   subsystem_name = "storage"
-}
-
-group("services_target") {
-  deps = [
-    ":distributedfile_etc",
-    ":distributedfile_sa_profile",
-    "distributedfiledaemon:distributedfiledaemon_target",
-    "distributedfileservice:distributedfileservice_target",
-  ]
 }

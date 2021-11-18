@@ -15,13 +15,12 @@
 
 #include "service_proxy.h"
 #include "utils_log.h"
+
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-ServiceProxy::ServiceProxy(const sptr<IRemoteObject> &impl)
-    : IRemoteProxy<IDistributedFileService>(impl)
-{}
-ServiceProxy::~ServiceProxy(){}
+ServiceProxy::ServiceProxy(const sptr<IRemoteObject> &impl) : IRemoteProxy<IDistributedFileService>(impl) {}
+ServiceProxy::~ServiceProxy() {}
 
 int32_t ServiceProxy::GetBundleDistributedDir(const std::string &dirName)
 {

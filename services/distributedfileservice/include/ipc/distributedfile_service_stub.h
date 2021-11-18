@@ -16,11 +16,11 @@
 #ifndef DISTRIBUTEDFILE_SERVICE_STUB_H
 #define DISTRIBUTEDFILE_SERVICE_STUB_H
 
-#include "i_distributedfile_service.h"
-#include "message_parcel.h"
-
 #include <iremote_stub.h>
 #include <map>
+
+#include "i_distributedfile_service.h"
+#include "message_parcel.h"
 
 namespace OHOS {
 namespace Storage {
@@ -29,15 +29,16 @@ class DistributedFileServiceStub : public IRemoteStub<IDistributedFileService> {
 public:
     DistributedFileServiceStub();
     ~DistributedFileServiceStub();
-    virtual int OnRemoteRequest(
-        uint32_t code, MessageParcel &data, MessageParcel &reply, MessageOption &option) override;
+    virtual int
+        OnRemoteRequest(uint32_t code, MessageParcel &data, MessageParcel &reply, MessageOption &option) override;
 
 private:
-    using DistributedFileServiceFunc = int32_t (DistributedFileServiceStub::*)(MessageParcel &data, MessageParcel &reply);
+    using DistributedFileServiceFunc = int32_t (DistributedFileServiceStub::*)(MessageParcel &data,
+                                                                               MessageParcel &reply);
     std::map<uint32_t, DistributedFileServiceFunc> memberFuncMap_;
 
-    int32_t GetBundleDistributedDirInner(MessageParcel &data,MessageParcel &reply);
-    int32_t RemoveBundleDistributedDirsInner(MessageParcel &data,MessageParcel &reply);
+    int32_t GetBundleDistributedDirInner(MessageParcel &data, MessageParcel &reply);
+    int32_t RemoveBundleDistributedDirsInner(MessageParcel &data, MessageParcel &reply);
 };
 } // namespace DistributedFile
 } // namespace Storage

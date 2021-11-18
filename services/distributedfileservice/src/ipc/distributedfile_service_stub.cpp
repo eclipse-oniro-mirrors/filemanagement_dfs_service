@@ -13,12 +13,12 @@
  * limitations under the License.
  */
 
-#include "distributedfile_ability_info.h"
 #include "distributedfile_service_stub.h"
-#include "utils_log.h"
 
 #include <ipc_skeleton.h>
 #include <sys/stat.h>
+
+#include "utils_log.h"
 
 namespace OHOS {
 namespace Storage {
@@ -34,8 +34,10 @@ DistributedFileServiceStub::~DistributedFileServiceStub()
     memberFuncMap_.clear();
 }
 
-int DistributedFileServiceStub::OnRemoteRequest(
-    uint32_t code, MessageParcel &data, MessageParcel &reply, MessageOption &option)
+int DistributedFileServiceStub::OnRemoteRequest(uint32_t code,
+                                                MessageParcel &data,
+                                                MessageParcel &reply,
+                                                MessageOption &option)
 {
     std::u16string myDescriptor = DistributedFileServiceStub::GetDescriptor();
     std::u16string remoteDescriptor = data.ReadInterfaceToken();
@@ -63,7 +65,7 @@ int32_t DistributedFileServiceStub::GetBundleDistributedDirInner(MessageParcel &
     }
 
     int32_t result = GetBundleDistributedDir(dirName);
-    LOGD("DistributedFileServiceStub : GetBundleDistributedDir result = %{public}d",result);
+    LOGD("DistributedFileServiceStub : GetBundleDistributedDir result = %{public}d", result);
     if (!reply.WriteInt32(result)) {
         LOGE("fail to write parcel");
         return DISTRIBUTEDFILE_WRITE_REPLY_FAIL;
@@ -72,7 +74,7 @@ int32_t DistributedFileServiceStub::GetBundleDistributedDirInner(MessageParcel &
     return result;
 }
 
-int32_t DistributedFileServiceStub::RemoveBundleDistributedDirsInner(MessageParcel &data,MessageParcel &reply)
+int32_t DistributedFileServiceStub::RemoveBundleDistributedDirsInner(MessageParcel &data, MessageParcel &reply)
 {
     std::string dirName = data.ReadString();
     if (dirName.empty()) {

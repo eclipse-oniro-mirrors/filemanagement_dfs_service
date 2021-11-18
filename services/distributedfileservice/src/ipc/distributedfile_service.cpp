@@ -12,33 +12,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <system_ability_definition.h>
 #include "distributedfile_service.h"
+
+#include <exception>
+#include <system_ability_definition.h>
+#include <stdio.h>
+
+#include "bundle_mgr_interface.h"
+#include "bundle_mgr_proxy.h"
+#include "ipc_skeleton.h"
+#include "iservice_registry.h"
 #include "message_parcel.h"
 #include "parcel.h"
 #include "utils_directory.h"
 #include "utils_log.h"
-#include "ipc_skeleton.h"
-#include "iservice_registry.h"
-struct AbilityInfo;
-#include "bundle_mgr_interface.h"
-#include "bundle_mgr_proxy.h"
-#include <exception>
-
-#include <stdio.h>
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
 using namespace std;
 const bool g_registerResult =
-   SystemAbility::MakeAndRegisterAbility(DelayedSingleton<DistributedFileService>::GetInstance().get());
+    SystemAbility::MakeAndRegisterAbility(DelayedSingleton<DistributedFileService>::GetInstance().get());
 
-DistributedFileService::DistributedFileService()
-    :SystemAbility(STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID, false)
-{}
+DistributedFileService::DistributedFileService() : SystemAbility(STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID, false) {}
 
-DistributedFileService::~DistributedFileService(){}
+DistributedFileService::~DistributedFileService() {}
 
 void DistributedFileService::OnDump()
 {
@@ -61,15 +59,13 @@ void DistributedFileService::OnStop()
 
 int32_t DistributedFileService::GetBundleDistributedDir(const std::string &dirName)
 {
-    DistributedFileInfo metaBase;
-    metaBase.name = dirName;
-    if (metaBase.name.empty()) {
+    std::string path = dirName;
+    if (path.empty()) {
         LOGE("DistributedFileService-%{public}s: Failed to get app dir, error: invalid app name", __func__);
         return DISTRIBUTEDFILE_DIR_NAME_IS_EMPTY;
     }
 
-    sptr<ISystemAbilityManager> systemAbilityMgr =
-        SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
+    sptr<ISystemAbilityManager> systemAbilityMgr = SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     if (systemAbilityMgr == nullptr) {
         LOGE("BundleService Get ISystemAbilityManager failed ... \n");
         return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
@@ -84,24 +80,23 @@ int32_t DistributedFileService::GetBundleDistributedDir(const std::string &dirNa
     int callingUid = IPCSkeleton::GetCallingUid();
     auto BundleMgrService = std::make_unique<AppExecFwk::BundleMgrProxy>(remote);
     if (BundleMgrService.get() == nullptr) {
-        LOGE("remote iface_cast BundleMgrService failed ... %{public}s\n",strerror(errno));
+        LOGE("remote iface_cast BundleMgrService failed ... %{public}s\n", strerror(errno));
         return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
     }
 
-    metaBase.uid = BundleMgrService->GetUidByBundleName(metaBase.name,callingUid);
-    if (metaBase.uid < 0) {
+    int32_t uid = BundleMgrService->GetUidByBundleName(path, callingUid);
+    if (uid < 0) {
         LOGE("DistributedFileService-%{public}s: Failed to get uid", __func__);
         return DISTRIBUTEDFILE_NAME_NOT_FOUND;
     }
 
     if (callingUid != 0) {
-        if (metaBase.uid != callingUid) {
+        if (uid != callingUid) {
             LOGE("DistributedFileService-%{public}s: Bundle failed to create dir", __func__);
             return DISTRIBUTEDFILE_PERMISSION_DENIED;
         }
     }
 
-    std::string path = dirName;
     LOGI("DistributedFileService::GetBundleDistributedDir path : %{public}s", path.c_str());
     Utils::ForceCreateDirectory(path);
     return DISTRIBUTEDFILE_SUCCESS;
@@ -109,15 +104,13 @@ int32_t DistributedFileService::GetBundleDistributedDir(const std::string &dirNa
 
 int32_t DistributedFileService::RemoveBundleDistributedDirs(const std::string &dirName)
 {
-    DistributedFileInfo metaBase;
-    metaBase.name = dirName;
-    if (metaBase.name.empty()) {
+    std::string path = dirName;
+    if (path.empty()) {
         LOGE("DistributedFileService-%{public}s: Failed to get app dir, error: invalid app name", __func__);
         return DISTRIBUTEDFILE_DIR_NAME_IS_EMPTY;
     }
 
-    sptr<ISystemAbilityManager> systemAbilityMgr =
-        SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
+    sptr<ISystemAbilityManager> systemAbilityMgr = SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     if (systemAbilityMgr == nullptr) {
         LOGE("BundleService Get ISystemAbilityManager failed ... \n");
         return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
@@ -135,7 +128,7 @@ int32_t DistributedFileService::RemoveBundleDistributedDirs(const std::string &d
         return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
     }
 
-    Utils::ForceRemoveDirectory(metaBase.name);
+    Utils::ForceRemoveDirectory(path);
     return DISTRIBUTEDFILE_SUCCESS;
 }
 } // namespace DistributedFile

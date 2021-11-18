@@ -14,41 +14,30 @@ import("//build/ohos.gni")
 import("//foundation/storage/distributed_file_manager/distributedfile.gni")
 
 ohos_shared_library("libdistributedfileservice") {
-  include_dirs = [ 
-    "//foundation/storage/distributed_file_manager/services/distributedfileservice/include/ipc",
-    "//foundation/storage/distributed_file_manager/services/distributedfileservice/include",
-    "//foundation/storage/distributed_file_manager/utils/log/include",
-    "//foundation/storage/distributed_file_manager/interfaces/innerkits/native",
-    "//foundation/distributedschedule/safwk/interfaces/innerkits/safwk",
-    "//foundation/appexecfwk/standard/interfaces/innerkits/appexecfwk_core/include/bundlemgr",
-    "//foundation/appexecfwk/standard/interfaces/innerkits/appexecfwk_base/include",
-    "//foundation/aafwk/standard/interfaces/innerkits/want/include",
-    "//foundation/appexecfwk/standard/interfaces/innerkits/appexecfwk_base/include",
-    "//foundation/distributedschedule/dmsfwk/services/dtbschedmgr/include",
-    "//foundation/aafwk/standard/frameworks/kits/content/cpp/src",
+  include_dirs = [
+    "include/ipc",
   ]
 
   sources = [
     "src/ipc/distributedfile_service_stub.cpp",
     "src/ipc/distributedfile_service.cpp",
-    "//foundation/storage/distributed_file_manager/frameworks/native/service_proxy.cpp",
+    "../../frameworks/native/service_proxy.cpp",
   ]
 
-  configs = [ "//build/config/compiler:exceptions" ]
+  configs = [ "${utils_path}:compiler_configs" ]
 
   external_deps = [
     "ipc:ipc_core",
     "safwk:system_ability_fwk",
     "samgr_standard:samgr_proxy",
+    "aafwk_standard:want",
     "appexecfwk_standard:appexecfwk_base",
     "appexecfwk_standard:appexecfwk_core",
   ]
 
   deps = [
-    "//foundation/storage/distributed_file_manager/frameworks/native:libdistributedfile_innerkits",
-    "//foundation/storage/distributed_file_manager/utils/:libdistributedfileutils",
-    "//utils/native/base:utils",
-    "//foundation/aafwk/standard/frameworks/kits/ability/native:abilitykit_native",
+    "${utils_path}:libdistributedfileutils",
+    "../../interfaces/innerkits/native:libdistributedfile_innerkits",
   ]
 
   part_name = "storage_distributed_file_manager"
