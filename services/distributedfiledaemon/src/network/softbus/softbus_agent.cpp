@@ -85,7 +85,6 @@ shared_ptr<BaseSession> SoftbusAgent::OpenSession(const DeviceInfo &info)
 {
     SessionAttribute attr;
     attr.dataType = TYPE_BYTES;
-    attr.unique = true;
 
     LOGD("Start to Open Session, cid:%{public}s", info.GetCid().c_str());
 

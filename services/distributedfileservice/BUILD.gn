@@ -21,7 +21,6 @@ ohos_shared_library("libdistributedfileservice") {
   sources = [
     "src/ipc/distributedfile_service_stub.cpp",
     "src/ipc/distributedfile_service.cpp",
-    "../../frameworks/native/service_proxy.cpp",
   ]
 
   configs = [ "${utils_path}:compiler_configs" ]

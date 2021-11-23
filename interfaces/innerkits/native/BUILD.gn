@@ -16,7 +16,6 @@ import("//foundation/storage/distributed_file_manager/distributedfile.gni")
 config("private_config") {
   include_dirs = [
     "../../../frameworks/native",
-    "../../../services/distributedfileservice/include/ipc",
   ]
 
   configs = [ "//build/config/compiler:exceptions" ]

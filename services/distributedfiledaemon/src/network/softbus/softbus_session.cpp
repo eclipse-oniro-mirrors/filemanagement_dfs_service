@@ -27,6 +27,7 @@ using namespace std;
 constexpr int32_t SOFTBUS_OK = 0;
 constexpr int32_t INVALID_SOCKET_FD = -1;
 constexpr int32_t DEVICE_ID_SIZE_MAX = 65;
+constexpr int32_t IS_SERVER = 0;
 
 bool SoftbusSession::IsFromServer() const
 {
