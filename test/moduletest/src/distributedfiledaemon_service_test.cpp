@@ -65,9 +65,9 @@ void DistributedFileDaemonServiceTest::TearDown(void)
  */
 HWTEST_F(DistributedFileDaemonServiceTest, mount_umount_test_001, TestSize.Level1)
 {
-    auto mp = make_unique<OHOS::DistributedFile::MountPoint>(OHOS::DistributedFile::Utils::MountArgumentDescriptors::Alpha(9527));
+    auto mp = make_unique<OHOS::Storage::DistributedFile::MountPoint>(OHOS::Storage::DistributedFile::Utils::MountArgumentDescriptors::Alpha(9527));
 
-    shared_ptr<OHOS::DistributedFile::MountPoint> smp = move(mp);
+    shared_ptr<OHOS::Storage::DistributedFile::MountPoint> smp = move(mp);
 
     try {
         smp->Mount();
