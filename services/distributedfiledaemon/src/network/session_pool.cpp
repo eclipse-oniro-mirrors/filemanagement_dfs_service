@@ -25,17 +25,28 @@ void SessionPool::HoldSession(shared_ptr<BaseSession> session)
     lock_guard lock(sessionPoolLock_);
     talker_.SinkSessionTokernel(session);
     AddSessionToPool(session);
-    RefreshSessionPoolBasedOnKernel();
 }
 
-void SessionPool::RefreshSessionPoolBasedOnKernel()
+void SessionPool::ReleaseSession(const int32_t fd)
 {
     lock_guard lock(sessionPoolLock_);
-    auto kernelSessions = talker_.GetKernelSesions();
     for (auto iter = usrSpaceSessionPool_.begin(); iter != usrSpaceSessionPool_.end();) {
-        if (kernelSessions.count((*iter)->GetHandle() == 0)) {
-            // (*iter)->Release();
-            // iter = usrSpaceSessionPool_.erase(iter);  // ! 待GetKernelSessions实现后放开
+        if ((*iter)->GetHandle() == fd) {
+            (*iter)->Release();
+            iter = usrSpaceSessionPool_.erase(iter);
+        } else {
+            ++iter;
+        }
+    }
+}
+
+void SessionPool::ReleaseSession(const string &cid)
+{
+    lock_guard lock(sessionPoolLock_);
+    for (auto iter = usrSpaceSessionPool_.begin(); iter != usrSpaceSessionPool_.end();) {
+        if ((*iter)->GetCid() == cid) {
+            (*iter)->Release();
+            iter = usrSpaceSessionPool_.erase(iter);
         } else {
             ++iter;
         }

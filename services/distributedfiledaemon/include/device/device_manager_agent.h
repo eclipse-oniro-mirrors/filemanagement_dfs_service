@@ -25,6 +25,8 @@
 #include "mountpoint/mount_point.h"
 #include "network/network_agent_template.h"
 #include "utils_singleton.h"
+#include "utils_startable.h"
+#include "utils_actor.h"
 
 namespace OHOS {
 namespace Storage {
@@ -32,10 +34,14 @@ namespace DistributedFile {
 class DeviceManagerAgent final : public DistributedHardware::DmInitCallback,
                                  public DistributedHardware::DeviceStateCallback,
                                  public std::enable_shared_from_this<DeviceManagerAgent>,
+                                 public Startable,
+                                 public Actor<DeviceManagerAgent>,
                                  public Utils::Singleton<DeviceManagerAgent> {
     DECLARE_SINGLETON(DeviceManagerAgent);
 
 public:
+    void Start() override;
+    void Stop() override;
     void JoinGroup(std::weak_ptr<MountPoint> mp);
     void QuitGroup(std::weak_ptr<MountPoint> mp);
 
@@ -44,18 +50,21 @@ public:
     void OnDeviceChanged(const DistributedHardware::DmDeviceInfo &deviceInfo) override;
     void OnDeviceReady(const DistributedHardware::DmDeviceInfo &deviceInfo) override {}
 
+    void DeviceOnlineProc(const DeviceInfo info);
+    void DeviceOfflineProc(const DeviceInfo info);
+
     void OnRemoteDied() override;
 
     DeviceInfo &GetLocalDeviceInfo();
     std::vector<DeviceInfo> GetRemoteDevicesInfo();
 
 private:
+    void StartInstance() override;
+    void StopInstance() override;
     void InitLocalIid();
     void InitLocalNodeInfo();
     void RegisterToExternalDm();
     void UnregisterFromExternalDm();
-    void Start() override;
-    void Stop() override;
 
     // We use a mutex instead of a shared_mutex to serialize online/offline procedures
     std::mutex mpToNetworksMutex_;

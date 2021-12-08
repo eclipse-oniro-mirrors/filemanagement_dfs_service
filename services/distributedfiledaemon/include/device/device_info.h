@@ -28,7 +28,7 @@ public:
     DeviceInfo() = default;
     ~DeviceInfo() = default;
     explicit DeviceInfo(const DistributedHardware::DmDeviceInfo &nodeInfo);
-    explicit DeviceInfo(const DeviceInfo &nodeInfo);
+    DeviceInfo(const DeviceInfo &nodeInfo);
     DeviceInfo &operator=(const DistributedHardware::DmDeviceInfo &nodeInfo);
 
     /**

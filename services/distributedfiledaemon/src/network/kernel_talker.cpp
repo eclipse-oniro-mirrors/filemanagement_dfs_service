@@ -144,11 +144,6 @@ void KernelTalker::SinkOfflineCmdToKernel(string cid)
     SetCmd(cmd);
 }
 
-unordered_set<int> KernelTalker::GetKernelSesions()
-{
-    return {};
-}
-
 void KernelTalker::CreatePollThread()
 {
     isRunning_ = true;
@@ -246,6 +241,7 @@ void KernelTalker::NotifyHandler(NotifyParam &param)
         case NOTIFY_OFFLINE_IID:
             LOGI("%{public}s, remote cid %{public}s", (cmd == NOTIFY_OFFLINE) ? "NOTIFY_OFFLINE" : "NOTIFY_OFFLINE_IID",
                  cidStr.c_str());
+            CloseSessionCallback_(cidStr);
             break;
         case NOTIFY_GET_SESSION:
             GetSessionCallback_(param);

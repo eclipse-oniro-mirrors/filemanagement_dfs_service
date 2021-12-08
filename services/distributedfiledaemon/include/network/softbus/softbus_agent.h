@@ -34,10 +34,13 @@ protected:
     void QuitDomain() override;
     void StopTopHalf() override;
     void StopBottomHalf() override;
-    std::shared_ptr<BaseSession> OpenSession(const DeviceInfo &info) override;
+    void OpenSession(const DeviceInfo &info) override;
     void CloseSession(std::shared_ptr<BaseSession> session) override;
 
 private:
+    bool IsContinueRetry(const std::string &cid);
+    std::map<std::string, int> OpenSessionRetriedTimesMap_;
+
     std::string sessionName_;
 };
 } // namespace DistributedFile

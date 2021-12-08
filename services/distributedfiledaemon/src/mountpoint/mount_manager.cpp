@@ -57,7 +57,8 @@ void MountManager::Mount(unique_ptr<MountPoint> mp)
     }
 
     smp->Mount();
-    DeviceManagerAgent::GetInstance()->JoinGroup(smp);
+    auto dm = DeviceManagerAgent::GetInstance();
+    dm->Recv(make_unique<Cmd<DeviceManagerAgent, weak_ptr<MountPoint>>>(&DeviceManagerAgent::JoinGroup, smp));
     mountPoints_.push_back(smp);
 }
 
@@ -74,10 +75,12 @@ void MountManager::Umount(weak_ptr<MountPoint> wmp)
         LOGE("%{public}s", ss.str().c_str());
         throw runtime_error(ss.str());
     }
-
+    LOGE("Umount begin");
     smp->Umount();
-    DeviceManagerAgent::GetInstance()->QuitGroup(smp);
+    auto dm = DeviceManagerAgent::GetInstance();
+    dm->Recv(make_unique<Cmd<DeviceManagerAgent, weak_ptr<MountPoint>>>(&DeviceManagerAgent::QuitGroup, smp));
     mountPoints_.erase(it);
+    LOGE("Umount end");
 }
 } // namespace DistributedFile
 } // namespace Storage

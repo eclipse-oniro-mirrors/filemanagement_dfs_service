@@ -46,8 +46,10 @@ struct NotifyParam {
 
 class KernelTalker final : protected NoCopyable {
 public:
-    explicit KernelTalker(std::weak_ptr<MountPoint> mountPoint, std::function<void(NotifyParam &)> callback)
-        : mountPoint_(mountPoint), GetSessionCallback_(callback)
+    explicit KernelTalker(std::weak_ptr<MountPoint> mountPoint,
+                          std::function<void(NotifyParam &)> getSessioncallback,
+                          std::function<void(const std::string &)> closeSesssionCallback)
+        : mountPoint_(mountPoint), GetSessionCallback_(getSessioncallback), CloseSessionCallback_(closeSesssionCallback)
     {
     }
     KernelTalker() = default;
@@ -56,7 +58,6 @@ public:
     void SinkSessionTokernel(std::shared_ptr<BaseSession> session);
     void SinkInitCmdToKernel(uint64_t iid);
     void SinkOfflineCmdToKernel(std::string cid);
-    std::unordered_set<int> GetKernelSesions();
 
     void CreatePollThread();
     void WaitForPollThreadExited();
@@ -95,6 +96,7 @@ private:
     std::atomic<bool> isRunning_{true};
     std::unique_ptr<std::thread> pollThread_{nullptr};
     std::function<void(NotifyParam &)> GetSessionCallback_{nullptr};
+    std::function<void(const std::string &)> CloseSessionCallback_{nullptr};
 };
 } // namespace DistributedFile
 } // namespace Storage

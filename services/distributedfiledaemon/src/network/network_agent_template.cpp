@@ -15,6 +15,7 @@
 
 #include "network/network_agent_template.h"
 #include "device/device_manager_agent.h"
+#include "utils_exception.h"
 #include "utils_log.h"
 
 namespace OHOS {
@@ -23,12 +24,11 @@ namespace DistributedFile {
 using namespace std;
 namespace {
 constexpr int MAX_RETRY_COUNT = 7;
-constexpr int SLEEP_TIME = 1500;
 }
 
 void NetworkAgentTemplate::Start()
 {
-    JoinDomain(); // TODO 考虑下软总线是否有可能还没有起来
+    JoinDomain();
     ConnectOnlineDevices();
     kernerlTalker_.CreatePollThread();
 }
@@ -40,23 +40,10 @@ void NetworkAgentTemplate::Stop()
     kernerlTalker_.WaitForPollThreadExited();
 }
 
-void NetworkAgentTemplate::ConnectDeviceAsync(const DeviceInfo &info)
+void NetworkAgentTemplate::ConnectDeviceAsync(const DeviceInfo info)
 {
     kernerlTalker_.SinkInitCmdToKernel(info.GetIid());
-
-    unique_lock<mutex> taskLock(taskMut_);
-    tasks_.emplace_back();
-    tasks_.back().RunLoopFlexible(
-        [info{DeviceInfo(info)}, this](uint64_t &sleepTime) {  // ! 不能使用this,待解决
-            auto session = OpenSession(info);
-            if (session == nullptr) {
-                LOGE("open session fail, retry, cid:%{public}s", info.GetCid().c_str());
-                return false;
-            }
-            LOGI("open session success, cid:%{public}s", info.GetCid().c_str());
-            return true;
-        },
-        SLEEP_TIME, MAX_RETRY_COUNT);
+    OpenSession(info);
 }
 
 void NetworkAgentTemplate::ConnectOnlineDevices()
@@ -64,15 +51,25 @@ void NetworkAgentTemplate::ConnectOnlineDevices()
     auto infos = DeviceManagerAgent::GetInstance()->GetRemoteDevicesInfo();
     LOGI("Have %{public}d devices Online", infos.size());
     for (const auto &info : infos) {
-        ConnectDeviceAsync(info);
+        auto cmd =
+            make_unique<Cmd<NetworkAgentTemplate, const DeviceInfo>>(&NetworkAgentTemplate::ConnectDeviceAsync, info);
+        cmd->UpdateOption({
+            .tryTimes_ = MAX_RETRY_COUNT,
+        });
+        Recv(move(cmd));
     }
 }
 
-void NetworkAgentTemplate::DisconnectDevice(const DeviceInfo &info)
+void NetworkAgentTemplate::DisconnectDevice(const DeviceInfo info)
 {
     LOGI("DeviceOffline, cid:%{public}s", info.GetCid().c_str());
     kernerlTalker_.SinkOfflineCmdToKernel(info.GetCid());
-    sessionPool_.RefreshSessionPoolBasedOnKernel();
+    sessionPool_.ReleaseSession(info.GetCid());
+}
+
+void NetworkAgentTemplate::CloseAllSession(const string &cid)
+{
+    sessionPool_.ReleaseSession(cid);
 }
 
 void NetworkAgentTemplate::AcceptSession(shared_ptr<BaseSession> session)
@@ -91,7 +88,7 @@ void NetworkAgentTemplate::GetSessionProcess(NotifyParam &param)
 {
     string cidStr(param.remoteCid, CID_MAX_LEN);
     LOGI("NOTIFY_GET_SESSION, old fd %{public}d, remote cid %{public}s", param.fd, cidStr.c_str());
-    sessionPool_.RefreshSessionPoolBasedOnKernel();
+    sessionPool_.ReleaseSession(param.fd);
     GetSesion(cidStr);
 }
 
@@ -99,12 +96,11 @@ void NetworkAgentTemplate::GetSesion(const string &cid)
 {
     DeviceInfo deviceInfo;
     deviceInfo.SetCid(cid);
-    auto session = OpenSession(deviceInfo);
-    if (session == nullptr) {
-        LOGE("open session fail, retry, cid:%{public}s", cid.c_str());
-        return;
+    try {
+        OpenSession(deviceInfo);
+    } catch (const Exception &e) {
+        LOGE("reget session failed, code: %{public}d", e.code());
     }
-    LOGI("open session success, cid:%{public}s", cid.c_str());
 }
 } // namespace DistributedFile
 } // namespace Storage

@@ -21,13 +21,16 @@
 #include "network/softbus/softbus_session_dispatcher.h"
 #include "network/softbus/softbus_session_name.h"
 #include "session.h"
+#include "utils_exception.h"
 #include "utils_log.h"
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
+namespace {
+constexpr int MAX_RETRY_COUNT = 7;
+}
 using namespace std;
-
 SoftbusAgent::SoftbusAgent(weak_ptr<MountPoint> mountPoint) : NetworkAgentTemplate(mountPoint)
 {
     auto spt = mountPoint.lock();
@@ -81,7 +84,7 @@ void SoftbusAgent::StopTopHalf()
     QuitDomain();
 }
 void SoftbusAgent::StopBottomHalf() {}
-shared_ptr<BaseSession> SoftbusAgent::OpenSession(const DeviceInfo &info)
+void SoftbusAgent::OpenSession(const DeviceInfo &info)
 {
     SessionAttribute attr;
     attr.dataType = TYPE_BYTES;
@@ -92,9 +95,10 @@ shared_ptr<BaseSession> SoftbusAgent::OpenSession(const DeviceInfo &info)
         ::OpenSession(sessionName_.c_str(), sessionName_.c_str(), info.GetCid().c_str(), "hmdfs_wifiGroup", &attr);
     if (sessionId < 0) {
         LOGE("Failed to open session, cid:%{public}s, sessionId:%{public}d", info.GetCid().c_str(), sessionId);
-        return nullptr;
+        ThrowException(ERR_SOFTBUS_AGENT_ON_SESSION_OPENED_FAIL, "Open Session failed");
     }
-    return make_shared<SoftbusSession>(sessionId);
+    LOGD("Open Session SUCCESS, cid:%{public}s", info.GetCid().c_str());
+    return;
 }
 
 void SoftbusAgent::CloseSession(shared_ptr<BaseSession> session)
@@ -106,17 +110,50 @@ void SoftbusAgent::CloseSession(shared_ptr<BaseSession> session)
     session->Release();
 }
 
+bool SoftbusAgent::IsContinueRetry(const string &cid)
+{
+    auto retriedTimesMap = OpenSessionRetriedTimesMap_.find(cid);
+    if (retriedTimesMap != OpenSessionRetriedTimesMap_.end()) {
+        if (retriedTimesMap->second >= MAX_RETRY_COUNT) {
+            return false;
+        }
+    } else {
+        OpenSessionRetriedTimesMap_.insert({cid, 0});
+    }
+    OpenSessionRetriedTimesMap_[cid]++;
+    return true;
+}
+
 int SoftbusAgent::OnSessionOpened(const int sessionId, const int result)
 {
     auto session = make_shared<SoftbusSession>(sessionId);
     auto cid = session->GetCid();
-    if (!session->IsFromServer()) {
-        if (result != 0) {
-            // !是否加OpenSession重试？
-            LOGE("open session failed, result:%{public}d", result);
-            return 0;
+
+    DeviceInfo info;
+    info.SetCid(cid);
+    if (result != 0) {
+        LOGE("OnSessionOpened failed, Is %{public}s Side, result:%{public}d",
+             (session->IsFromServer() == true) ? "Server" : "Client", result);
+        if (!session->IsFromServer()) { // client retry
+            if (IsContinueRetry(cid)) {
+                auto cmd = make_unique<Cmd<NetworkAgentTemplate, const DeviceInfo>>(
+                    &NetworkAgentTemplate::ConnectDeviceAsync, info);
+                cmd->UpdateOption({
+                    .tryTimes_ = 1,
+                });
+                Recv(move(cmd));
+            } else {
+                LOGE("Exceeded the maximum number of retries, not retry");
+            }
         }
+        return result;
     }
+
+    auto retriedTimesMap = OpenSessionRetriedTimesMap_.find(cid);
+    if (retriedTimesMap != OpenSessionRetriedTimesMap_.end()) {
+        OpenSessionRetriedTimesMap_.erase(cid);
+    }
+
     int socket_fd = session->GetHandle();
     LOGI(
         "accept sesion, sessionid:%{public}d, Is %{public}s Side, fd %{public}d, from cid %{public}s, result "

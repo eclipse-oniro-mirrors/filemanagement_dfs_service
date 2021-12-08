@@ -70,6 +70,7 @@ array<char, KEY_SIZE_MAX> SoftbusSession::GetKey() const
 void SoftbusSession::Release() const
 {
     ::CloseSession(sessionId_);
+    LOGI("session closed, sessionId:%{public}d", sessionId_);
 }
 
 void SoftbusSession::DisableSessionListener() const
