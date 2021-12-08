@@ -66,7 +66,7 @@ void DeviceManagerAgent::JoinGroup(weak_ptr<MountPoint> mp)
     auto smp = mp.lock();
     if (!smp) {
         stringstream ss("Failed to join group: Received empty mountpoint");
-        LOGE("%s", ss.str().c_str());
+        LOGE("%{public}s", ss.str().c_str());
         throw runtime_error(ss.str());
     }
 
@@ -87,7 +87,7 @@ void DeviceManagerAgent::QuitGroup(weak_ptr<MountPoint> mp)
     auto smp = mp.lock();
     if (!smp) {
         stringstream ss("Failed to quit group: Received empty mountpoint");
-        LOGE("%s", ss.str().c_str());
+        LOGE("%{public}s", ss.str().c_str());
         throw runtime_error(ss.str());
     }
 
@@ -103,9 +103,35 @@ void DeviceManagerAgent::QuitGroup(weak_ptr<MountPoint> mp)
     mpToNetworks_.erase(smp->GetID());
 }
 
-void DeviceManagerAgent::DeviceOnlineProc(const DeviceInfo info)
+void DeviceManagerAgent::OfflineAllDevice()
 {
-    LOGI("deviceOnline process begin");
+    unique_lock<mutex> lock(mpToNetworksMutex_);
+    for (auto &&networkAgent : mpToNetworks_) {
+        auto cmd = make_unique<Cmd<NetworkAgentTemplate>>(&NetworkAgentTemplate::DisconnectAllDevices);
+        cmd->UpdateOption({
+            .tryTimes_ = 1,
+        });
+        networkAgent.second->Recv(move(cmd));
+    }
+}
+
+void DeviceManagerAgent::ReconnectOnlineDevices()
+{
+    unique_lock<mutex> lock(mpToNetworksMutex_);
+    for (auto &&networkAgent : mpToNetworks_) {
+        auto cmd = make_unique<Cmd<NetworkAgentTemplate>>(&NetworkAgentTemplate::ConnectOnlineDevices);
+        cmd->UpdateOption({
+            .tryTimes_ = MAX_RETRY_COUNT,
+        });
+        networkAgent.second->Recv(move(cmd));
+    }
+}
+
+void DeviceManagerAgent::OnDeviceOnline(const DistributedHardware::DmDeviceInfo &deviceInfo)
+{
+    LOGI("OnDeviceOnline begin");
+    DeviceInfo info(deviceInfo);
+    unique_lock<mutex> lock(mpToNetworksMutex_);
     for (auto &&networkAgent : mpToNetworks_) {
         auto cmd =
             make_unique<Cmd<NetworkAgentTemplate, const DeviceInfo>>(&NetworkAgentTemplate::ConnectDeviceAsync, info);
@@ -114,12 +140,14 @@ void DeviceManagerAgent::DeviceOnlineProc(const DeviceInfo info)
         });
         networkAgent.second->Recv(move(cmd));
     }
-    LOGI("deviceOnline process end");
+    LOGI("OnDeviceOnline end");
 }
 
-void DeviceManagerAgent::DeviceOfflineProc(const DeviceInfo info)
+void DeviceManagerAgent::OnDeviceOffline(const DistributedHardware::DmDeviceInfo &deviceInfo)
 {
-    LOGI("deviceOffline process begin");
+    LOGI("OnDeviceOffline begin");
+    DeviceInfo info(deviceInfo);
+    unique_lock<mutex> lock(mpToNetworksMutex_);
     for (auto &&networkAgent : mpToNetworks_) {
         auto cmd =
             make_unique<Cmd<NetworkAgentTemplate, const DeviceInfo>>(&NetworkAgentTemplate::DisconnectDevice, info);
@@ -128,30 +156,6 @@ void DeviceManagerAgent::DeviceOfflineProc(const DeviceInfo info)
         });
         networkAgent.second->Recv(move(cmd));
     }
-    LOGI("deviceOffline process end");
-}
-
-void DeviceManagerAgent::OnDeviceOnline(const DistributedHardware::DmDeviceInfo &deviceInfo)
-{
-    LOGI("OnDeviceOnline begin");
-    DeviceInfo info(deviceInfo);
-    auto cmd = make_unique<Cmd<DeviceManagerAgent, const DeviceInfo>>(&DeviceManagerAgent::DeviceOnlineProc, info);
-    cmd->UpdateOption({
-        .tryTimes_ = 1,
-    });
-    Recv(move(cmd));
-    LOGI("OnDeviceOnline end");
-}
-
-void DeviceManagerAgent::OnDeviceOffline(const DistributedHardware::DmDeviceInfo &deviceInfo)
-{
-    LOGI("OnDeviceOffline begin");
-    DeviceInfo info(deviceInfo);
-    auto cmd = make_unique<Cmd<DeviceManagerAgent, const DeviceInfo>>(&DeviceManagerAgent::DeviceOfflineProc, info);
-    cmd->UpdateOption({
-        .tryTimes_ = 1,
-    });
-    Recv(move(cmd));
     LOGI("OnDeviceOffline end");
 }
 
@@ -168,18 +172,14 @@ void DeviceManagerAgent::InitLocalNodeInfo()
         ThrowException(errCode, "Failed to get info of local devices");
     }
     localDeviceInfo_.SetCid(string(tmpNodeInfo.networkId));
-    InitLocalIid();
 }
 
 void DeviceManagerAgent::OnRemoteDied()
 {
     LOGI("device manager service died");
-    RegisterToExternalDm(); // ! TODO
-}
-
-void DeviceManagerAgent::InitLocalIid()
-{
-    localDeviceInfo_.SetIid(0x12345678); // TODO 随机产生
+    StopInstance();
+    OfflineAllDevice(); // cannot commit a cmd to queue
+    StartInstance();
 }
 
 DeviceInfo &DeviceManagerAgent::GetLocalDeviceInfo()

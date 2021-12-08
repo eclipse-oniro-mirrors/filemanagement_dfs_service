@@ -24,22 +24,14 @@ namespace DistributedFile {
 using namespace std;
 
 constexpr int KEY_MAX_LEN = 32;
-constexpr int HMDFS_ACCOUNT_HASH_MAX_LEN = 21;
 constexpr int POLL_TIMEOUT_MS = 200;
 constexpr int NONE_EVENT = -1;
 constexpr int READ_EVENT = 1;
 constexpr int TIME_OUT_EVENT = 0;
 
-struct InitParam {
-    int32_t cmd;
-    uint64_t localIid;
-    uint8_t currentAccout[HMDFS_ACCOUNT_HASH_MAX_LEN];
-} __attribute__((packed));
-
 struct UpdateSocketParam {
     int32_t cmd;
     int32_t newfd;
-    uint64_t localIid;
     uint8_t status;
     uint8_t protocol;
     uint16_t udpPort;
@@ -55,17 +47,7 @@ struct OfflineParam {
     char remoteCid[CID_MAX_LEN];
 } __attribute__((packed));
 
-enum {
-    CMD_INIT = 0,
-    CMD_UPDATE_SOCKET,
-    CMD_OFF_LINE,
-    CMD_SET_ACCOUNT,
-    CMD_OFF_LINE_ALL,
-    CMD_UPDATE_CAPABILITY,
-    CMD_GET_P2P_SESSION_FAIL,
-    CMD_DELETE_CONNECTION,
-    CMD_CNT
-};
+enum { CMD_UPDATE_SOCKET = 0, CMD_OFF_LINE, CMD_OFF_LINE_ALL, CMD_DELETE_CONNECTION, CMD_CNT };
 
 enum {
     SOCKET_STAT_ACCEPT = 0,
@@ -80,12 +62,8 @@ enum {
 enum Notify {
     NOTIFY_HS_DONE = 0,
     NOTIFY_OFFLINE,
-    NOTIFY_OFFLINE_IID,
     NOTIFY_GET_SESSION,
-    NOTIFY_GOT_UDP_PORT,
     NOTIFY_NONE,
-    NOTIFY_DISCONNECT,
-    NOTIFY_D2DP_FAILED,
     NOTIFY_CNT,
 };
 
@@ -102,29 +80,18 @@ void KernelTalker::SinkSessionTokernel(shared_ptr<BaseSession> session)
     UpdateSocketParam cmd = {
         .cmd = CMD_UPDATE_SOCKET,
         .newfd = socketFd,
-        .localIid = DeviceManagerAgent::GetInstance()->GetLocalDeviceInfo().GetIid(),
         .status = status,
         .protocol = TCP_TRANSPORT_PROTO,
         .linkType = 0,
         .binderFd = -1,
     };
     if (memcpy_s(cmd.masterKey, KEY_MAX_LEN, masterkey.data(), KEY_MAX_LEN) != EOK) {
-        return; // !抛异常
+        return;
     }
 
     if (memcpy_s(cmd.cid, CID_MAX_LEN, cid.c_str(), CID_MAX_LEN)) {
-        return; // !抛异常
+        return;
     }
-    SetCmd(cmd);
-}
-
-void KernelTalker::SinkInitCmdToKernel(uint64_t iid)
-{
-    InitParam cmd = {
-        .cmd = CMD_INIT,
-        .localIid = iid,
-    };
-
     SetCmd(cmd);
 }
 
@@ -135,11 +102,12 @@ void KernelTalker::SinkOfflineCmdToKernel(string cid)
     };
 
     if (cid.length() < CID_MAX_LEN) {
-        return; // ! 抛异常
+        LOGE("cid lengh err, cid:%{public}s, length:%{public}d", cid.c_str(), cid.length());
+        return;
     }
 
     if (memcpy_s(cmd.remoteCid, CID_MAX_LEN, cid.c_str(), CID_MAX_LEN) != EOK) {
-        return; // ! 抛异常
+        return;
     }
     SetCmd(cmd);
 }
@@ -238,9 +206,7 @@ void KernelTalker::NotifyHandler(NotifyParam &param)
             LOGI("NOTIFY_HS_DONE, remote cid %{public}s", cidStr.c_str());
             break;
         case NOTIFY_OFFLINE:
-        case NOTIFY_OFFLINE_IID:
-            LOGI("%{public}s, remote cid %{public}s", (cmd == NOTIFY_OFFLINE) ? "NOTIFY_OFFLINE" : "NOTIFY_OFFLINE_IID",
-                 cidStr.c_str());
+            LOGI("NOTIFY_OFFLINE, remote cid %{public}s", cidStr.c_str());
             CloseSessionCallback_(cidStr);
             break;
         case NOTIFY_GET_SESSION:

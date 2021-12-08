@@ -50,8 +50,8 @@ public:
     void OnDeviceChanged(const DistributedHardware::DmDeviceInfo &deviceInfo) override;
     void OnDeviceReady(const DistributedHardware::DmDeviceInfo &deviceInfo) override {}
 
-    void DeviceOnlineProc(const DeviceInfo info);
-    void DeviceOfflineProc(const DeviceInfo info);
+    void OfflineAllDevice();
+    void ReconnectOnlineDevices();
 
     void OnRemoteDied() override;
 
@@ -61,7 +61,6 @@ public:
 private:
     void StartInstance() override;
     void StopInstance() override;
-    void InitLocalIid();
     void InitLocalNodeInfo();
     void RegisterToExternalDm();
     void UnregisterFromExternalDm();

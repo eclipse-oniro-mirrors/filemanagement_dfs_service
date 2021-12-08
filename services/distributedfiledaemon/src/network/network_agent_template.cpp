@@ -29,8 +29,8 @@ constexpr int MAX_RETRY_COUNT = 7;
 void NetworkAgentTemplate::Start()
 {
     JoinDomain();
-    ConnectOnlineDevices();
     kernerlTalker_.CreatePollThread();
+    ConnectOnlineDevices();
 }
 
 void NetworkAgentTemplate::Stop()
@@ -42,7 +42,6 @@ void NetworkAgentTemplate::Stop()
 
 void NetworkAgentTemplate::ConnectDeviceAsync(const DeviceInfo info)
 {
-    kernerlTalker_.SinkInitCmdToKernel(info.GetIid());
     OpenSession(info);
 }
 
@@ -60,39 +59,60 @@ void NetworkAgentTemplate::ConnectOnlineDevices()
     }
 }
 
+void NetworkAgentTemplate::DisconnectAllDevices()
+{
+    sessionPool_.ReleaseAllSession();
+}
+
 void NetworkAgentTemplate::DisconnectDevice(const DeviceInfo info)
 {
     LOGI("DeviceOffline, cid:%{public}s", info.GetCid().c_str());
-    kernerlTalker_.SinkOfflineCmdToKernel(info.GetCid());
     sessionPool_.ReleaseSession(info.GetCid());
 }
 
-void NetworkAgentTemplate::CloseAllSession(const string &cid)
+void NetworkAgentTemplate::CloseSessionForOneDevice(const string &cid)
 {
     sessionPool_.ReleaseSession(cid);
+    LOGI("session closed!");
 }
 
 void NetworkAgentTemplate::AcceptSession(shared_ptr<BaseSession> session)
 {
-    unique_lock<mutex> taskLock(taskMut_);
-    tasks_.emplace_back();
-    tasks_.back().Run([=] {
-        auto cid = session->GetCid();
-        LOGI("AcceptSession thread run, cid:%{public}s", cid.c_str());
-        sessionPool_.HoldSession(session);
-        return true;
+    auto cmd = make_unique<Cmd<NetworkAgentTemplate, shared_ptr<BaseSession>>>(
+        &NetworkAgentTemplate::AcceptSessionInner, session);
+    cmd->UpdateOption({
+        .tryTimes_ = 1,
     });
+    Recv(move(cmd));
+}
+
+void NetworkAgentTemplate::AcceptSessionInner(shared_ptr<BaseSession> session)
+{
+    auto cid = session->GetCid();
+    LOGI("AcceptSesion, cid:%{public}s", cid.c_str());
+    sessionPool_.HoldSession(session);
 }
 
 void NetworkAgentTemplate::GetSessionProcess(NotifyParam &param)
 {
-    string cidStr(param.remoteCid, CID_MAX_LEN);
-    LOGI("NOTIFY_GET_SESSION, old fd %{public}d, remote cid %{public}s", param.fd, cidStr.c_str());
-    sessionPool_.ReleaseSession(param.fd);
-    GetSesion(cidStr);
+    auto cmd =
+        make_unique<Cmd<NetworkAgentTemplate, NotifyParam>>(&NetworkAgentTemplate::GetSessionProcessInner, param);
+    cmd->UpdateOption({
+        .tryTimes_ = 1,
+    });
+    Recv(move(cmd));
 }
 
-void NetworkAgentTemplate::GetSesion(const string &cid)
+void NetworkAgentTemplate::GetSessionProcessInner(NotifyParam param)
+{
+    string cidStr(param.remoteCid, CID_MAX_LEN);
+    int fd = param.fd;
+    LOGI("NOTIFY_GET_SESSION, old fd %{public}d, remote cid %{public}s", fd, cidStr.c_str());
+    sessionPool_.ReleaseSession(fd);
+    GetSession(cidStr);
+}
+
+void NetworkAgentTemplate::GetSession(const string &cid)
 {
     DeviceInfo deviceInfo;
     deviceInfo.SetCid(cid);

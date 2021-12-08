@@ -42,6 +42,7 @@ void SessionPool::ReleaseSession(const int32_t fd)
 
 void SessionPool::ReleaseSession(const string &cid)
 {
+    talker_.SinkOfflineCmdToKernel(cid);
     lock_guard lock(sessionPoolLock_);
     for (auto iter = usrSpaceSessionPool_.begin(); iter != usrSpaceSessionPool_.end();) {
         if ((*iter)->GetCid() == cid) {
@@ -50,6 +51,16 @@ void SessionPool::ReleaseSession(const string &cid)
         } else {
             ++iter;
         }
+    }
+}
+
+void SessionPool::ReleaseAllSession()
+{
+    lock_guard lock(sessionPoolLock_);
+    for (auto iter = usrSpaceSessionPool_.begin(); iter != usrSpaceSessionPool_.end();) {
+        talker_.SinkOfflineCmdToKernel((*iter)->GetCid());
+        (*iter)->Release();
+        iter = usrSpaceSessionPool_.erase(iter);
     }
 }
 

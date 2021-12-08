@@ -40,7 +40,7 @@ public:
           kernerlTalker_(
               mountPoint,
               [&](NotifyParam &param) { GetSessionProcess(param); },
-              [&](const std::string &cid) { CloseAllSession(cid); }),
+              [&](const std::string &cid) { CloseSessionForOneDevice(cid); }),
           sessionPool_(kernerlTalker_)
     {
     }
@@ -48,6 +48,7 @@ public:
     void Start();
     void Stop();
     void ConnectOnlineDevices();
+    void DisconnectAllDevices();
     void ConnectDeviceAsync(const DeviceInfo info);
     void DisconnectDevice(const DeviceInfo info);
     void AcceptSession(std::shared_ptr<BaseSession> session);
@@ -66,8 +67,10 @@ private:
     void HandleAllNotify(int fd);
     void NotifyHandler(NotifyParam &param);
     void GetSessionProcess(NotifyParam &param);
-    void GetSesion(const std::string &cid);
-    void CloseAllSession(const std::string &cid);
+    void GetSession(const std::string &cid);
+    void CloseSessionForOneDevice(const std::string &cid);
+    void AcceptSessionInner(std::shared_ptr<BaseSession> session);
+    void GetSessionProcessInner(NotifyParam param);
 
     std::mutex taskMut_;
     std::list<Utils::DfsThread> tasks_;

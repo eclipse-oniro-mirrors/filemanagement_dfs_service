@@ -36,7 +36,6 @@ constexpr int CID_MAX_LEN = 64;
 struct NotifyParam {
     int32_t notify;
     int32_t fd;
-    uint64_t remoteIid;
     uint16_t udpPort;
     uint8_t deviceType;
     int32_t flag;
@@ -56,7 +55,6 @@ public:
     ~KernelTalker() = default;
 
     void SinkSessionTokernel(std::shared_ptr<BaseSession> session);
-    void SinkInitCmdToKernel(uint64_t iid);
     void SinkOfflineCmdToKernel(std::string cid);
 
     void CreatePollThread();

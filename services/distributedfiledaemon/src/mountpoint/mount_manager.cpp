@@ -55,7 +55,11 @@ void MountManager::Mount(unique_ptr<MountPoint> mp)
         LOGE("%{public}s", ss.str().c_str());
         throw runtime_error(ss.str());
     }
-
+    try {
+        smp->Umount(); // try umount one time
+    } catch (const exception &e) {
+        LOGE("%{public}s", e.what());
+    }
     smp->Mount();
     auto dm = DeviceManagerAgent::GetInstance();
     dm->Recv(make_unique<Cmd<DeviceManagerAgent, weak_ptr<MountPoint>>>(&DeviceManagerAgent::JoinGroup, smp));

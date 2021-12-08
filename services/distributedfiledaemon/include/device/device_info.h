@@ -31,20 +31,12 @@ public:
     DeviceInfo(const DeviceInfo &nodeInfo);
     DeviceInfo &operator=(const DistributedHardware::DmDeviceInfo &nodeInfo);
 
-    /**
-     * @note Remove the concept iid later
-     */
-    void SetIid(const uint64_t iid);
     void SetCid(const std::string &cid);
 
-    uint64_t GetIid() const;
     const std::string &GetCid() const;
 
 private:
-    std::atomic<bool> initIidFlag_{false};
     std::atomic<bool> initCidFlag_{false};
-
-    uint64_t iid_{0};
     std::string cid_;
 };
 } // namespace DistributedFile
