@@ -24,7 +24,6 @@
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-
 enum class CmdImportance {
     // If it fails(even has tried multiple times), shutdown the actor.
     VITAL,
@@ -33,7 +32,7 @@ enum class CmdImportance {
     // If it fails(even has tried multiple times), reboot the actor.
     NORMAL,
 
-    // If it fails(even has tried multiple times), just do nothing.
+    // If it fails(may also try multiple times), just do nothing.
     TRIVIAL,
 };
 
@@ -45,9 +44,10 @@ struct CmdOptions {
 template<typename T>
 class Actor;
 
-template <typename Ctx>
+template<typename Ctx>
 class VirtualCmd {
     friend class Actor<Ctx>;
+
 public:
     VirtualCmd() = default;
     virtual ~VirtualCmd() = default;
@@ -62,7 +62,7 @@ protected:
     CmdOptions option_;
 };
 
-template <typename Ctx, typename... Args>
+template<typename Ctx, typename... Args>
 class Cmd : public VirtualCmd<Ctx> {
     friend class Actor<Ctx>;
 

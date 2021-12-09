@@ -39,7 +39,6 @@ int32_t ServiceProxy::GetBundleDistributedDir(const std::string &dirName)
         return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
     }
     error = Remote()->SendRequest(GET_BUNDLE_DISTRIBUTED_DIR, dataParcel, replyParcel, option);
-
     if (error != DISTRIBUTEDFILE_NO_ERROR) {
         LOGE("Function GetBundleDistributedDir! errCode:%{public}d", error);
         return DISTRIBUTEDFILE_CONNECT_SYSTEM_ABILITY_STUB_FAIL;

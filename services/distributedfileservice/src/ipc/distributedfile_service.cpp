@@ -16,7 +16,6 @@
 
 #include <exception>
 #include <system_ability_definition.h>
-#include <stdio.h>
 
 #include "bundle_mgr_interface.h"
 #include "bundle_mgr_proxy.h"

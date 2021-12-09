@@ -196,10 +196,7 @@ vector<DeviceInfo> DeviceManagerAgent::GetRemoteDevicesInfo()
     auto &deviceManager = DistributedHardware::DeviceManager::GetInstance();
     int errCode = deviceManager.GetTrustedDeviceList(pkgName, extra, deviceList);
     if (errCode) {
-        stringstream ss;
-        ss << "Failed to get info of remote devices: the error code reads " << errCode;
-        LOGE("%s", ss.str().c_str());
-        throw runtime_error(ss.str());
+        ThrowException(errCode, "Failed to get info of remote devices");
     }
 
     vector<DeviceInfo> res;

@@ -15,6 +15,7 @@
 
 #include "device/device_info.h"
 #include "utils_log.h"
+#include "utils_exception.h"
 
 namespace OHOS {
 namespace Storage {
@@ -52,10 +53,10 @@ void DeviceInfo::SetCid(const string &cid)
 const string &DeviceInfo::GetCid() const
 {
     if (initCidFlag_ == false) {
-        // TODO 抛异常
+        ThrowException(ERR_DEVICE_CID_UN_INIT, "cid uninitialized");
     }
     return cid_;
 }
 } // namespace DistributedFile
-} // namespace Storages
+} // namespace Storage
 } // namespace OHOS

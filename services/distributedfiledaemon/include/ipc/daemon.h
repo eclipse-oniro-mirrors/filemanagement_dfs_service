@@ -28,7 +28,7 @@ namespace Storage {
 namespace DistributedFile {
 enum class ServiceRunningState { STATE_NOT_START, STATE_RUNNING };
 
-class Daemon final: public SystemAbility, public DaemonStub, protected NoCopyable {
+class Daemon final : public SystemAbility, public DaemonStub, protected NoCopyable {
     DECLARE_SYSTEM_ABILITY(Daemon);
 
 public:

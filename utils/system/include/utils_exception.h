@@ -25,13 +25,13 @@
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-
 enum {
     ERR_DEFAULT,
     ERR_UTILS_ACTOR_QUEUE_STOP,
     ERR_UTILS_ACTOR_INVALID_CMD,
     ERR_NETWORK_AGENT_TEMPLATE_OPEN_SESSION_FAIL,
     ERR_SOFTBUS_AGENT_ON_SESSION_OPENED_FAIL,
+    ERR_DEVICE_CID_UN_INIT,
 };
 
 class Exception : public std::exception {

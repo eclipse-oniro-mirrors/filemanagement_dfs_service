@@ -24,9 +24,9 @@
 #include "device_manager.h"
 #include "mountpoint/mount_point.h"
 #include "network/network_agent_template.h"
+#include "utils_actor.h"
 #include "utils_singleton.h"
 #include "utils_startable.h"
-#include "utils_actor.h"
 
 namespace OHOS {
 namespace Storage {

@@ -46,9 +46,9 @@ struct NotifyParam {
 class KernelTalker final : protected NoCopyable {
 public:
     explicit KernelTalker(std::weak_ptr<MountPoint> mountPoint,
-                          std::function<void(NotifyParam &)> getSessioncallback,
-                          std::function<void(const std::string &)> closeSesssionCallback)
-        : mountPoint_(mountPoint), GetSessionCallback_(getSessioncallback), CloseSessionCallback_(closeSesssionCallback)
+                          std::function<void(NotifyParam &)> getSessionCallback,
+                          std::function<void(const std::string &)> closeSessionCallback)
+        : mountPoint_(mountPoint), GetSessionCallback_(getSessionCallback), CloseSessionCallback_(closeSessionCallback)
     {
     }
     KernelTalker() = default;
@@ -67,7 +67,7 @@ private:
         auto spt = mountPoint_.lock();
         if (spt == nullptr) {
             LOGE("mountPoint is not exist! bad weak_ptr");
-            return; // ! 抛异常
+            return;
         }
         std::string ctrlPath = spt->GetMountArgument().GetCtrlPath();
         LOGI("cmd path:%{public}s", ctrlPath.c_str());

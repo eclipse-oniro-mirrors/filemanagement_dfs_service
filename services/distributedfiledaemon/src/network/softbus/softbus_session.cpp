@@ -43,7 +43,7 @@ SoftbusSession::SoftbusSession(int sessionId) : sessionId_(sessionId)
     ret = ::GetSessionHandle(sessionId_, &socket_fd);
     if (ret != SOFTBUS_OK) {
         LOGE("get session socket fd failed, errno:%{public}d, sessionId:%{public}d", ret, sessionId_);
-        socketFd_ =  INVALID_SOCKET_FD;
+        socketFd_ = INVALID_SOCKET_FD;
     } else {
         socketFd_ = socket_fd;
     }
@@ -91,7 +91,7 @@ void SoftbusSession::DisableSessionListener() const
     int32_t ret = ::DisableSessionListener(sessionId_);
     if (ret != SOFTBUS_OK) {
         LOGE("disableSessionlistener failed, errno:%{public}d, sessionId:%{public}d", ret, sessionId_);
-        return; // !抛异常
+        return;
     }
 }
 } // namespace DistributedFile

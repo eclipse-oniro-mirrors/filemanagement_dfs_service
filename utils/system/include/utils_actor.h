@@ -109,11 +109,11 @@ private:
     bool IsExistStopTask()
     {
         bool result = false;
-        pendingCmds_.ForEach({[&result](const std::unique_ptr<VirtualCmd<Ctx>> &item) {
+        pendingCmds_.ForEach([&result](const std::unique_ptr<VirtualCmd<Ctx>> &item) {
             if (item->option_.importance_ == CmdImportance::VITAL) {
                 result = true;
             }
-        }});
+        });
         return result;
     }
 

@@ -47,7 +47,13 @@ struct OfflineParam {
     char remoteCid[CID_MAX_LEN];
 } __attribute__((packed));
 
-enum { CMD_UPDATE_SOCKET = 0, CMD_OFF_LINE, CMD_OFF_LINE_ALL, CMD_DELETE_CONNECTION, CMD_CNT };
+enum {
+    CMD_UPDATE_SOCKET = 0,
+    CMD_OFF_LINE,
+    CMD_OFF_LINE_ALL,
+    CMD_DELETE_CONNECTION,
+    CMD_CNT,
+};
 
 enum {
     SOCKET_STAT_ACCEPT = 0,
@@ -148,13 +154,13 @@ void KernelTalker::PollRun()
     auto spt = mountPoint_.lock();
     if (spt == nullptr) {
         LOGE("mountPoint is not exist! bad weak_ptr");
-        return; // ! 抛异常
+        return;
     }
     string ctrlPath = spt->GetMountArgument().GetCtrlPath();
     cmdFd = open(ctrlPath.c_str(), O_RDWR);
     if (cmdFd < 0) {
         LOGE("Open node file error %{public}d", errno);
-        return; // ! 待审视，此处不能抛异常，用户态还没有通知到内核时，这个文件可能就不存在
+        return;
     }
 
     LOGI("Open node file success");
