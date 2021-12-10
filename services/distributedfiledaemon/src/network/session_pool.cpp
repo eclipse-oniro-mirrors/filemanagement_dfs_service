@@ -59,7 +59,7 @@ void SessionPool::ReleaseAllSession()
     lock_guard lock(sessionPoolLock_);
     for (auto iter = usrSpaceSessionPool_.begin(); iter != usrSpaceSessionPool_.end();) {
         talker_.SinkOfflineCmdToKernel((*iter)->GetCid());
-        (*iter)->Release();
+        /* device offline, session release by softbus*/
         iter = usrSpaceSessionPool_.erase(iter);
     }
 }

@@ -24,7 +24,8 @@ namespace DistributedFile {
 using namespace std;
 namespace {
 constexpr int MAX_RETRY_COUNT = 7;
-}
+constexpr int OPEN_SESSSION_DELAY_TIME = 100;
+} // namespace
 
 void NetworkAgentTemplate::Start()
 {
@@ -42,6 +43,7 @@ void NetworkAgentTemplate::Stop()
 
 void NetworkAgentTemplate::ConnectDeviceAsync(const DeviceInfo info)
 {
+    std::this_thread::sleep_for(std::chrono::milliseconds(OPEN_SESSSION_DELAY_TIME)); // Temporary workaround for time sequence issues(offline-onSessionOpened)
     OpenSession(info);
 }
 
