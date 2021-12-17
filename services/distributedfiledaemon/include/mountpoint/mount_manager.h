@@ -30,7 +30,7 @@ class MountManager final : public Utils::Singleton<MountManager> {
 public:
     void Mount(std::unique_ptr<MountPoint> mp);
     void Umount(std::weak_ptr<MountPoint> wmp);
-
+    void Umount(const std::string &groupId);
     DECLARE_SINGLETON(MountManager);
 
 private:

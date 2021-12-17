@@ -27,21 +27,33 @@ using namespace std;
 string MountArgument::GetFullSrc() const
 {
     stringstream ss;
-    ss << "/data/misc_ce/" << userId_ << "/hmdfs/storage";
+    if (!accountless_) {
+        ss << "/data/misc_ce/" << userId_ << "/hmdfs/storage";
+    } else {
+        ss << "/data/misc_ce/" << userId_ << "/hmdfs/auth_groups/" << account_;
+    }
     return ss.str();
 }
 
 string MountArgument::GetFullDst() const
 {
     stringstream ss;
-    ss << "/mnt/hmdfs/" << userId_ << "/";
+    if (!accountless_) {
+        ss << "/mnt/hmdfs/" << userId_ << "/";
+    } else {
+        ss << "/mnt/hmdfs/auth_groups/" << account_ << "/";
+    }
     return ss.str();
 }
 
 string MountArgument::GetCachePath() const
 {
     stringstream ss;
-    ss << "/data/misc_ce/" << userId_ << "/hmdfs/cache/";
+    if (!accountless_) {
+        ss << "/data/misc_ce/" << userId_ << "/hmdfs/cache/";
+    } else {
+        ss << "/data/misc_ce/" << userId_ << "/hmdfs/auth_groups/" << account_ << "/cache/";
+    }
     return ss.str();
 }
 
@@ -107,6 +119,24 @@ MountArgument MountArgumentDescriptors::Alpha(int userId)
         .externalFS_ = false,
     };
     mountArgument.userId_ = userId;
+    return mountArgument;
+}
+
+MountArgument MountArgumentDescriptors::SetAuthGroupMountArgument(const std::string &groupId,
+                                                                  const std::string &packageName,
+                                                                  bool accountless)
+{
+    MountArgument mountArgument = {
+        .accountless_ = accountless,
+        .account_ = groupId,
+        .needInitDir_ = true,
+        .useCache_ = true,
+        .enableMergeView_ = true,
+        .enableFixupOwnerShip_ = true,
+        .enableOfflineStash_ = true,
+        .externalFS_ = false,
+        .packageName_ = packageName,
+    };
     return mountArgument;
 }
 } // namespace Utils

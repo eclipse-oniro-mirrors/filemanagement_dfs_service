@@ -86,6 +86,25 @@ void MountManager::Umount(weak_ptr<MountPoint> wmp)
     mountPoints_.erase(it);
     LOGE("Umount end");
 }
+
+void MountManager::Umount(const std::string &groupId)
+{
+    if (groupId == "") {
+        LOGE("groupId is null, no auth group to unmount");
+        return;
+    }
+
+    decltype(mountPoints_.begin()) iter =
+        find_if(mountPoints_.begin(), mountPoints_.end(),
+                [groupId](const auto &cur_mp) { return cur_mp->authGroupId_ == groupId; });
+    if (iter == mountPoints_.end()) {
+        stringstream ss;
+        ss << "Umount not find this auth group id" << groupId;
+        LOGE("Umount not find this auth group id %{public}s", groupId.c_str());
+        throw runtime_error(ss.str());
+    }
+    Umount(*iter);
+}
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS

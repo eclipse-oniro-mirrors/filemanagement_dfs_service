@@ -43,13 +43,15 @@ void NetworkAgentTemplate::Stop()
 
 void NetworkAgentTemplate::ConnectDeviceAsync(const DeviceInfo info)
 {
-    std::this_thread::sleep_for(std::chrono::milliseconds(OPEN_SESSSION_DELAY_TIME)); // Temporary workaround for time sequence issues(offline-onSessionOpened)
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        OPEN_SESSSION_DELAY_TIME)); // Temporary workaround for time sequence issues(offline-onSessionOpened)
     OpenSession(info);
 }
 
 void NetworkAgentTemplate::ConnectOnlineDevices()
 {
-    auto infos = DeviceManagerAgent::GetInstance()->GetRemoteDevicesInfo();
+    auto dma = DeviceManagerAgent::GetInstance();
+    auto infos = dma->GetRemoteDevicesInfo();
     LOGI("Have %{public}d devices Online", infos.size());
     for (const auto &info : infos) {
         auto cmd =
@@ -58,6 +60,9 @@ void NetworkAgentTemplate::ConnectOnlineDevices()
             .tryTimes_ = MAX_RETRY_COUNT,
         });
         Recv(move(cmd));
+
+        dma->Recv(
+            make_unique<Cmd<DeviceManagerAgent, const DeviceInfo>>(&DeviceManagerAgent::AuthGroupOnlineProc, info));
     }
 }
 

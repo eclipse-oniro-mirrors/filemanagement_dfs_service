@@ -18,12 +18,15 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <unordered_map>
 #include <vector>
 
+#include "device_auth.h"
 #include "device_info.h"
 #include "device_manager.h"
 #include "mountpoint/mount_point.h"
 #include "network/network_agent_template.h"
+#include "nlohmann/json.hpp"
 #include "utils_actor.h"
 #include "utils_singleton.h"
 #include "utils_startable.h"
@@ -31,6 +34,20 @@
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
+struct GroupInfo {
+    std::string groupName_;
+    std::string groupId_;
+    std::string groupOwner_;
+    int32_t groupType_;
+    GroupInfo() : groupType_(0) {}
+    GroupInfo(std::string name, std::string id, std::string owner, int32_t type)
+        : groupName_(name), groupId_(id), groupOwner_(owner), groupType_(type)
+    {
+    }
+};
+
+void from_json(const nlohmann::json &jsonObject, GroupInfo &groupInfo);
+
 class DeviceManagerAgent final : public DistributedHardware::DmInitCallback,
                                  public DistributedHardware::DeviceStateCallback,
                                  public std::enable_shared_from_this<DeviceManagerAgent>,
@@ -52,7 +69,7 @@ public:
 
     void OfflineAllDevice();
     void ReconnectOnlineDevices();
-
+    void AuthGroupOnlineProc(const DeviceInfo info);
     void OnRemoteDied() override;
 
     DeviceInfo &GetLocalDeviceInfo();
@@ -62,13 +79,20 @@ private:
     void StartInstance() override;
     void StopInstance() override;
     void InitLocalNodeInfo();
+
     void RegisterToExternalDm();
     void UnregisterFromExternalDm();
 
+    void AuthGroupOfflineProc(const DeviceInfo &info);
+    void QueryRelatedGroups(const std::string &networkId, std::vector<GroupInfo> &groupList);
+    bool CheckIsAuthGroup(const GroupInfo &group);
+    void AllAuthGroupsOfflineProc();
     // We use a mutex instead of a shared_mutex to serialize online/offline procedures
     std::mutex mpToNetworksMutex_;
     std::map<uintptr_t, std::shared_ptr<NetworkAgentTemplate>> mpToNetworks_;
     DeviceInfo localDeviceInfo_;
+    std::unordered_map<std::string, std::set<std::string>> authGroupMap_;
+    const DeviceGroupManager *hichainDeviceGroupManager_{nullptr};
 };
 } // namespace DistributedFile
 } // namespace Storage

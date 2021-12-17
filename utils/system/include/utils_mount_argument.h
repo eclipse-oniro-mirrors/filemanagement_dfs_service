@@ -24,7 +24,7 @@ namespace DistributedFile {
 namespace Utils {
 struct MountArgument final {
     int userId_{0};
-
+    bool accountless_{false};
     std::string account_;
     bool needInitDir_{false};
     bool useCache_{false};
@@ -33,6 +33,7 @@ struct MountArgument final {
     bool enableFixupOwnerShip_{false};
     bool enableOfflineStash_{true};
     bool externalFS_{false};
+    std::string packageName_;
 
     std::string GetFullSrc() const;
     std::string GetFullDst() const;
@@ -45,6 +46,8 @@ struct MountArgument final {
 class MountArgumentDescriptors final {
 public:
     static MountArgument Alpha(int userId = 0);
+    static MountArgument
+        SetAuthGroupMountArgument(const std::string &groupId, const std::string &packageName, bool accountless);
 };
 } // namespace Utils
 } // namespace DistributedFile

@@ -14,8 +14,8 @@
  */
 
 #include "device/device_info.h"
-#include "utils_log.h"
 #include "utils_exception.h"
+#include "utils_log.h"
 
 namespace OHOS {
 namespace Storage {

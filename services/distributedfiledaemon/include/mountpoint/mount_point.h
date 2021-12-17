@@ -35,6 +35,11 @@ public:
         return id_;
     };
 
+    std::string GetAuthGroupId() const
+    {
+        return authGroupId_;
+    }
+
     std::string ToString() const;
     Utils::MountArgument GetMountArgument() const;
     bool operator==(const MountPoint &rop) const;
@@ -46,6 +51,7 @@ private:
     void Umount() const;
     static std::atomic<uint32_t> idGen_;
     uint32_t id_{0};
+    std::string authGroupId_{""};
 };
 } // namespace DistributedFile
 } // namespace Storage
