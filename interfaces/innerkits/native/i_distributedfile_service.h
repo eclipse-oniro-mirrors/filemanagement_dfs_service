@@ -25,15 +25,9 @@ class IDistributedFileService : public IRemoteBroker {
 public:
     DECLARE_INTERFACE_DESCRIPTOR(u"OHOS.DistributedFile.IDistributedFileService");
     // define the message code
-    enum DistributedFileSurfaceCode {
-        INTERFACE1 = 0,
-        GET_BUNDLE_DISTRIBUTED_DIR,
-        REMOVE_BUNDLE_DISTRIBUTED_DIRS,
-    };
     // define the error code
     enum {
         DISTRIBUTEDFILE_SUCCESS = 0,
-        GET_DISTRIBUTEDFILE_DISTRIBUTED_DIR_FAIL = 1,
         DISTRIBUTEDFILE_WRITE_DESCRIPTOR_TOKEN_FAIL,
         ERR_FLATTEN_OBJECT,
         DISTRIBUTEDFILE_NO_ERROR,
@@ -49,9 +43,6 @@ public:
         ROOT_UID,
         SYSTEM_SERVICE_UID,
     };
-    // define business functions
-    virtual int32_t GetBundleDistributedDir(const std::string &dirName) = 0;
-    virtual int32_t RemoveBundleDistributedDirs(const std::string &dirName) = 0;
 };
 } // namespace DistributedFile
 } // namespace Storage

@@ -30,8 +30,6 @@ namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
 using namespace std;
-const bool g_registerResult =
-    SystemAbility::MakeAndRegisterAbility(DelayedSingleton<DistributedFileService>::GetInstance().get());
 
 DistributedFileService::DistributedFileService() : SystemAbility(STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID, false) {}
 
@@ -54,81 +52,6 @@ void DistributedFileService::OnStart()
 void DistributedFileService::OnStop()
 {
     LOGI("DistributedFileService::OnStop start");
-}
-
-int32_t DistributedFileService::GetBundleDistributedDir(const std::string &dirName)
-{
-    std::string path = dirName;
-    if (path.empty()) {
-        LOGE("DistributedFileService-%{public}s: Failed to get app dir, error: invalid app name", __func__);
-        return DISTRIBUTEDFILE_DIR_NAME_IS_EMPTY;
-    }
-
-    sptr<ISystemAbilityManager> systemAbilityMgr = SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    if (systemAbilityMgr == nullptr) {
-        LOGE("BundleService Get ISystemAbilityManager failed ... \n");
-        return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
-    }
-
-    sptr<IRemoteObject> remote = systemAbilityMgr->GetSystemAbility(BUNDLE_MGR_SERVICE_SYS_ABILITY_ID);
-    if (remote == nullptr) {
-        LOGE("BundleService Get IRemoteObject failed ... \n");
-        return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
-    }
-
-    int callingUid = IPCSkeleton::GetCallingUid();
-    auto BundleMgrService = std::make_unique<AppExecFwk::BundleMgrProxy>(remote);
-    if (BundleMgrService.get() == nullptr) {
-        LOGE("remote iface_cast BundleMgrService failed ... %{public}s\n", strerror(errno));
-        return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
-    }
-
-    int32_t uid = BundleMgrService->GetUidByBundleName(path, callingUid);
-    if (uid < 0) {
-        LOGE("DistributedFileService-%{public}s: Failed to get uid", __func__);
-        return DISTRIBUTEDFILE_NAME_NOT_FOUND;
-    }
-
-    if (callingUid != 0) {
-        if (uid != callingUid) {
-            LOGE("DistributedFileService-%{public}s: Bundle failed to create dir", __func__);
-            return DISTRIBUTEDFILE_PERMISSION_DENIED;
-        }
-    }
-
-    LOGI("DistributedFileService::GetBundleDistributedDir path : %{public}s", path.c_str());
-    Utils::ForceCreateDirectory(path);
-    return DISTRIBUTEDFILE_SUCCESS;
-}
-
-int32_t DistributedFileService::RemoveBundleDistributedDirs(const std::string &dirName)
-{
-    std::string path = dirName;
-    if (path.empty()) {
-        LOGE("DistributedFileService-%{public}s: Failed to get app dir, error: invalid app name", __func__);
-        return DISTRIBUTEDFILE_DIR_NAME_IS_EMPTY;
-    }
-
-    sptr<ISystemAbilityManager> systemAbilityMgr = SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    if (systemAbilityMgr == nullptr) {
-        LOGE("BundleService Get ISystemAbilityManager failed ... \n");
-        return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
-    }
-
-    sptr<IRemoteObject> remote = systemAbilityMgr->CheckSystemAbility(BUNDLE_MGR_SERVICE_SYS_ABILITY_ID);
-    if (remote == nullptr) {
-        LOGE("BundleService Get IRemoteObject failed ... \n");
-        return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
-    }
-
-    auto BundleMgrService = std::make_unique<AppExecFwk::BundleMgrProxy>(remote);
-    if (BundleMgrService.get() == nullptr) {
-        LOGE("remote iface_cast BundleMgrService failed ... \n");
-        return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
-    }
-
-    Utils::ForceRemoveDirectory(path);
-    return DISTRIBUTEDFILE_SUCCESS;
 }
 } // namespace DistributedFile
 } // namespace Storage

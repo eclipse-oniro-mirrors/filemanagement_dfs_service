@@ -79,12 +79,12 @@ void MountManager::Umount(weak_ptr<MountPoint> wmp)
         LOGE("%{public}s", ss.str().c_str());
         throw runtime_error(ss.str());
     }
-    LOGE("Umount begin");
+    LOGI("Umount begin");
     smp->Umount();
     auto dm = DeviceManagerAgent::GetInstance();
     dm->Recv(make_unique<Cmd<DeviceManagerAgent, weak_ptr<MountPoint>>>(&DeviceManagerAgent::QuitGroup, smp));
     mountPoints_.erase(it);
-    LOGE("Umount end");
+    LOGI("Umount end");
 }
 
 void MountManager::Umount(const std::string &groupId)

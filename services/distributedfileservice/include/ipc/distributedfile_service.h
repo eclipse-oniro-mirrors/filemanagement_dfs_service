@@ -35,9 +35,6 @@ public:
     void OnDump() override;
     void OnStart() override;
     void OnStop() override;
-
-    int32_t GetBundleDistributedDir(const std::string &dirName) override;
-    int32_t RemoveBundleDistributedDirs(const std::string &dirName) override;
 };
 } // namespace DistributedFile
 } // namespace Storage

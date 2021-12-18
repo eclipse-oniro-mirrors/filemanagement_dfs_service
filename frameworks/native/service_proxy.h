@@ -34,9 +34,6 @@ public:
 
     virtual ~ServiceProxy();
 
-    int32_t GetBundleDistributedDir(const std::string &dirName) override;
-    int32_t RemoveBundleDistributedDirs(const std::string &dirName) override;
-
 private:
     static inline BrokerDelegator<ServiceProxy> delegator_;
 };

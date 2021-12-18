@@ -25,7 +25,7 @@ namespace Utils {
 struct MountArgument final {
     int userId_{0};
     bool accountless_{false};
-    std::string account_;
+    std::string groupId_;
     bool needInitDir_{false};
     bool useCache_{false};
     bool caseSensitive_{true};

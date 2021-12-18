@@ -32,7 +32,7 @@ MountPoint::MountPoint(const Utils::MountArgument &mountArg) : mountArg_(mountAr
 {
     id_ = idGen_++;
     if (mountArg.accountless_) {
-        authGroupId_ = mountArg.account_;
+        authGroupId_ = mountArg.groupId_;
     }
 }
 
@@ -57,7 +57,7 @@ void MountPoint::Mount() const
         LOGE("Failed to mount: %{public}d %{public}s", cond.value(), cond.message().c_str());
         throw system_error(errno, system_category());
     }
-    LOGE("mount sucess: src %{public}s --> dst %{public}s", src.c_str(), dst.c_str());
+    LOGI("mount sucess: src %{public}s --> dst %{public}s", src.c_str(), dst.c_str());
 
     if (mntArg.accountless_) {
         Utils::ForceCreateDirectory(dst + "/device_view/local/data/" + mntArg.packageName_,
