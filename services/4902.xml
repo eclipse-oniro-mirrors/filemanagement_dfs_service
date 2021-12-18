@@ -14,7 +14,7 @@
  * limitations under the License.
  -->
 <info>
-    <process>distributedfile</process>
+    <process>distributedfileservice</process>
     <loadlibs>
         <libpath>libdistributedfileservice.z.so</libpath>
     </loadlibs>

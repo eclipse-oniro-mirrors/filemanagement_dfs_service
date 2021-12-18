@@ -23,14 +23,20 @@ namespace Storage {
 namespace DistributedFile {
 namespace Utils {
 using namespace std;
+namespace {
+static const std::string DATA_POINT = "/data/service/el2/";
+static const std::string BASE_MOUNT_POINT = "/mnt/hmdfs/";
+static const std::string AUTH_GROUP_MOUNT_POINT = "/mnt/hmdfs/auth_groups/";
+static const std::string SYSFS_HMDFS_PATH = "sys/fs/hmdfs/";
+} // namespace
 
 string MountArgument::GetFullSrc() const
 {
     stringstream ss;
     if (!accountless_) {
-        ss << "/data/misc_ce/" << userId_ << "/hmdfs/storage";
+        ss << DATA_POINT << userId_ << "/hmdfs/storage";
     } else {
-        ss << "/data/misc_ce/" << userId_ << "/hmdfs/auth_groups/" << account_;
+        ss << DATA_POINT << userId_ << "/hmdfs/auth_groups/" << groupId_;
     }
     return ss.str();
 }
@@ -39,9 +45,9 @@ string MountArgument::GetFullDst() const
 {
     stringstream ss;
     if (!accountless_) {
-        ss << "/mnt/hmdfs/" << userId_ << "/";
+        ss << BASE_MOUNT_POINT << userId_ << "/";
     } else {
-        ss << "/mnt/hmdfs/auth_groups/" << account_ << "/";
+        ss << AUTH_GROUP_MOUNT_POINT << groupId_ << "/";
     }
     return ss.str();
 }
@@ -50,9 +56,9 @@ string MountArgument::GetCachePath() const
 {
     stringstream ss;
     if (!accountless_) {
-        ss << "/data/misc_ce/" << userId_ << "/hmdfs/cache/";
+        ss << DATA_POINT << userId_ << "/hmdfs/cache/";
     } else {
-        ss << "/data/misc_ce/" << userId_ << "/hmdfs/auth_groups/" << account_ << "/cache/";
+        ss << DATA_POINT << userId_ << "/hmdfs/auth_groups/" << groupId_ << "/cache/";
     }
     return ss.str();
 }
@@ -73,7 +79,7 @@ string MountArgument::GetCtrlPath() const
     auto dst = GetFullDst();
     auto res = MocklispHash(dst);
     stringstream ss;
-    ss << "/sys/fs/hmdfs/" << res << "/cmd";
+    ss << SYSFS_HMDFS_PATH << res << "/cmd";
     return ss.str();
 }
 
@@ -110,7 +116,7 @@ unsigned long MountArgument::GetFlags() const
 MountArgument MountArgumentDescriptors::Alpha(int userId)
 {
     MountArgument mountArgument = {
-        .account_ = "default",
+        .groupId_ = "default",
         .needInitDir_ = true,
         .useCache_ = true,
         .enableMergeView_ = true,
@@ -128,7 +134,7 @@ MountArgument MountArgumentDescriptors::SetAuthGroupMountArgument(const std::str
 {
     MountArgument mountArgument = {
         .accountless_ = accountless,
-        .account_ = groupId,
+        .groupId_ = groupId,
         .needInitDir_ = true,
         .useCache_ = true,
         .enableMergeView_ = true,

@@ -177,19 +177,19 @@ void DeviceManagerAgent::OnDeviceOffline(const DistributedHardware::DmDeviceInfo
 void from_json(const nlohmann::json &jsonObject, GroupInfo &groupInfo)
 {
     if (jsonObject.find(FIELD_GROUP_NAME) != jsonObject.end()) {
-        groupInfo.groupName_ = jsonObject.at(FIELD_GROUP_NAME).get<std::string>();
+        groupInfo.groupName = jsonObject.at(FIELD_GROUP_NAME).get<std::string>();
     }
 
     if (jsonObject.find(FIELD_GROUP_ID) != jsonObject.end()) {
-        groupInfo.groupId_ = jsonObject.at(FIELD_GROUP_ID).get<std::string>();
+        groupInfo.groupId = jsonObject.at(FIELD_GROUP_ID).get<std::string>();
     }
 
     if (jsonObject.find(FIELD_GROUP_OWNER) != jsonObject.end()) {
-        groupInfo.groupOwner_ = jsonObject.at(FIELD_GROUP_OWNER).get<std::string>();
+        groupInfo.groupOwner = jsonObject.at(FIELD_GROUP_OWNER).get<std::string>();
     }
 
     if (jsonObject.find(FIELD_GROUP_TYPE) != jsonObject.end()) {
-        groupInfo.groupType_ = jsonObject.at(FIELD_GROUP_TYPE).get<int32_t>();
+        groupInfo.groupType = jsonObject.at(FIELD_GROUP_TYPE).get<int32_t>();
     }
 }
 
@@ -210,15 +210,15 @@ void DeviceManagerAgent::AuthGroupOnlineProc(const DeviceInfo info)
         if (!CheckIsAuthGroup(group)) {
             continue;
         }
-        if (authGroupMap_.find(group.groupId_) == authGroupMap_.end()) {
-            LOGI("groupId %{public}s not exist, then mount", group.groupId_.c_str());
+        if (authGroupMap_.find(group.groupId) == authGroupMap_.end()) {
+            LOGI("groupId %{public}s not exist, then mount", group.groupId.c_str());
             MountManager::GetInstance()->Mount(make_unique<MountPoint>(
-                Utils::MountArgumentDescriptors::SetAuthGroupMountArgument(group.groupId_, group.groupOwner_, true)));
+                Utils::MountArgumentDescriptors::SetAuthGroupMountArgument(group.groupId, group.groupOwner, true)));
         }
-        auto [iter, status] = authGroupMap_[group.groupId_].insert(info.GetCid());
+        auto [iter, status] = authGroupMap_[group.groupId].insert(info.GetCid());
         if (status == false) {
             LOGI("cid %{public}s has already inserted into groupId %{public}s", info.GetCid().c_str(),
-                 group.groupId_.c_str());
+                 group.groupId.c_str());
             continue;
         }
     }
@@ -261,7 +261,7 @@ void DeviceManagerAgent::AllAuthGroupsOfflineProc()
 
 bool DeviceManagerAgent::CheckIsAuthGroup(const GroupInfo &group)
 {
-    if (group.groupType_ == PEER_TO_PEER_GROUP || group.groupType_ == ACROSS_ACCOUNT_AUTHORIZE_GROUP) {
+    if (group.groupType == PEER_TO_PEER_GROUP || group.groupType == ACROSS_ACCOUNT_AUTHORIZE_GROUP) {
         return true;
     }
     return false;

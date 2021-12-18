@@ -35,13 +35,13 @@ namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
 struct GroupInfo {
-    std::string groupName_;
-    std::string groupId_;
-    std::string groupOwner_;
-    int32_t groupType_;
-    GroupInfo() : groupType_(0) {}
+    std::string groupName;
+    std::string groupId;
+    std::string groupOwner;
+    int32_t groupType;
+    GroupInfo() : groupType(0) {}
     GroupInfo(std::string name, std::string id, std::string owner, int32_t type)
-        : groupName_(name), groupId_(id), groupOwner_(owner), groupType_(type)
+        : groupName(name), groupId(id), groupOwner(owner), groupType(type)
     {
     }
 };

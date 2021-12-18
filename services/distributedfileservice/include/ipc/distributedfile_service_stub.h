@@ -36,9 +36,6 @@ private:
     using DistributedFileServiceFunc = int32_t (DistributedFileServiceStub::*)(MessageParcel &data,
                                                                                MessageParcel &reply);
     std::map<uint32_t, DistributedFileServiceFunc> memberFuncMap_;
-
-    int32_t GetBundleDistributedDirInner(MessageParcel &data, MessageParcel &reply);
-    int32_t RemoveBundleDistributedDirsInner(MessageParcel &data, MessageParcel &reply);
 };
 } // namespace DistributedFile
 } // namespace Storage
