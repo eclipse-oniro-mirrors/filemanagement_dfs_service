@@ -12,9 +12,9 @@
 
 其包括如下几个核心模块：
 
-- distributedfiledeamon：分布式文件管理常驻用户态服务，负责接入设备组网、数据传输能力，并负责挂载hmdfs
-- distributedfileservice：分布式文件管理按需启动用户态服务，负责为应用在hmdfs中创建专属跨设备文件目录
-- hmdfs(HarMony Didstributed File System)：分布式文件管理核心模块，是一种面向移动分布式场景的、高性能的、基于内核实现的、堆叠式文件系统。
+- distributedfiledaemon：分布式文件管理常驻用户态服务，负责接入设备组网、数据传输能力，并负责挂载hmdfs
+- distributedfileservice：分布式文件管理服务进程，对应用提供分布式扩展能力
+- hmdfs(Harmony Distributed File System)：分布式文件管理核心模块，是一种面向移动分布式场景的、高性能的、基于内核实现的、堆叠式文件系统。
 
 ## 目录
 
@@ -25,7 +25,15 @@
 ├── interfaces                  // 接口声明
 │   └── innerkits                   // 对内接口声明
 ├── services                    // 服务实现
-│   └── distributedfiledeamon       // 常驻服务实现
+│   └── distributedfiledaemon       // 常驻服务实现
+|       └── include
+|       └── src
+            └── device            // 设备上下线管理
+            └── ipc               // daemon进程拉起退出流程以及ipc接口实现
+            └── mountpoint        // hmdfs挂载管理
+            └── network           // 软总线和内核会话session交互相关
+|       └── test
+|       └── BUILD.gn
 |   └── distributedfileservice     // 三方应用调用流程服务实现
 └── utils                       // 公共组件
     ├── log                         // 日志组件
@@ -54,25 +62,15 @@
 - 单目录下最大目录项数
     取决于被堆叠文件系统单文件大小。当堆叠f2fs时，假设平均目录长度放大系数为3，则为`3.94TB/4KB*85/3=29,966,344,738`个。
 
-### 时延
-
-多数操作的默认超时时间均为4秒种，以下操作除外：
-
-- TODO
-
 ## 说明
 
 ### 使用说明
 
 可以使用终端调试分布式文件管理能力。
 
-在两台设备已经组网的情况下，通过 hdc 进入 `/mnt/hmdfs/0/` 目录，即可看见形如下方所述的目录结构：
-
-```
-/mnt/hmdfs/0/device_view/local
-/mnt/hmdfs/0/device_view/7914943294a41be79c2c4f1f3cb4773c46674c86305cc05b0245dc74f99e0c8d
-/mnt/hmdfs/0/merge_view
-```
+在多台设备已经组网（同一局域网）的情况下, 并且在经过hichian模块可信认证的设备间，可以建立设备间分布式文件互相访问的能力。
+可以在应用内通过```Context.distributedFileDir()```接口获取本应用沙箱内的分布式路径，然后在此目录下可以进行创建、删除、读写文件和目录。
+在此目录下有```device_view```和```merge_view```两个目录。
 
 device_view 的含义是分设备视图，其下的 local 对应被堆叠的本地文件系统，`79xxx0c8d` 对应相应设备上的本地文件系统。如果在 local 中进行文件系统操作，其影响也将体现在 hmdfs 的源目录，即 `/data/misc_ce/0/hmdfs/storage` 中。如果在 `79xxx0c8d` 中进行文件系统操作，其影响也将体现在对应设备的 hmdfs 的源目录中。
 
