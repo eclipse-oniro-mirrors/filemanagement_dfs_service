@@ -55,9 +55,14 @@ void MountManager::Mount(unique_ptr<MountPoint> mp)
         LOGE("%{public}s", ss.str().c_str());
         throw runtime_error(ss.str());
     }
-
+    try {
+        smp->Umount(); // try umount one time
+    } catch (const exception &e) {
+        LOGE("%{public}s", e.what());
+    }
     smp->Mount();
-    DeviceManagerAgent::GetInstance()->JoinGroup(smp);
+    auto dm = DeviceManagerAgent::GetInstance();
+    dm->Recv(make_unique<Cmd<DeviceManagerAgent, weak_ptr<MountPoint>>>(&DeviceManagerAgent::JoinGroup, smp));
     mountPoints_.push_back(smp);
 }
 
@@ -74,10 +79,31 @@ void MountManager::Umount(weak_ptr<MountPoint> wmp)
         LOGE("%{public}s", ss.str().c_str());
         throw runtime_error(ss.str());
     }
-
+    LOGI("Umount begin");
     smp->Umount();
-    DeviceManagerAgent::GetInstance()->QuitGroup(smp);
+    auto dm = DeviceManagerAgent::GetInstance();
+    dm->Recv(make_unique<Cmd<DeviceManagerAgent, weak_ptr<MountPoint>>>(&DeviceManagerAgent::QuitGroup, smp));
     mountPoints_.erase(it);
+    LOGI("Umount end");
+}
+
+void MountManager::Umount(const std::string &groupId)
+{
+    if (groupId == "") {
+        LOGE("groupId is null, no auth group to unmount");
+        return;
+    }
+
+    decltype(mountPoints_.begin()) iter =
+        find_if(mountPoints_.begin(), mountPoints_.end(),
+                [groupId](const auto &cur_mp) { return cur_mp->authGroupId_ == groupId; });
+    if (iter == mountPoints_.end()) {
+        stringstream ss;
+        ss << "Umount not find this auth group id" << groupId;
+        LOGE("Umount not find this auth group id %{public}s", groupId.c_str());
+        throw runtime_error(ss.str());
+    }
+    Umount(*iter);
 }
 } // namespace DistributedFile
 } // namespace Storage

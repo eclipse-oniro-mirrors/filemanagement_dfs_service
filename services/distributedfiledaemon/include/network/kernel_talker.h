@@ -36,7 +36,6 @@ constexpr int CID_MAX_LEN = 64;
 struct NotifyParam {
     int32_t notify;
     int32_t fd;
-    uint64_t remoteIid;
     uint16_t udpPort;
     uint8_t deviceType;
     int32_t flag;
@@ -46,17 +45,17 @@ struct NotifyParam {
 
 class KernelTalker final : protected NoCopyable {
 public:
-    explicit KernelTalker(std::weak_ptr<MountPoint> mountPoint, std::function<void(NotifyParam &)> callback)
-        : mountPoint_(mountPoint), GetSessionCallback_(callback)
+    explicit KernelTalker(std::weak_ptr<MountPoint> mountPoint,
+                          std::function<void(NotifyParam &)> getSessionCallback,
+                          std::function<void(const std::string &)> closeSessionCallback)
+        : mountPoint_(mountPoint), GetSessionCallback_(getSessionCallback), CloseSessionCallback_(closeSessionCallback)
     {
     }
     KernelTalker() = default;
     ~KernelTalker() = default;
 
     void SinkSessionTokernel(std::shared_ptr<BaseSession> session);
-    void SinkInitCmdToKernel(uint64_t iid);
     void SinkOfflineCmdToKernel(std::string cid);
-    std::unordered_set<int> GetKernelSesions();
 
     void CreatePollThread();
     void WaitForPollThreadExited();
@@ -68,7 +67,7 @@ private:
         auto spt = mountPoint_.lock();
         if (spt == nullptr) {
             LOGE("mountPoint is not exist! bad weak_ptr");
-            return; // ! 抛异常
+            return;
         }
         std::string ctrlPath = spt->GetMountArgument().GetCtrlPath();
         LOGI("cmd path:%{public}s", ctrlPath.c_str());
@@ -95,6 +94,7 @@ private:
     std::atomic<bool> isRunning_{true};
     std::unique_ptr<std::thread> pollThread_{nullptr};
     std::function<void(NotifyParam &)> GetSessionCallback_{nullptr};
+    std::function<void(const std::string &)> CloseSessionCallback_{nullptr};
 };
 } // namespace DistributedFile
 } // namespace Storage

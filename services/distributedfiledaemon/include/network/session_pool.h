@@ -32,7 +32,9 @@ public:
     explicit SessionPool(KernelTalker &talker) : talker_(talker) {}
     ~SessionPool() = default;
     void HoldSession(std::shared_ptr<BaseSession> session);
-    void RefreshSessionPoolBasedOnKernel();
+    void ReleaseSession(const int32_t fd);
+    void ReleaseSession(const std::string &cid);
+    void ReleaseAllSession();
 
 private:
     std::recursive_mutex sessionPoolLock_;

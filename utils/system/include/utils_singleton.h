@@ -37,18 +37,17 @@ template<typename T>
 class Singleton : public NoCopyable {
 public:
     static std::shared_ptr<T> GetInstance();
-    static void StopInstance();
 
 protected:
     /**
      * @note We depend on the IPC manager to serialize the start and the stop procedure
      */
-    virtual void Start() = 0;
+    virtual void StartInstance() = 0;
 
     /**
      * @note Be very careful when freeing memory! Threads may call stop and other member functions simultaneously
      */
-    virtual void Stop() = 0;
+    virtual void StopInstance() = 0;
 };
 
 /**
@@ -67,19 +66,9 @@ std::shared_ptr<T> Singleton<T>::GetInstance()
     static std::once_flag once;
     std::call_once(once, []() mutable {
         dummy = new std::shared_ptr<T>(new T());
-        (*dummy)->Start();
+        (*dummy)->StartInstance();
     });
     return *dummy;
-}
-
-template<typename T>
-void Singleton<T>::StopInstance()
-{
-    static std::once_flag once;
-    std::call_once(once, []() {
-        auto instance = GetInstance();
-        instance->Stop();
-    });
 }
 } // namespace Utils
 } // namespace DistributedFile

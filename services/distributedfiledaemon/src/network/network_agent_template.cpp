@@ -15,6 +15,7 @@
 
 #include "network/network_agent_template.h"
 #include "device/device_manager_agent.h"
+#include "utils_exception.h"
 #include "utils_log.h"
 
 namespace OHOS {
@@ -23,14 +24,14 @@ namespace DistributedFile {
 using namespace std;
 namespace {
 constexpr int MAX_RETRY_COUNT = 7;
-constexpr int SLEEP_TIME = 1500;
-}
+constexpr int OPEN_SESSSION_DELAY_TIME = 100;
+} // namespace
 
 void NetworkAgentTemplate::Start()
 {
-    JoinDomain(); // TODO 考虑下软总线是否有可能还没有起来
-    ConnectOnlineDevices();
+    JoinDomain();
     kernerlTalker_.CreatePollThread();
+    ConnectOnlineDevices();
 }
 
 void NetworkAgentTemplate::Stop()
@@ -40,71 +41,92 @@ void NetworkAgentTemplate::Stop()
     kernerlTalker_.WaitForPollThreadExited();
 }
 
-void NetworkAgentTemplate::ConnectDeviceAsync(const DeviceInfo &info)
+void NetworkAgentTemplate::ConnectDeviceAsync(const DeviceInfo info)
 {
-    kernerlTalker_.SinkInitCmdToKernel(info.GetIid());
-
-    unique_lock<mutex> taskLock(taskMut_);
-    tasks_.emplace_back();
-    tasks_.back().RunLoopFlexible(
-        [info{DeviceInfo(info)}, this](uint64_t &sleepTime) {  // ! 不能使用this,待解决
-            auto session = OpenSession(info);
-            if (session == nullptr) {
-                LOGE("open session fail, retry, cid:%{public}s", info.GetCid().c_str());
-                return false;
-            }
-            LOGI("open session success, cid:%{public}s", info.GetCid().c_str());
-            return true;
-        },
-        SLEEP_TIME, MAX_RETRY_COUNT);
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        OPEN_SESSSION_DELAY_TIME)); // Temporary workaround for time sequence issues(offline-onSessionOpened)
+    OpenSession(info);
 }
 
 void NetworkAgentTemplate::ConnectOnlineDevices()
 {
-    auto infos = DeviceManagerAgent::GetInstance()->GetRemoteDevicesInfo();
+    auto dma = DeviceManagerAgent::GetInstance();
+    auto infos = dma->GetRemoteDevicesInfo();
     LOGI("Have %{public}d devices Online", infos.size());
     for (const auto &info : infos) {
-        ConnectDeviceAsync(info);
+        auto cmd =
+            make_unique<Cmd<NetworkAgentTemplate, const DeviceInfo>>(&NetworkAgentTemplate::ConnectDeviceAsync, info);
+        cmd->UpdateOption({
+            .tryTimes_ = MAX_RETRY_COUNT,
+        });
+        Recv(move(cmd));
+
+        dma->Recv(
+            make_unique<Cmd<DeviceManagerAgent, const DeviceInfo>>(&DeviceManagerAgent::AuthGroupOnlineProc, info));
     }
 }
 
-void NetworkAgentTemplate::DisconnectDevice(const DeviceInfo &info)
+void NetworkAgentTemplate::DisconnectAllDevices()
+{
+    sessionPool_.ReleaseAllSession();
+}
+
+void NetworkAgentTemplate::DisconnectDevice(const DeviceInfo info)
 {
     LOGI("DeviceOffline, cid:%{public}s", info.GetCid().c_str());
-    kernerlTalker_.SinkOfflineCmdToKernel(info.GetCid());
-    sessionPool_.RefreshSessionPoolBasedOnKernel();
+    sessionPool_.ReleaseSession(info.GetCid());
+}
+
+void NetworkAgentTemplate::CloseSessionForOneDevice(const string &cid)
+{
+    LOGI("session closed!");
 }
 
 void NetworkAgentTemplate::AcceptSession(shared_ptr<BaseSession> session)
 {
-    unique_lock<mutex> taskLock(taskMut_);
-    tasks_.emplace_back();
-    tasks_.back().Run([=] {
-        auto cid = session->GetCid();
-        LOGI("AcceptSession thread run, cid:%{public}s", cid.c_str());
-        sessionPool_.HoldSession(session);
-        return true;
+    auto cmd = make_unique<Cmd<NetworkAgentTemplate, shared_ptr<BaseSession>>>(
+        &NetworkAgentTemplate::AcceptSessionInner, session);
+    cmd->UpdateOption({
+        .tryTimes_ = 1,
     });
+    Recv(move(cmd));
+}
+
+void NetworkAgentTemplate::AcceptSessionInner(shared_ptr<BaseSession> session)
+{
+    auto cid = session->GetCid();
+    LOGI("AcceptSesion, cid:%{public}s", cid.c_str());
+    sessionPool_.HoldSession(session);
 }
 
 void NetworkAgentTemplate::GetSessionProcess(NotifyParam &param)
 {
-    string cidStr(param.remoteCid, CID_MAX_LEN);
-    LOGI("NOTIFY_GET_SESSION, old fd %{public}d, remote cid %{public}s", param.fd, cidStr.c_str());
-    sessionPool_.RefreshSessionPoolBasedOnKernel();
-    GetSesion(cidStr);
+    auto cmd =
+        make_unique<Cmd<NetworkAgentTemplate, NotifyParam>>(&NetworkAgentTemplate::GetSessionProcessInner, param);
+    cmd->UpdateOption({
+        .tryTimes_ = 1,
+    });
+    Recv(move(cmd));
 }
 
-void NetworkAgentTemplate::GetSesion(const string &cid)
+void NetworkAgentTemplate::GetSessionProcessInner(NotifyParam param)
+{
+    string cidStr(param.remoteCid, CID_MAX_LEN);
+    int fd = param.fd;
+    LOGI("NOTIFY_GET_SESSION, old fd %{public}d, remote cid %{public}s", fd, cidStr.c_str());
+    sessionPool_.ReleaseSession(fd);
+    GetSession(cidStr);
+}
+
+void NetworkAgentTemplate::GetSession(const string &cid)
 {
     DeviceInfo deviceInfo;
     deviceInfo.SetCid(cid);
-    auto session = OpenSession(deviceInfo);
-    if (session == nullptr) {
-        LOGE("open session fail, retry, cid:%{public}s", cid.c_str());
-        return;
+    try {
+        OpenSession(deviceInfo);
+    } catch (const Exception &e) {
+        LOGE("reget session failed, code: %{public}d", e.code());
     }
-    LOGI("open session success, cid:%{public}s", cid.c_str());
 }
 } // namespace DistributedFile
 } // namespace Storage

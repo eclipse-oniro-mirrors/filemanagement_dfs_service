@@ -21,9 +21,10 @@
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
+constexpr int32_t INVALID_SOCKET_FD = -1;
 class SoftbusSession final : public BaseSession {
 public:
-    SoftbusSession(int sessionId) : sessionId_(sessionId) {}
+    explicit SoftbusSession(int sessionId);
     ~SoftbusSession() = default;
     bool IsFromServer() const override;
     std::string GetCid() const override;
@@ -34,6 +35,10 @@ public:
 
 private:
     int sessionId_;
+    std::string cid_;
+    int32_t socketFd_{INVALID_SOCKET_FD};
+    std::array<char, KEY_SIZE_MAX> key_;
+    bool IsServerSide_;
 };
 } // namespace DistributedFile
 } // namespace Storage

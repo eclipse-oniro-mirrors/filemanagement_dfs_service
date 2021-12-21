@@ -25,16 +25,22 @@
 #include "mountpoint/mount_point.h"
 #include "network/kernel_talker.h"
 #include "network/session_pool.h"
+#include "utils_actor.h"
 #include "utils_dfs_thread.h"
+#include "utils_startable.h"
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-class NetworkAgentTemplate {
+class NetworkAgentTemplate : public Startable, public Actor<NetworkAgentTemplate> {
 public:
     explicit NetworkAgentTemplate(std::weak_ptr<MountPoint> mountPoint)
-        : mountPoint_(mountPoint),
-          kernerlTalker_(mountPoint, [&](NotifyParam &param) { GetSessionProcess(param); }),
+        : Actor<NetworkAgentTemplate>(this),
+          mountPoint_(mountPoint),
+          kernerlTalker_(
+              mountPoint,
+              [&](NotifyParam &param) { GetSessionProcess(param); },
+              [&](const std::string &cid) { CloseSessionForOneDevice(cid); }),
           sessionPool_(kernerlTalker_)
     {
     }
@@ -42,8 +48,9 @@ public:
     void Start();
     void Stop();
     void ConnectOnlineDevices();
-    void ConnectDeviceAsync(const DeviceInfo &info);
-    void DisconnectDevice(const DeviceInfo &info);
+    void DisconnectAllDevices();
+    void ConnectDeviceAsync(const DeviceInfo info);
+    void DisconnectDevice(const DeviceInfo info);
     void AcceptSession(std::shared_ptr<BaseSession> session);
 
 protected:
@@ -51,7 +58,7 @@ protected:
     virtual void QuitDomain() = 0;
     virtual void StopTopHalf() = 0;
     virtual void StopBottomHalf() = 0;
-    virtual std::shared_ptr<BaseSession> OpenSession(const DeviceInfo &info) = 0;
+    virtual void OpenSession(const DeviceInfo &info) = 0;
     virtual void CloseSession(std::shared_ptr<BaseSession> session) = 0;
 
     std::weak_ptr<MountPoint> mountPoint_;
@@ -60,7 +67,10 @@ private:
     void HandleAllNotify(int fd);
     void NotifyHandler(NotifyParam &param);
     void GetSessionProcess(NotifyParam &param);
-    void GetSesion(const std::string &cid);
+    void GetSession(const std::string &cid);
+    void CloseSessionForOneDevice(const std::string &cid);
+    void AcceptSessionInner(std::shared_ptr<BaseSession> session);
+    void GetSessionProcessInner(NotifyParam param);
 
     std::mutex taskMut_;
     std::list<Utils::DfsThread> tasks_;

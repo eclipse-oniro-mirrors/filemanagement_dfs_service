@@ -13,10 +13,34 @@
 import("//build/ohos.gni")
 import("//foundation/storage/distributed_file_manager/distributedfile.gni")
 
-ohos_shared_library("libdistributedfile_innerkits") {
-  include_dirs = [ "${innerkits_native_path}" ]
+config("private_config") {
+  include_dirs = [
+    "../../../frameworks/native",
+  ]
 
+  configs = [ "//build/config/compiler:exceptions" ]
+}
+
+config("public_config") {
+  include_dirs = [ "." ]
+}
+
+ohos_shared_library("libdistributedfile_innerkits") {
   sources = [
+    "../../../frameworks/native/service_proxy.cpp"
+  ]
+
+  configs = [ ":private_config" ]
+
+  public_configs = [ ":public_config" ]
+
+  external_deps = [
+    "ipc:ipc_core",
+    "safwk:system_ability_fwk",
+  ]
+
+  deps = [
+      "${utils_path}:libdistributedfileutils",
   ]
 
   part_name = "storage_distributed_file_manager"

@@ -31,8 +31,7 @@ constexpr int32_t SESSION_NAME_SIZE_MAX = 256;
 mutex SoftbusSessionDispatcher::softbusAgentMutex_;
 map<string, weak_ptr<SoftbusAgent>> SoftbusSessionDispatcher::busNameToAgent_;
 
-void SoftbusSessionDispatcher::RegisterSessionListener(const string busName,
-                                                       weak_ptr<SoftbusAgent> softbusAgent)
+void SoftbusSessionDispatcher::RegisterSessionListener(const string busName, weak_ptr<SoftbusAgent> softbusAgent)
 {
     if (busName == "") {
         stringstream ss;
@@ -70,9 +69,9 @@ weak_ptr<SoftbusAgent> SoftbusSessionDispatcher::GetAgent(int sessionId)
 {
     char peeSessionName[SESSION_NAME_SIZE_MAX];
     int ret = GetPeerSessionName(sessionId, peeSessionName, sizeof(peeSessionName));
-    if (ret != 0) { // ! TODO 魔术字
+    if (ret != 0) {
         LOGE("Get my peer session name failed, session id is %{public}d.", sessionId);
-        return {}; // ! TODO
+        return {};
     }
     auto agent = busNameToAgent_.find(string(peeSessionName));
     if (agent != busNameToAgent_.end()) {
@@ -80,7 +79,7 @@ weak_ptr<SoftbusAgent> SoftbusSessionDispatcher::GetAgent(int sessionId)
         return agent->second;
     }
     LOGE("Get Session Agent fail, not exist! sessionId:%{public}d, busName:%{public}s", sessionId, peeSessionName);
-    return {}; // ! TODO
+    return {};
 }
 int SoftbusSessionDispatcher::OnSessionOpened(int sessionId, int result)
 {
@@ -102,5 +101,5 @@ void SoftbusSessionDispatcher::OnSessionClosed(int sessionId)
     }
 }
 } // namespace DistributedFile
-} // namespace Storages
+} // namespace Storage
 } // namespace OHOS

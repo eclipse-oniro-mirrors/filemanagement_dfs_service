@@ -14,6 +14,7 @@
  */
 
 #include "device/device_info.h"
+#include "utils_exception.h"
 #include "utils_log.h"
 
 namespace OHOS {
@@ -24,28 +25,19 @@ using namespace std;
 DeviceInfo::DeviceInfo(const DistributedHardware::DmDeviceInfo &nodeInfo)
 {
     cid_ = string(nodeInfo.deviceId);
+    initCidFlag_ = true;
 }
 
 DeviceInfo &DeviceInfo::operator=(const DistributedHardware::DmDeviceInfo &nodeInfo)
 {
     cid_ = string(nodeInfo.deviceId);
+    initCidFlag_ = true;
     return *this;
 }
 
-DeviceInfo::DeviceInfo(const DeviceInfo &nodeInfo) : iid_(nodeInfo.iid_), cid_(nodeInfo.cid_)
+DeviceInfo::DeviceInfo(const DeviceInfo &nodeInfo) : cid_(nodeInfo.cid_)
 {
-    initIidFlag_.store(nodeInfo.initIidFlag_.load());
     initCidFlag_.store(nodeInfo.initCidFlag_.load());
-}
-
-void DeviceInfo::SetIid(const uint64_t iid)
-{
-    if (initIidFlag_ == false) {
-        iid_ = iid;
-        initIidFlag_ = true;
-    } else {
-        LOGI("Iid is already initializing");
-    }
 }
 
 void DeviceInfo::SetCid(const string &cid)
@@ -58,20 +50,13 @@ void DeviceInfo::SetCid(const string &cid)
     }
 }
 
-uint64_t DeviceInfo::GetIid() const
-{
-    if (initIidFlag_ == false) {
-        // TODO 抛异常
-    }
-    return iid_;
-}
 const string &DeviceInfo::GetCid() const
 {
     if (initCidFlag_ == false) {
-        // TODO 抛异常
+        ThrowException(ERR_DEVICE_CID_UN_INIT, "cid uninitialized");
     }
     return cid_;
 }
 } // namespace DistributedFile
-} // namespace Storages
+} // namespace Storage
 } // namespace OHOS

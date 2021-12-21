@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Huawei Device Co., Ltd.
+ * Copyright (C) 2021 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -12,25 +12,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef DAEMON_PROXY_H
-#define DAEMON_PROXY_H
 
-#include <iremote_proxy.h>
+#ifndef DISTRIBUTEDFILE_SERVICE_H
+#define DISTRIBUTEDFILE_SERVICE_H
 
-#include "i_daemon.h"
+#include "distributedfile_service_stub.h"
+#include "iremote_stub.h"
+#include "singleton.h"
+#include "system_ability.h"
+
+#include <mutex>
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-class DaemonProxy : public IRemoteProxy<IDaemon> {
+class DistributedFileService : public SystemAbility,
+                               public DistributedFileServiceStub,
+                               public std::enable_shared_from_this<DistributedFileService> {
+    DECLARE_DELAYED_SINGLETON(DistributedFileService)
+    DECLARE_SYSTEM_ABILITY(DistributedFileService)
 public:
-    explicit DaemonProxy(const sptr<IRemoteObject> &impl) : IRemoteProxy<IDaemon>(impl) {}
-    ~DaemonProxy() {}
-
-private:
-    static inline BrokerDelegator<DaemonProxy> delegator_;
+    void OnDump() override;
+    void OnStart() override;
+    void OnStop() override;
 };
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS
-#endif // DAEMON_PROXY_H
+
+#endif // DISTRIBUTEDFILE_SERVICE_H

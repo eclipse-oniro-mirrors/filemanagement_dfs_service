@@ -17,6 +17,7 @@
 #define BASE_SESSION_H
 
 #include <array>
+#include <string>
 
 namespace OHOS {
 namespace Storage {

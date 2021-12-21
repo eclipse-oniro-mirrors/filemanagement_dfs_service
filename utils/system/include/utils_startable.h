@@ -13,34 +13,18 @@
  * limitations under the License.
  */
 
-#ifndef MOUNT_MANAGER_H
-#define MOUNT_MANAGER_H
-
-#include <memory>
-#include <mutex>
-#include <vector>
-
-#include "mount_point.h"
-#include "utils_singleton.h"
+#ifndef UTILS_STARTABLE_H
+#define UTILS_STARTABLE_H
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-class MountManager final : public Utils::Singleton<MountManager> {
+class Startable {
 public:
-    void Mount(std::unique_ptr<MountPoint> mp);
-    void Umount(std::weak_ptr<MountPoint> wmp);
-    void Umount(const std::string &groupId);
-    DECLARE_SINGLETON(MountManager);
-
-private:
-    void StartInstance() override {}
-    void StopInstance() override {}
-
-    std::mutex serializer_;
-    std::vector<std::shared_ptr<MountPoint>> mountPoints_;
+    virtual void Start() = 0;
+    virtual void Stop() = 0;
 };
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS
-#endif // MOUNT_MANAGER_H
+#endif // UTILS_STARTABLE_H
