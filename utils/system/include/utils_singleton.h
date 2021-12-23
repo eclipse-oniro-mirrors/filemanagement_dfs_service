@@ -25,12 +25,14 @@ namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
 namespace Utils {
-#define DECLARE_SINGLETON(MyClass) \
-public:                            \
-    ~MyClass();                    \
-                                   \
-private:                           \
-    friend Singleton<MyClass>;     \
+#define DECLARE_SINGLETON(MyClass)                \
+public:                                           \
+    ~MyClass();                                   \
+    MyClass(const MyClass&) = delete;             \
+    MyClass& operator=(const MyClass&) = delete;  \
+                                                  \
+private:                                          \
+    friend Singleton<MyClass>;                    \
     MyClass();
 
 template<typename T>
@@ -65,6 +67,7 @@ std::shared_ptr<T> Singleton<T>::GetInstance()
     static std::shared_ptr<T> *dummy = nullptr;
     static std::once_flag once;
     std::call_once(once, []() mutable {
+        // dummy = std::make_shared<T>();
         dummy = new std::shared_ptr<T>(new T());
         (*dummy)->StartInstance();
     });

@@ -13,28 +13,36 @@
  * limitations under the License.
  */
 
-#ifndef BASE_SESSION_H
-#define BASE_SESSION_H
+#ifndef DFS_SOFTBUS_SESSION_DISPATCHER_H
+#define DFS_SOFTBUS_SESSION_DISPATCHER_H
 
-#include <array>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <string>
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-constexpr int KEY_SIZE_MAX = 32;
 
-class BaseSession {
+class SoftbusDispatcher final {
 public:
-    virtual ~BaseSession() = default;
-    virtual bool IsFromServer() const = 0;
-    virtual std::string GetCid() const = 0;
-    virtual int32_t GetHandle() const = 0;
-    virtual std::array<char, KEY_SIZE_MAX> GetKey() const = 0;
-    virtual void Release() const = 0;
-    virtual void DisableSessionListener() const = 0;
+    SoftbusDispatcher() = delete;
+    ~SoftbusDispatcher() = delete;
+    static void RegisterSessionListener();
+    static void UnregisterSessionListener(const std::string busName);
+
+    static int OnSessionOpened(int sessionId, int result);
+    static void OnSessionClosed(int sessionId);
+
+    // IFileSendListener
+    static int OnSendFileFinished(int sessionId, const char *firstFile);
+    static void OnFileTransError(int sessionId);
+
+    // IFileReceiveListener
+    static void OnReceiveFileFinished(int sessionId, const char *files, int fileCnt);
 };
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS
-#endif // BASE_SESSION_H
+#endif // DFS_SOFTBUS_SESSION_DISPATCHER_H

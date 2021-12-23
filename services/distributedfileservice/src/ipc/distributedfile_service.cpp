@@ -14,17 +14,10 @@
  */
 #include "distributedfile_service.h"
 
-#include <exception>
 #include <system_ability_definition.h>
-
-#include "bundle_mgr_interface.h"
-#include "bundle_mgr_proxy.h"
-#include "ipc_skeleton.h"
-#include "iservice_registry.h"
-#include "message_parcel.h"
-#include "parcel.h"
-#include "utils_directory.h"
+#include "device_manager_agent.h"
 #include "utils_log.h"
+#include "utils_exception.h"
 
 namespace OHOS {
 namespace Storage {
@@ -40,18 +33,40 @@ void DistributedFileService::OnDump()
     LOGI("OnDump");
 }
 
+void DistributedFileService::PublishSA()
+{
+    LOGI("Begin to init, pull the service"); // todo: 看一下ipc使用方法；是否必须使用单例？； 是否需要加flag?; 抛异常处理？
+    bool ret = SystemAbility::Publish(this); // DelayedSingleton<DistributedFileService>::GetInstance().get()
+    if (!ret) {
+        throw runtime_error("publishing DistributedFileService failed");
+    }
+    // if (!registerToService_) {
+    //     bool ret = SystemAbility::Publish(this);
+    //     if (!ret) {
+    //         throw runtime_error("Failed to publish the daemon");
+    //     }
+    //     registerToService_ = true;
+    // }
+    LOGI("Init finished successfully");
+}
+void DistributedFileService::StartManagers()
+{
+    DeviceManagerAgent::GetInstance();
+}
+
 void DistributedFileService::OnStart()
 {
-    bool ret = SystemAbility::Publish(DelayedSingleton<DistributedFileService>::GetInstance().get());
-    if (!ret) {
-        LOGE("Leave, publishing DistributedFileService failed!");
-        return;
+    try {
+        PublishSA();
+        StartManagers();
+    } catch (const Exception &e) {
+        LOGE("%{public}s", e.what());
     }
 }
 
 void DistributedFileService::OnStop()
 {
-    LOGI("DistributedFileService::OnStop start");
+    LOGI("DistributedFileService::OnStop");
 }
 
 int32_t DistributedFileService::SendFile(int32_t sessionId, const std::string &sourceFileList,
