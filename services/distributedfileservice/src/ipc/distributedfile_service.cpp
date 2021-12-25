@@ -24,7 +24,9 @@ namespace Storage {
 namespace DistributedFile {
 using namespace std;
 
-DistributedFileService::DistributedFileService() : SystemAbility(STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID, false) {}
+const bool g_registerResult = SystemAbility::MakeAndRegisterAbility(DistributedFileService::GetInstance().get());
+
+DistributedFileService::DistributedFileService() : SystemAbility(STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID, true) {}
 
 DistributedFileService::~DistributedFileService() {}
 
@@ -35,7 +37,7 @@ void DistributedFileService::OnDump()
 
 void DistributedFileService::PublishSA()
 {
-    LOGI("Begin to init, pull the service"); // todo: 看一下ipc使用方法；是否必须使用单例？； 是否需要加flag?; 抛异常处理？
+    LOGI("xhl Begin to init, pull the service"); // todo: 看一下ipc使用方法；是否必须使用单例？； 是否需要加flag?; 抛异常处理？
     bool ret = SystemAbility::Publish(this); // DelayedSingleton<DistributedFileService>::GetInstance().get()
     if (!ret) {
         throw runtime_error("publishing DistributedFileService failed");
@@ -47,7 +49,7 @@ void DistributedFileService::PublishSA()
     //     }
     //     registerToService_ = true;
     // }
-    LOGI("Init finished successfully");
+    LOGI("xhl Init finished successfully");
 }
 void DistributedFileService::StartManagers()
 {
@@ -56,11 +58,12 @@ void DistributedFileService::StartManagers()
 
 void DistributedFileService::OnStart()
 {
+    LOGI("DistributedFileService::OnStart");
     try {
         PublishSA();
         StartManagers();
     } catch (const Exception &e) {
-        LOGE("%{public}s", e.what());
+        LOGE("xhl %{public}s", e.what());
     }
 }
 

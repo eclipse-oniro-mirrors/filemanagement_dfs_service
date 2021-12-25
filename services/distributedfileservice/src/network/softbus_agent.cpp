@@ -15,12 +15,15 @@
 
 #include "softbus_agent.h"
 
+#include "device_manager_agent.h"
 #include "session.h"
 #include "softbus_dispatcher.h"
+#include "utils_directory.h"
 #include "utils_exception.h"
 #include "utils_log.h"
-#include "device_manager_agent.h"
+#include <fcntl.h>
 #include <mutex>
+#include <unistd.h>
 
 namespace OHOS {
 namespace Storage {
@@ -40,23 +43,25 @@ void SoftbusAgent::StartInstance()
 {
     RegisterSessionListener();
     RegisterFileListener();
+
+    // todo:测试接口SendFile
+    auto alreadyOnliceDev = DeviceManagerAgent::GetInstance()->getOnlineDevs();
+    auto iter = alreadyOnliceDev.begin();
+    OpenSession((*iter));
+    LOGE("OpenSession done");
 }
 
 void SoftbusAgent::StopInstance()
 {
-    // sessionId的释放，clossSession
     for (auto iter = cidToSessionID_.begin(); iter != cidToSessionID_.end();) {
         CloseSession(iter->first);
         iter = cidToSessionID_.erase(iter);
     }
-    // 变量 cidToSessionID_， 依次释放
     getSessionCV_.notify_all();
-    // 解注册
     UnRegisterSessionListener();
-    UnRegisterFileListener();
 }
 
-int SoftbusAgent::SendFile(std::string &cid, const char *sFileList[], const char *dFileList[], uint32_t fileCnt)
+int SoftbusAgent::SendFile(const std::string &cid, const char *sFileList[], const char *dFileList[], uint32_t fileCnt)
 {
     // first check whether the sessionId available
     auto alreadyOnliceDev = DeviceManagerAgent::GetInstance()->getOnlineDevs();
@@ -74,37 +79,41 @@ int SoftbusAgent::SendFile(std::string &cid, const char *sFileList[], const char
         OpenSession(cid);
 
         // wait for get sessionId
+        LOGD("openSession, wait");
         std::unique_lock<std::mutex> lock(getSessionCVMut_);
         getSessionCV_.wait(lock, [this, cid]() { return !cidToSessionID_[cid].empty(); });
     }
+    LOGD("openSession success, wakeup");
     if (cidToSessionID_[cid].empty()) { // todo 唤醒检查
         LOGE("there is no sessionId of cid:%{public}s", cid.c_str());
         return -1;
     }
     sessionId = cidToSessionID_[cid].front();
+
     int ret =
         ::SendFile(sessionId, sFileList, dFileList, fileCnt); // todo:const string ==> const char * ==> const char **
-    LOGD("sendfile is processing, cid:%{public}s, sessionId:%{publid}d, ret %{public}d", cid.c_str(), sessionId, ret);
+    LOGE("sendfile is processing, sessionId:%{publid}d, ret %{public}d", sessionId, ret);
     return ret;
 }
 
 void SoftbusAgent::OpenSession(const std::string &cid)
 {
     SessionAttribute attr;
-    attr.dataType = TYPE_BYTES;
+    attr.dataType = TYPE_FILE; // files use UDP, CHANNEL_TYPE_UDP
 
     LOGD("Start to Open Session, cid:%{public}s", cid.c_str());
     int sessionId = ::OpenSession(sessionName_.c_str(), sessionName_.c_str(), cid.c_str(), "DFS_wifiGroup", &attr);
     if (sessionId < 0) {
         LOGE("Failed to open session, cid:%{public}s, sessionId:%{public}d", cid.c_str(), sessionId);
-        ThrowException(ERR_SOFTBUS_AGENT_ON_SESSION_OPENED_FAIL, "Open Session failed");
+        return;
     }
-    LOGD("Open Session SUCCESS, cid:%{public}s", cid.c_str());
+    LOGD("Open Session SUCCESS, cid:%{public}s, sessionId %{public}d", cid.c_str(), sessionId);
 }
 
 void SoftbusAgent::OnSessionOpened(const int sessionId, const int result)
 {
-    if (result != 0) { // 增加重试？
+    LOGD("get session res:%{public}d, sessionId:%{public}d", result, sessionId);
+    if (result != 0) { // todo:增加重试？
         LOGE("open failed, result:%{public}d, sessionId:%{public}d", result, sessionId);
         return;
     }
@@ -124,6 +133,21 @@ void SoftbusAgent::OnSessionOpened(const int sessionId, const int result)
     // cv 唤醒等待的sendfile流程
     getSessionCV_.notify_one();
     LOGD("get session SUCCESS, sessionId:%{public}d", sessionId);
+
+    // todo:测试接口SendFile
+    auto alreadyOnliceDev = DeviceManagerAgent::GetInstance()->getOnlineDevs();
+    auto iter = alreadyOnliceDev.begin();
+
+    const char *sFileList[1] = {"/data/user/0/xhl_sendfile_test/1.txt"};
+
+    static int sendfile_cnt = 0;
+    // int ret = SendFile((*iter), sFileList, dFileList, 1);
+    int ret = SendFile((*iter), sFileList, nullptr, 1);
+    if (ret != 0) {
+        LOGE("sendfile failed, ret %{public}d", ret);
+        return;
+    }
+    LOGE("sendfile... ret %{public}d, sendfile_cnt %{public}d", ret, sendfile_cnt);
 }
 
 int SoftbusAgent::OnSendFileFinished(const int sessionId, const std::string firstFile)
@@ -155,10 +179,6 @@ void SoftbusAgent::OnSessionClosed(int sessionId)
     }
     if (cidToSessionID_.find(cid) != cidToSessionID_.end()) {
         cidToSessionID_[cid].remove(sessionId);
-    }
-    // 可能list链表为空, 是否要删除此map信息？
-    if (cidToSessionID_[cid].empty()) {
-        // cidToSessionID_.erase(cid);
     }
     return;
 }
@@ -206,7 +226,7 @@ void SoftbusAgent::RegisterSessionListener()
         stringstream ss;
         ss << "Failed to CreateSessionServer, errno:" << ret;
         LOGE("%{public}s, sessionName:%{public}s", ss.str().c_str(), sessionName_.c_str());
-        throw runtime_error(ss.str());
+        return throw runtime_error(ss.str());
     }
     LOGD("Succeed to CreateSessionServer, pkgName %{public}s, sbusName:%{public}s", pkgName_.c_str(),
          sessionName_.c_str());
@@ -233,7 +253,7 @@ void SoftbusAgent::RegisterFileListener()
         .OnFileTransError = SoftbusDispatcher::OnFileTransError,
     };
     ret = ::SetFileReceiveListener(pkgName_.c_str(), sessionName_.c_str(), &fileRecvListener,
-                                   "/data/tmp/"); // rootDir TODO
+                                   "/data/user/0/"); // rootDir TODO
     if (ret != 0) {
         stringstream ss;
         ss << "Failed to SetFileReceiveListener, errno:" << ret;
@@ -254,7 +274,6 @@ void SoftbusAgent::UnRegisterSessionListener()
     }
     LOGD("RemoveSessionServer success!");
 }
-void SoftbusAgent::UnRegisterFileListener() {}
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS

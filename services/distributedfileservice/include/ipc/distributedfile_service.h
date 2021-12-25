@@ -40,7 +40,6 @@ public:
 private:
     void PublishSA();
     void StartManagers();
-
 };
 } // namespace DistributedFile
 } // namespace Storage

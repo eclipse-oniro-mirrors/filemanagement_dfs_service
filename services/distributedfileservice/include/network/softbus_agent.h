@@ -17,9 +17,9 @@
 #define DFS_SOFTBUS_AGENT_H
 
 #include "utils_singleton.h"
-#include <unordered_map>
-#include <list>
 #include <condition_variable>
+#include <list>
+#include <unordered_map>
 
 namespace OHOS {
 namespace Storage {
@@ -31,27 +31,26 @@ public:
     void RegisterSessionListener();
     void RegisterFileListener();
     void UnRegisterSessionListener();
-    void UnRegisterFileListener();
 
     void OnDeviceOffline(const std::string &cid);
     void AllDevicesOffline();
     void OnSessionOpened(const int sessionId, const int result);
     void OnSessionClosed(int sessionId);
-    int SendFile(std::string &cid, const char *sFileList[], const char *dFileList[], uint32_t fileCnt);
+    int SendFile(const std::string &cid, const char *sFileList[], const char *dFileList[], uint32_t fileCnt);
     int OnSendFileFinished(const int sessionId, const std::string firstFile);
     int OnFileTransError(const int sessionId);
     void OnReceiveFileFinished(const int sessionId, const std::string files, int fileCnt);
 
 protected:
-    void StartInstance() override; // 第一次调用GetInstance时，注册softbus监听
-    void StopInstance() override;; // 解注册
+    void StartInstance() override;
+    void StopInstance() override;
     void OpenSession(const std::string &cid);
     void CloseSession(const std::string &cid);
     std::string GetPeerDevId(const int sessionId);
 
 private:
-    std::string sessionName_ {"DistributedFileService"};
-    std::string pkgName_ {"ohos.storage.distributedfile.service"};
+    std::string sessionName_{"DistributedFileService"};
+    std::string pkgName_{"ohos.storage.distributedfile.service"};
     std::unordered_map<std::string, std::list<int>> cidToSessionID_;
 
     std::mutex getSessionCVMut_;

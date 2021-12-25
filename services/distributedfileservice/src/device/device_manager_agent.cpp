@@ -43,12 +43,7 @@ void DeviceManagerAgent::OnDeviceOnline(const DistributedHardware::DmDeviceInfo 
 {
     std::string cid = std::string(deviceInfo.deviceId);
     alreadyOnlineDev_.insert(cid);
-    if (alreadyRegis_) {
-        return;
-    }
-
-    auto softBusAgent = SoftbusAgent::GetInstance();
-    alreadyRegis_ = true;
+    SoftbusAgent::GetInstance();
 }
 
 void DeviceManagerAgent::OnDeviceOffline(const DistributedHardware::DmDeviceInfo &deviceInfo)
@@ -58,15 +53,14 @@ void DeviceManagerAgent::OnDeviceOffline(const DistributedHardware::DmDeviceInfo
     softBusAgent->OnDeviceOffline(cid);
 
     alreadyOnlineDev_.erase(cid);
-    if (alreadyOnlineDev_.size() == 0) {
-        alreadyRegis_ = false;
-    }
-    LOGI("cid %s offline, left online devices num %d", cid.c_str(), alreadyOnlineDev_.size());
+    LOGI("cid %{public}s offline, left online devices num %{public}d", cid.c_str(), alreadyOnlineDev_.size());
 }
 
 void DeviceManagerAgent::OnRemoteDied()
 {
     LOGI("device manager service died");
+    UnregisterFromExternalDm();
+    RegisterToExternalDm();
 }
 
 void DeviceManagerAgent::RegisterToExternalDm()

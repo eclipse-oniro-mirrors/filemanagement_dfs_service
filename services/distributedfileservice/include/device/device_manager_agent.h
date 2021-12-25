@@ -30,34 +30,31 @@ namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
 class DeviceManagerAgent : public DistributedHardware::DmInitCallback,
-                                 public DistributedHardware::DeviceStateCallback,
-                                 public std::enable_shared_from_this<DeviceManagerAgent>,
-                                 public Utils::Singleton<DeviceManagerAgent> {
+                           public DistributedHardware::DeviceStateCallback,
+                           public std::enable_shared_from_this<DeviceManagerAgent>,
+                           public Utils::Singleton<DeviceManagerAgent> {
     DECLARE_SINGLETON(DeviceManagerAgent);
 
 public:
-    void OnDeviceOnline(const DistributedHardware::DmDeviceInfo &deviceInfo)
-        override; // 加入set，创建softbus 各种监听，需要标志位，注册过就不需要重复注册
-    void OnDeviceOffline(
-        const DistributedHardware::DmDeviceInfo &deviceInfo) override; // 从set中删除此cid, 若set为空则解注册softbus
+    void OnDeviceOnline(const DistributedHardware::DmDeviceInfo &deviceInfo) override;
+    void OnDeviceOffline(const DistributedHardware::DmDeviceInfo &deviceInfo) override;
     void OnDeviceChanged(const DistributedHardware::DmDeviceInfo &deviceInfo) override {}
     void OnDeviceReady(const DistributedHardware::DmDeviceInfo &deviceInfo) override {}
     void OfflineAllDevice();
     void OnRemoteDied() override;
-    std::set<std::string> getOnlineDevs() const 
+    std::set<std::string> getOnlineDevs() const
     {
         return alreadyOnlineDev_;
     }
-    // std::vector<std::string> GetRemoteDevicesInfo();
+    std::vector<std::string> GetRemoteDevicesInfo();
 
 private:
-    void StartInstance() override; // 注册dm监听
+    void StartInstance() override;
     void StopInstance() override;
 
     void RegisterToExternalDm();
     void UnregisterFromExternalDm();
 
-    std::atomic<bool> alreadyRegis_{false};
     std::set<std::string> alreadyOnlineDev_;
 
     std::string pkgName_{"ohos.storage.distributedfile.service"};
