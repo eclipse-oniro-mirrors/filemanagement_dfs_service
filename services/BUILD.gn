@@ -28,10 +28,17 @@ ohos_prebuilt_etc("distributedfile_etc") {
   subsystem_name = "storage"
 }
 
+ohos_prebuilt_etc("distributedfile.para") {
+  source = "distributedfile.para"
+  part_name = "storage_distributed_file_manager"
+  module_install_dir = "etc/param"
+}
+
 group("services_target") {
   deps = [
     ":distributedfile_etc",
     ":distributedfile_sa_profile",
+    ":distributedfile.para",
     "distributedfiledaemon:distributedfiledaemon_target",
     "distributedfileservice:distributedfileservice_target",
   ]
