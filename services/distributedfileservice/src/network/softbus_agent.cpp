@@ -43,12 +43,6 @@ void SoftbusAgent::StartInstance()
 {
     RegisterSessionListener();
     RegisterFileListener();
-
-    // todo:测试接口SendFile
-    auto alreadyOnliceDev = DeviceManagerAgent::GetInstance()->getOnlineDevs();
-    auto iter = alreadyOnliceDev.begin();
-    OpenSession((*iter));
-    LOGE("OpenSession done");
 }
 
 void SoftbusAgent::StopInstance()
@@ -59,6 +53,11 @@ void SoftbusAgent::StopInstance()
     }
     getSessionCV_.notify_all();
     UnRegisterSessionListener();
+}
+
+void SoftbusAgent::OnDeviceOnline(const std::string &cid)
+{
+    OpenSession(cid);
 }
 
 int SoftbusAgent::SendFile(const std::string &cid, const char *sFileList[], const char *dFileList[], uint32_t fileCnt)

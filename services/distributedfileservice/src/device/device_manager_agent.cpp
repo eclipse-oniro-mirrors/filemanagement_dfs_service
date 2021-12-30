@@ -43,7 +43,7 @@ void DeviceManagerAgent::OnDeviceOnline(const DistributedHardware::DmDeviceInfo 
 {
     std::string cid = std::string(deviceInfo.deviceId);
     alreadyOnlineDev_.insert(cid);
-    SoftbusAgent::GetInstance();
+    SoftbusAgent::GetInstance()->OnDeviceOnline(cid);
 }
 
 void DeviceManagerAgent::OnDeviceOffline(const DistributedHardware::DmDeviceInfo &deviceInfo)

@@ -31,7 +31,7 @@ public:
     void RegisterSessionListener();
     void RegisterFileListener();
     void UnRegisterSessionListener();
-
+    void OnDeviceOnline(const std::string &cid);
     void OnDeviceOffline(const std::string &cid);
     void AllDevicesOffline();
     void OnSessionOpened(const int sessionId, const int result);
