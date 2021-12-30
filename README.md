@@ -8,12 +8,12 @@
 
 分布式文件管理的架构如下图所示：
 
-![架构图](https://images.gitee.com/uploads/images/2021/1229/163114_099e1073_7809790.png "架构图update.png")
+![架构图](https://images.gitee.com/uploads/images/2021/1230/144700_951a1fe5_7809790.png "hmdfs架构图update_20211230.png")
 
 其包括如下几个核心模块：
 
-- distributedfiledaemon：分布式文件管理常驻用户态服务，负责接入设备组网、数据传输能力，并负责挂载hmdfs
-- distributedfileservice：分布式文件管理服务进程，对应用提供分布式扩展能力
+- distributed_file_daemon：分布式文件管理常驻用户态服务，负责接入设备组网、数据传输能力，并负责挂载hmdfs
+- distributed_file_service：分布式文件管理服务进程，对应用提供分布式扩展能力
 - hmdfs(Harmony Distributed File System)：分布式文件管理核心模块，是一种面向移动分布式场景的、高性能的、基于内核实现的、堆叠式文件系统。
 
 ## 目录
@@ -28,10 +28,10 @@
 │   └── distributed_file_daemon       // 常驻服务实现
 |       └── include
 |       └── src
-|            └── device            // 设备上下线管理
-|            └── ipc               // daemon进程拉起退出流程以及ipc接口实现
-|            └── mountpoint        // hmdfs挂载管理
-|            └── network           // 软总线和内核会话session交互相关
+|           └── device            // 设备上下线管理
+|           └── ipc               // daemon进程拉起退出流程以及ipc接口实现
+|           └── mount_point        // hmdfs挂载管理
+|           └── network           // 软总线和内核会话session交互相关
 |       └── test
 |       └── BUILD.gn
 |   └── distributed_file_service     // 三方应用调用流程服务实现
