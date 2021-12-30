@@ -12,5 +12,5 @@
 # limitations under the License.
 
 
-const.distributedfile_property.enabled=true
+const.distributed_file_property.enabled=true
 
