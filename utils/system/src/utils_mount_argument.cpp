@@ -110,7 +110,7 @@ string MountArgument::OptionsToString() const
 
 unsigned long MountArgument::GetFlags() const
 {
-    return 0;
+    return MS_NODEV;
 }
 
 MountArgument MountArgumentDescriptors::Alpha(int userId)
@@ -120,7 +120,7 @@ MountArgument MountArgumentDescriptors::Alpha(int userId)
         .needInitDir_ = true,
         .useCache_ = true,
         .enableMergeView_ = true,
-        .enableFixupOwnerShip_ = true,
+        .enableFixupOwnerShip_ = false,
         .enableOfflineStash_ = true,
         .externalFS_ = false,
     };
@@ -138,7 +138,7 @@ MountArgument MountArgumentDescriptors::SetAuthGroupMountArgument(const std::str
         .needInitDir_ = true,
         .useCache_ = true,
         .enableMergeView_ = true,
-        .enableFixupOwnerShip_ = true,
+        .enableFixupOwnerShip_ = false,
         .enableOfflineStash_ = true,
         .externalFS_ = false,
         .packageName_ = packageName,

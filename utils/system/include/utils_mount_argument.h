@@ -28,7 +28,7 @@ struct MountArgument final {
     std::string groupId_;
     bool needInitDir_{false};
     bool useCache_{false};
-    bool caseSensitive_{true};
+    bool caseSensitive_{false};
     bool enableMergeView_{false};
     bool enableFixupOwnerShip_{false};
     bool enableOfflineStash_{true};
@@ -54,3 +54,4 @@ public:
 } // namespace Storage
 } // namespace OHOS
 #endif // UTILS_MOUNT_ARGUMENT_H
+

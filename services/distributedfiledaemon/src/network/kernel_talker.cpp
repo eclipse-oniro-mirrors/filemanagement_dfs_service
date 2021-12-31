@@ -33,13 +33,8 @@ struct UpdateSocketParam {
     int32_t cmd;
     int32_t newfd;
     uint8_t status;
-    uint8_t protocol;
-    uint16_t udpPort;
-    uint8_t deviceType;
     uint8_t masterKey[KEY_MAX_LEN];
     char cid[CID_MAX_LEN];
-    int32_t linkType;
-    int32_t binderFd;
 } __attribute__((packed));
 
 struct OfflineParam {
@@ -51,7 +46,6 @@ enum {
     CMD_UPDATE_SOCKET = 0,
     CMD_OFF_LINE,
     CMD_OFF_LINE_ALL,
-    CMD_DELETE_CONNECTION,
     CMD_CNT,
 };
 
@@ -60,15 +54,9 @@ enum {
     SOCKET_STAT_OPEN,
 };
 
-enum {
-    TCP_TRANSPORT_PROTO = 0,
-    UDP_TRANSPORT_PROTO,
-};
-
 enum Notify {
-    NOTIFY_HS_DONE = 0,
+    NOTIFY_GET_SESSION = 0,
     NOTIFY_OFFLINE,
-    NOTIFY_GET_SESSION,
     NOTIFY_NONE,
     NOTIFY_CNT,
 };
@@ -87,9 +75,6 @@ void KernelTalker::SinkSessionTokernel(shared_ptr<BaseSession> session)
         .cmd = CMD_UPDATE_SOCKET,
         .newfd = socketFd,
         .status = status,
-        .protocol = TCP_TRANSPORT_PROTO,
-        .linkType = 0,
-        .binderFd = -1,
     };
     if (memcpy_s(cmd.masterKey, KEY_MAX_LEN, masterkey.data(), KEY_MAX_LEN) != EOK) {
         return;
@@ -208,15 +193,12 @@ void KernelTalker::NotifyHandler(NotifyParam &param)
     int cmd = param.notify;
     string cidStr(param.remoteCid, CID_MAX_LEN);
     switch (cmd) {
-        case NOTIFY_HS_DONE:
-            LOGI("NOTIFY_HS_DONE, remote cid %{public}s", cidStr.c_str());
+        case NOTIFY_GET_SESSION:
+            GetSessionCallback_(param);
             break;
         case NOTIFY_OFFLINE:
             LOGI("NOTIFY_OFFLINE, remote cid %{public}s", cidStr.c_str());
             CloseSessionCallback_(cidStr);
-            break;
-        case NOTIFY_GET_SESSION:
-            GetSessionCallback_(param);
             break;
         default:
             LOGI("cmd %{public}d not support now", cmd);
