@@ -53,6 +53,41 @@ void DistributedFileService::OnStop()
 {
     LOGI("DistributedFileService::OnStop start");
 }
+
+int32_t DistributedFileService::SendFile(int32_t sessionId, const std::string &sourceFileList,
+    const std::string &destinationFileList, uint32_t fileCount)
+{
+    // DistributedFileInfo metaBase;
+    // metaBase.name = dirName;
+    // if (metaBase.name.empty()) {
+    //     LOGE("DistributedFileService-%{public}s: Failed to get app dir, error: invalid app name", __func__);
+    //     return DISTRIBUTEDFILE_DIR_NAME_IS_EMPTY;
+    // }
+
+    // sptr<ISystemAbilityManager> systemAbilityMgr =
+    //     SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
+    // if (systemAbilityMgr == nullptr) {
+    //     LOGE("BundleService Get ISystemAbilityManager failed ... \n");
+    //     return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
+    // }
+
+    // sptr<IRemoteObject> remote = systemAbilityMgr->CheckSystemAbility(BUNDLE_MGR_SERVICE_SYS_ABILITY_ID);
+    // if (remote == nullptr) {
+    //     LOGE("BundleService Get IRemoteObject failed ... \n");
+    //     return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
+    // }
+
+    // auto BundleMgrService = std::make_unique<AppExecFwk::BundleMgrProxy>(remote);
+    // if (BundleMgrService.get() == nullptr) {
+    //     LOGE("remote iface_cast BundleMgrService failed ... \n");
+    //     return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
+    // }
+
+    // Utils::ForceRemoveDirectory(metaBase.name);
+    //OpenSession(nullptr, nullptr, nullptr, nullptr, nullptr);
+    LOGD("DistributedFileService::SendFile");
+    return DISTRIBUTEDFILE_SUCCESS;
+}
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS

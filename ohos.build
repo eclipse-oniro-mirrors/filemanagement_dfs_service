@@ -7,7 +7,8 @@
         "phone"
       ],
       "module_list": [
-        "//foundation/storage/distributed_file_manager/services/:services_target"
+        "//foundation/storage/distributed_file_manager/services/:services_target",
+        "//foundation/storage/distributed_file_manager/interfaces/innerkits/js:build_kits_js"
       ],
       "inner_kits":[
          {

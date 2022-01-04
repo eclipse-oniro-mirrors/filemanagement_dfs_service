@@ -22,6 +22,35 @@ namespace DistributedFile {
 ServiceProxy::ServiceProxy(const sptr<IRemoteObject> &impl) : IRemoteProxy<IDistributedFileService>(impl) {}
 ServiceProxy::~ServiceProxy() {}
 
+int32_t ServiceProxy::SendFile(int32_t sessionId, const std::string &sourceFileList,
+        const std::string &destinationFileList, uint32_t fileCount)
+{
+    int32_t error = SEND_FILE_FAIL;
+    MessageOption option;
+    MessageParcel dataParcel;
+    MessageParcel replyParcel;
+    if (!dataParcel.WriteInterfaceToken(ServiceProxy::GetDescriptor())) {
+        LOGE("write descriptor failed");
+        return SEND_FILE_DISTRIBUTED_DESCRIPTION_FAIL;
+    }
+
+    dataParcel.WriteInt32(sessionId);
+    dataParcel.WriteString(sourceFileList);
+    dataParcel.WriteString(destinationFileList);
+    dataParcel.WriteUint32(fileCount);
+    if (Remote() == nullptr) {
+        LOGE("Remote object address is null");
+        return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
+    }
+
+    error = Remote()->SendRequest(SEND_FILE_DISTRIBUTED, dataParcel, replyParcel, option);
+    if (error != DISTRIBUTEDFILE_NO_ERROR) {
+        LOGE("Function RemoveBundleDistributedDirs! errCode:%{public}d", error);
+        return DISTRIBUTEDFILE_CONNECT_SYSTEM_ABILITY_STUB_FAIL;
+    }
+
+    return replyParcel.ReadInt32();
+}
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS

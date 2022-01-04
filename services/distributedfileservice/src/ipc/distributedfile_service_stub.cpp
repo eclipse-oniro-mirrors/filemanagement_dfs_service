@@ -53,6 +53,27 @@ int DistributedFileServiceStub::OnRemoteRequest(uint32_t code,
 
     return IPCObjectStub::OnRemoteRequest(code, data, reply, option);
 }
+
+int32_t DistributedFileServiceStub::GetSendFileInner(MessageParcel &data, MessageParcel &reply)
+{
+    std::string dirName = data.ReadString();
+    if (dirName.empty()) {
+        LOGE("DistributedFileService: Failed to get app dir, error: invalid app name");
+        return DISTRIBUTEDFILE_DIR_NAME_IS_EMPTY;
+    }
+    int32_t sessionId = 0;
+    std::string sourceFileList{};
+    std::string destinationFileList{};
+    uint32_t fileCount = 0;
+    int32_t result = SendFile(sessionId, sourceFileList, destinationFileList, fileCount);
+    LOGD("DistributedFileServiceStub : GetBundleDistributedDir result = %{public}d", result);
+    if (!reply.WriteInt32(result)) {
+        LOGE("fail to write parcel");
+        return DISTRIBUTEDFILE_WRITE_REPLY_FAIL;
+    }
+
+    return result;
+}
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS

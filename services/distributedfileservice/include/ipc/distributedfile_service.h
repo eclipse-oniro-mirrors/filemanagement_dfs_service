@@ -35,6 +35,8 @@ public:
     void OnDump() override;
     void OnStart() override;
     void OnStop() override;
+    int32_t SendFile(int32_t sessionId, const std::string &sourceFileList,
+        const std::string &destinationFileList, uint32_t fileCount) override;
 };
 } // namespace DistributedFile
 } // namespace Storage

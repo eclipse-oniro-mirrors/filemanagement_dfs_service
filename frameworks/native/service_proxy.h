@@ -34,11 +34,12 @@ public:
 
     virtual ~ServiceProxy();
 
+    int32_t SendFile(int32_t sessionId, const std::string &sourceFileList,
+        const std::string &destinationFileList, uint32_t fileCount) override;
 private:
     static inline BrokerDelegator<ServiceProxy> delegator_;
 };
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS
-
-#endif
+#endif // DISTRIBUTEDFILE_SERVICE_PROXY_H
