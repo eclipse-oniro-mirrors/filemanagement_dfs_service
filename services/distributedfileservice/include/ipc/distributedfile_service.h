@@ -19,18 +19,18 @@
 #include "distributedfile_service_stub.h"
 #include "iremote_stub.h"
 #include "system_ability.h"
-#include "utils_singleton.h"
 
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
 class DistributedFileService : public SystemAbility,
                                public DistributedFileServiceStub,
-                               public Utils::Singleton<DistributedFileService>,
                                public std::enable_shared_from_this<DistributedFileService> {
-    DECLARE_SINGLETON(DistributedFileService);
     DECLARE_SYSTEM_ABILITY(DistributedFileService)
 public:
+    DistributedFileService(int32_t saID, bool runOnCreate) : SystemAbility(saID, runOnCreate){};
+    ~DistributedFileService() {};
+
     void OnDump() override;
     void OnStart() override;
     void OnStop() override;

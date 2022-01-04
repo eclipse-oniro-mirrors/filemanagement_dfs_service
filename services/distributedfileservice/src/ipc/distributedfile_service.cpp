@@ -24,11 +24,7 @@ namespace Storage {
 namespace DistributedFile {
 using namespace std;
 
-const bool g_registerResult = SystemAbility::MakeAndRegisterAbility(DistributedFileService::GetInstance().get());
-
-DistributedFileService::DistributedFileService() : SystemAbility(STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID, true) {}
-
-DistributedFileService::~DistributedFileService() {}
+REGISTER_SYSTEM_ABILITY_BY_ID(DistributedFileService, STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID, false);
 
 void DistributedFileService::OnDump()
 {
