@@ -55,6 +55,7 @@ private:
     void RegisterToExternalDm();
     void UnregisterFromExternalDm();
 
+    std::mutex devsRecordMutex_;
     std::set<std::string> alreadyOnlineDev_;
 
     std::string pkgName_{"ohos.storage.distributedfile.service"};

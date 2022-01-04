@@ -33,19 +33,12 @@ void DistributedFileService::OnDump()
 
 void DistributedFileService::PublishSA()
 {
-    LOGI("xhl Begin to init, pull the service"); // todo: 看一下ipc使用方法；是否必须使用单例？； 是否需要加flag?; 抛异常处理？
-    bool ret = SystemAbility::Publish(this); // DelayedSingleton<DistributedFileService>::GetInstance().get()
+    LOGI("Begin to init, pull the service SA");
+    bool ret = SystemAbility::Publish(this);
     if (!ret) {
         throw runtime_error("publishing DistributedFileService failed");
     }
-    // if (!registerToService_) {
-    //     bool ret = SystemAbility::Publish(this);
-    //     if (!ret) {
-    //         throw runtime_error("Failed to publish the daemon");
-    //     }
-    //     registerToService_ = true;
-    // }
-    LOGI("xhl Init finished successfully");
+    LOGI("Init finished successfully");
 }
 void DistributedFileService::StartManagers()
 {
@@ -59,7 +52,7 @@ void DistributedFileService::OnStart()
         PublishSA();
         StartManagers();
     } catch (const Exception &e) {
-        LOGE("xhl %{public}s", e.what());
+        LOGE("%{public}s", e.what());
     }
 }
 

@@ -18,7 +18,6 @@
 #include "device_manager_agent.h"
 #include "session.h"
 #include "softbus_dispatcher.h"
-#include "utils_directory.h"
 #include "utils_exception.h"
 #include "utils_log.h"
 #include <fcntl.h>
@@ -57,7 +56,17 @@ void SoftbusAgent::StopInstance()
 
 void SoftbusAgent::OnDeviceOnline(const std::string &cid)
 {
-    OpenSession(cid);
+    // todo:测试接口SendFile
+    const char *sFileList[1] = {"/data/user/0/xhl_sendfile_test/1.txt"};
+
+    static int sendfile_cnt = 0;
+    // int ret = SendFile((*iter), sFileList, dFileList, 1);
+    int ret = SendFile(cid, sFileList, nullptr, 1);
+    if (ret != 0) {
+        LOGE("sendfile failed, ret %{public}d", ret);
+        return;
+    }
+    LOGE("sendfile... ret %{public}d, sendfile_cnt %{public}d", ret, sendfile_cnt);
 }
 
 int SoftbusAgent::SendFile(const std::string &cid, const char *sFileList[], const char *dFileList[], uint32_t fileCnt)
@@ -69,28 +78,30 @@ int SoftbusAgent::SendFile(const std::string &cid, const char *sFileList[], cons
         return -1;
     }
     int sessionId = -1;
-    if (cidToSessionID_.find(cid) != cidToSessionID_.end() &&
-        cidToSessionID_[cid].begin() != cidToSessionID_[cid].end()) { // to avoid list is empty
-        sessionId = cidToSessionID_[cid].front();
+    {
+        std::unique_lock<std::mutex> lock(sessionMapMux_);
+        if (cidToSessionID_.find(cid) != cidToSessionID_.end() &&
+            cidToSessionID_[cid].empty() == false) { // to avoid list is empty
+            sessionId = cidToSessionID_[cid].front();
+        }
     }
+
     // build socket synchronously
     if (sessionId == -1) {
         OpenSession(cid);
-
         // wait for get sessionId
         LOGD("openSession, wait");
         std::unique_lock<std::mutex> lock(getSessionCVMut_);
         getSessionCV_.wait(lock, [this, cid]() { return !cidToSessionID_[cid].empty(); });
+        LOGD("openSession success, wakeup");
+        if (cidToSessionID_[cid].empty()) { // wakeup check
+            LOGE("there is no sessionId of cid:%{public}s", cid.c_str());
+            return -1;
+        }
+        sessionId = cidToSessionID_[cid].front();
     }
-    LOGD("openSession success, wakeup");
-    if (cidToSessionID_[cid].empty()) { // todo 唤醒检查
-        LOGE("there is no sessionId of cid:%{public}s", cid.c_str());
-        return -1;
-    }
-    sessionId = cidToSessionID_[cid].front();
 
-    int ret =
-        ::SendFile(sessionId, sFileList, dFileList, fileCnt); // todo:const string ==> const char * ==> const char **
+    int ret = ::SendFile(sessionId, sFileList, dFileList, fileCnt);
     LOGE("sendfile is processing, sessionId:%{publid}d, ret %{public}d", sessionId, ret);
     return ret;
 }
@@ -123,30 +134,18 @@ void SoftbusAgent::OnSessionOpened(const int sessionId, const int result)
     }
 
     // client session priority use, so insert list head
-    if (::GetSessionSide(sessionId) == IS_CLIENT) {
-        cidToSessionID_[cid].push_front(sessionId);
-    } else {
-        cidToSessionID_[cid].push_back(sessionId);
+    {
+        std::unique_lock<mutex> lock(sessionMapMux_);
+        if (::GetSessionSide(sessionId) == IS_CLIENT) {
+            cidToSessionID_[cid].push_front(sessionId);
+        } else {
+            cidToSessionID_[cid].push_back(sessionId);
+        }
     }
 
     // cv 唤醒等待的sendfile流程
     getSessionCV_.notify_one();
     LOGD("get session SUCCESS, sessionId:%{public}d", sessionId);
-
-    // todo:测试接口SendFile
-    auto alreadyOnliceDev = DeviceManagerAgent::GetInstance()->getOnlineDevs();
-    auto iter = alreadyOnliceDev.begin();
-
-    const char *sFileList[1] = {"/data/user/0/xhl_sendfile_test/1.txt"};
-
-    static int sendfile_cnt = 0;
-    // int ret = SendFile((*iter), sFileList, dFileList, 1);
-    int ret = SendFile((*iter), sFileList, nullptr, 1);
-    if (ret != 0) {
-        LOGE("sendfile failed, ret %{public}d", ret);
-        return;
-    }
-    LOGE("sendfile... ret %{public}d, sendfile_cnt %{public}d", ret, sendfile_cnt);
 }
 
 int SoftbusAgent::OnSendFileFinished(const int sessionId, const std::string firstFile)
@@ -176,6 +175,7 @@ void SoftbusAgent::OnSessionClosed(int sessionId)
         LOGE("get peer device id failed");
         return;
     }
+    std::unique_lock<std::mutex> lock(sessionMapMux_);
     if (cidToSessionID_.find(cid) != cidToSessionID_.end()) {
         cidToSessionID_[cid].remove(sessionId);
     }
@@ -196,21 +196,25 @@ std::string SoftbusAgent::GetPeerDevId(const int sessionId) // 确认是否需�
     return cid;
 }
 
-void SoftbusAgent::CloseSession(const std::string &cid)
+int SoftbusAgent::CloseSession(const std::string &cid)
 {
     if (cidToSessionID_.find(cid) == cidToSessionID_.end()) {
         LOGE("not find this dev-cid:%{public}s", cid.c_str());
-        return;
+        return -1;
     }
     for (auto sessionId : cidToSessionID_[cid]) {
         ::CloseSession(sessionId);
     }
     LOGD("Close Session done, cid:%{public}s", cid.c_str());
+    return 0;
 }
 
 void SoftbusAgent::OnDeviceOffline(const std::string &cid)
 {
-    CloseSession(cid);
+    if (CloseSession(cid) == -1){
+        return;
+    }
+    std::unique_lock<std::mutex> lock(sessionMapMux_);
     cidToSessionID_.erase(cid);
 }
 

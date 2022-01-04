@@ -30,6 +30,7 @@ DeviceManagerAgent::~DeviceManagerAgent()
 }
 void DeviceManagerAgent::StartInstance()
 {
+    // the time sequence can ensure there is no resource competition
     alreadyOnlineDev_.clear();
     RegisterToExternalDm();
 }
@@ -41,6 +42,7 @@ void DeviceManagerAgent::StopInstance()
 
 void DeviceManagerAgent::OnDeviceOnline(const DistributedHardware::DmDeviceInfo &deviceInfo)
 {
+    std::unique_lock<mutex> lock(devsRecordMutex_);
     std::string cid = std::string(deviceInfo.deviceId);
     alreadyOnlineDev_.insert(cid);
     SoftbusAgent::GetInstance()->OnDeviceOnline(cid);
@@ -48,6 +50,7 @@ void DeviceManagerAgent::OnDeviceOnline(const DistributedHardware::DmDeviceInfo 
 
 void DeviceManagerAgent::OnDeviceOffline(const DistributedHardware::DmDeviceInfo &deviceInfo)
 {
+    std::unique_lock<mutex> lock(devsRecordMutex_);
     std::string cid = std::string(deviceInfo.deviceId);
     auto softBusAgent = SoftbusAgent::GetInstance();
     softBusAgent->OnDeviceOffline(cid);

@@ -45,12 +45,13 @@ protected:
     void StartInstance() override;
     void StopInstance() override;
     void OpenSession(const std::string &cid);
-    void CloseSession(const std::string &cid);
+    int CloseSession(const std::string &cid);
     std::string GetPeerDevId(const int sessionId);
 
 private:
     std::string sessionName_{"DistributedFileService"};
     std::string pkgName_{"ohos.storage.distributedfile.service"};
+    std::mutex sessionMapMux_;
     std::unordered_map<std::string, std::list<int>> cidToSessionID_;
 
     std::mutex getSessionCVMut_;
