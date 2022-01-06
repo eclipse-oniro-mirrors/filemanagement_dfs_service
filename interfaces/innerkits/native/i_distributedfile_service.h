@@ -25,10 +25,7 @@ class IDistributedFileService : public IRemoteBroker {
 public:
     DECLARE_INTERFACE_DESCRIPTOR(u"OHOS.DistributedFile.IDistributedFileService");
     // define the message code
-    enum DistributedFileSurfaceCode {
-        INTERFACE1 = 0,
-        SEND_FILE_DISTRIBUTED
-    };
+    enum DistributedFileSurfaceCode { INTERFACE1 = 0, SEND_FILE_DISTRIBUTED, TEST_CODE };
     // define the error code
     enum {
         DISTRIBUTEDFILE_SUCCESS = 0,
@@ -50,8 +47,11 @@ public:
         SEND_FILE_FAIL,
         SEND_FILE_DISTRIBUTED_DESCRIPTION_FAIL
     };
-    virtual int32_t SendFile(int32_t sessionId, const std::string &sourceFileList,
-        const std::string &destinationFileList, uint32_t fileCount) = 0;
+    virtual int32_t SendFile(const std::string &cid,
+                             const std::vector<std::string> &sourceFileList,
+                             const std::vector<std::string> &destinationFileList,
+                             const uint32_t fileCount) = 0;
+    virtual int32_t sendTest() = 0;
 };
 } // namespace DistributedFile
 } // namespace Storage

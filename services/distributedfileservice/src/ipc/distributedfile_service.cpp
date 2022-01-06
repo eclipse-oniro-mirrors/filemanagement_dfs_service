@@ -14,10 +14,10 @@
  */
 #include "distributedfile_service.h"
 
-#include <system_ability_definition.h>
 #include "device_manager_agent.h"
-#include "utils_log.h"
 #include "utils_exception.h"
+#include "utils_log.h"
+#include <system_ability_definition.h>
 
 namespace OHOS {
 namespace Storage {
@@ -61,39 +61,18 @@ void DistributedFileService::OnStop()
     LOGI("DistributedFileService::OnStop");
 }
 
-int32_t DistributedFileService::SendFile(int32_t sessionId, const std::string &sourceFileList,
-    const std::string &destinationFileList, uint32_t fileCount)
+int32_t DistributedFileService::sendTest()
 {
-    // DistributedFileInfo metaBase;
-    // metaBase.name = dirName;
-    // if (metaBase.name.empty()) {
-    //     LOGE("DistributedFileService-%{public}s: Failed to get app dir, error: invalid app name", __func__);
-    //     return DISTRIBUTEDFILE_DIR_NAME_IS_EMPTY;
-    // }
-
-    // sptr<ISystemAbilityManager> systemAbilityMgr =
-    //     SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
-    // if (systemAbilityMgr == nullptr) {
-    //     LOGE("BundleService Get ISystemAbilityManager failed ... \n");
-    //     return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
-    // }
-
-    // sptr<IRemoteObject> remote = systemAbilityMgr->CheckSystemAbility(BUNDLE_MGR_SERVICE_SYS_ABILITY_ID);
-    // if (remote == nullptr) {
-    //     LOGE("BundleService Get IRemoteObject failed ... \n");
-    //     return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
-    // }
-
-    // auto BundleMgrService = std::make_unique<AppExecFwk::BundleMgrProxy>(remote);
-    // if (BundleMgrService.get() == nullptr) {
-    //     LOGE("remote iface_cast BundleMgrService failed ... \n");
-    //     return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
-    // }
-
-    // Utils::ForceRemoveDirectory(metaBase.name);
-    //OpenSession(nullptr, nullptr, nullptr, nullptr, nullptr);
-    LOGD("DistributedFileService::SendFile");
-    return DISTRIBUTEDFILE_SUCCESS;
+    LOGI("xhl DistributedFileService::sendTest");
+    return 0;
+}
+int32_t DistributedFileService::SendFile(const std::string &cid,
+                                         const std::vector<std::string> &sourceFileList,
+                                         const std::vector<std::string> &destinationFileList,
+                                         const uint32_t fileCount)
+{
+    LOGD("xhl DistributedFileService::SendFile, sessionId %{public}s, fileCount %{public}d", cid.c_str(), fileCount);
+    return 0;
 }
 } // namespace DistributedFile
 } // namespace Storage

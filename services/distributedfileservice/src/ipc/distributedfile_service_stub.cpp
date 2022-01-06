@@ -25,6 +25,8 @@ namespace Storage {
 namespace DistributedFile {
 DistributedFileServiceStub::DistributedFileServiceStub()
 {
+    memberFuncMap_[SEND_FILE_DISTRIBUTED] = &DistributedFileServiceStub::SendFileStub;
+    memberFuncMap_[TEST_CODE] = &DistributedFileServiceStub::test;
 }
 
 DistributedFileServiceStub::~DistributedFileServiceStub()
@@ -37,11 +39,7 @@ int DistributedFileServiceStub::OnRemoteRequest(uint32_t code,
                                                 MessageParcel &reply,
                                                 MessageOption &option)
 {
-    std::u16string myDescriptor = DistributedFileServiceStub::GetDescriptor();
-    std::u16string remoteDescriptor = data.ReadInterfaceToken();
-    if (myDescriptor != remoteDescriptor) {
-        return DISTRIBUTEDFILE_BAD_TYPE;
-    }
+    LOGD("xhl DistributedFileServiceStub : OnRemoteRequest enter, code %{public}d ", code);
 
     auto itFunc = memberFuncMap_.find(code);
     if (itFunc != memberFuncMap_.end()) {
@@ -53,20 +51,22 @@ int DistributedFileServiceStub::OnRemoteRequest(uint32_t code,
 
     return IPCObjectStub::OnRemoteRequest(code, data, reply, option);
 }
-
-int32_t DistributedFileServiceStub::GetSendFileInner(MessageParcel &data, MessageParcel &reply)
+int DistributedFileServiceStub::test(MessageParcel &data, MessageParcel &reply)
 {
-    std::string dirName = data.ReadString();
-    if (dirName.empty()) {
-        LOGE("DistributedFileService: Failed to get app dir, error: invalid app name");
-        return DISTRIBUTEDFILE_DIR_NAME_IS_EMPTY;
-    }
-    int32_t sessionId = 0;
-    std::string sourceFileList{};
-    std::string destinationFileList{};
-    uint32_t fileCount = 0;
-    int32_t result = SendFile(sessionId, sourceFileList, destinationFileList, fileCount);
-    LOGD("DistributedFileServiceStub : GetBundleDistributedDir result = %{public}d", result);
+    LOGD("xhl DistributedFileServiceStub : sendTest enter");
+    sendTest();
+    return 3;
+}
+
+int32_t DistributedFileServiceStub::SendFileStub(MessageParcel &data, MessageParcel &reply)
+{
+    LOGD("xhl DistributedFileServiceStub : SendFileStub enter");
+    std::string cid = "123";
+    std::vector<std::string> srcList;
+    std::vector<std::string> dstList;
+    uint32_t fileCount = 3;
+    int32_t result = SendFile(cid, srcList, dstList, fileCount);
+    LOGD("xhl DistributedFileServiceStub : SendFileStub result = %{public}d", result);
     if (!reply.WriteInt32(result)) {
         LOGE("fail to write parcel");
         return DISTRIBUTEDFILE_WRITE_REPLY_FAIL;

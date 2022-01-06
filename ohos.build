@@ -8,7 +8,8 @@
       ],
       "module_list": [
         "//foundation/storage/distributed_file_manager/services/:services_target",
-        "//foundation/storage/distributed_file_manager/interfaces/innerkits/js:build_kits_js"
+        "//foundation/storage/distributed_file_manager/interfaces/innerkits/js:build_kits_js",
+        "//foundation/storage/distributed_file_manager/executable:xhl_test-sa"
       ],
       "inner_kits":[
          {

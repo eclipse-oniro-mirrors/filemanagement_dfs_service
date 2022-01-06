@@ -19,37 +19,30 @@
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-ServiceProxy::ServiceProxy(const sptr<IRemoteObject> &impl) : IRemoteProxy<IDistributedFileService>(impl) {}
-ServiceProxy::~ServiceProxy() {}
 
-int32_t ServiceProxy::SendFile(int32_t sessionId, const std::string &sourceFileList,
-        const std::string &destinationFileList, uint32_t fileCount)
+int32_t ServiceProxy::SendFile(const std::string &cid,
+                               const std::vector<std::string> &sourceFileList,
+                               const std::vector<std::string> &destinationFileList,
+                               const uint32_t fileCount)
 {
-    int32_t error = SEND_FILE_FAIL;
+    LOGE("xhl sendFile enter");
+    MessageParcel data;
+    MessageParcel reply;
     MessageOption option;
-    MessageParcel dataParcel;
-    MessageParcel replyParcel;
-    if (!dataParcel.WriteInterfaceToken(ServiceProxy::GetDescriptor())) {
-        LOGE("write descriptor failed");
-        return SEND_FILE_DISTRIBUTED_DESCRIPTION_FAIL;
-    }
+    int ret = Remote()->SendRequest(SEND_FILE_DISTRIBUTED, data, reply, option);
+    LOGE("xhl sendfile sendRequest done %{public}d", ret);
+    return ret;
+}
 
-    dataParcel.WriteInt32(sessionId);
-    dataParcel.WriteString(sourceFileList);
-    dataParcel.WriteString(destinationFileList);
-    dataParcel.WriteUint32(fileCount);
-    if (Remote() == nullptr) {
-        LOGE("Remote object address is null");
-        return DISTRIBUTEDFILE_REMOTE_ADDRESS_IS_NULL;
-    }
-
-    error = Remote()->SendRequest(SEND_FILE_DISTRIBUTED, dataParcel, replyParcel, option);
-    if (error != DISTRIBUTEDFILE_NO_ERROR) {
-        LOGE("Function RemoveBundleDistributedDirs! errCode:%{public}d", error);
-        return DISTRIBUTEDFILE_CONNECT_SYSTEM_ABILITY_STUB_FAIL;
-    }
-
-    return replyParcel.ReadInt32();
+int32_t ServiceProxy::sendTest()
+{
+    LOGE("xhl sendTest enter");
+    MessageParcel data;
+    MessageParcel reply;
+    MessageOption option;
+    int ret = Remote()->SendRequest(TEST_CODE, data, reply, option);
+    LOGE("xhl sendTest sendrequest done %{public}d", ret);
+    return ret;
 }
 } // namespace DistributedFile
 } // namespace Storage

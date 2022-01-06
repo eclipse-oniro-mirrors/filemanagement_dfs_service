@@ -16,9 +16,9 @@
 #ifndef DISTRIBUTEDFILE_SERVICE_PROXY_H
 #define DISTRIBUTEDFILE_SERVICE_PROXY_H
 
-#include <iremote_proxy.h>
 #include "i_distributedfile_service.h"
 #include "message_parcel.h"
+#include <iremote_proxy.h>
 
 namespace OHOS {
 namespace Storage {
@@ -30,12 +30,15 @@ public:
      *
      * @param impl
      */
-    explicit ServiceProxy(const sptr<IRemoteObject> &impl);
+    explicit ServiceProxy(const sptr<IRemoteObject> &impl) : IRemoteProxy<IDistributedFileService>(impl) {}
 
-    virtual ~ServiceProxy();
+    virtual ~ServiceProxy() = default;
 
-    int32_t SendFile(int32_t sessionId, const std::string &sourceFileList,
-        const std::string &destinationFileList, uint32_t fileCount) override;
+    int32_t SendFile(const std::string &cid,
+                     const std::vector<std::string> &sourceFileList,
+                     const std::vector<std::string> &destinationFileList,
+                     const uint32_t fileCount) override;
+    int32_t sendTest() override;
 private:
     static inline BrokerDelegator<ServiceProxy> delegator_;
 };

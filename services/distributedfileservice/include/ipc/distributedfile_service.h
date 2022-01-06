@@ -29,14 +29,18 @@ class DistributedFileService : public SystemAbility,
     DECLARE_SYSTEM_ABILITY(DistributedFileService)
 public:
     DistributedFileService(int32_t saID, bool runOnCreate) : SystemAbility(saID, runOnCreate){};
-    ~DistributedFileService() {};
+    ~DistributedFileService(){};
 
     void OnDump() override;
     void OnStart() override;
     void OnStop() override;
 
-    int32_t SendFile(int32_t sessionId, const std::string &sourceFileList,
-        const std::string &destinationFileList, uint32_t fileCount) override;
+    int32_t SendFile(const std::string &cid,
+                     const std::vector<std::string> &sourceFileList,
+                     const std::vector<std::string> &destinationFileList,
+                     const uint32_t fileCount) override;
+    int32_t sendTest() override;
+
 private:
     void PublishSA();
     void StartManagers();

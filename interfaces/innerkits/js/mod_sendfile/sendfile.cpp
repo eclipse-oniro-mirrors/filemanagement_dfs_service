@@ -114,7 +114,7 @@ napi_value SendFile(napi_env env, napi_callback_info info)
     return NVal::CreateUndefined(env).val_;
 }
 
-int32_t ExecSendFile(const std::string deviceId, const std::vector<std::string>& srcList, const std::vector<std::string>& dstList, uint32_t num)
+int32_t ExecSendFile(const std::string deviceId, const std::vector<std::string>& srcList, const std::vector<std::string>& dstList, uint32_t fileCnt)
 {
     sptr<ISystemAbilityManager> systemAbilityMgr =
         SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
@@ -122,20 +122,19 @@ int32_t ExecSendFile(const std::string deviceId, const std::vector<std::string>&
         HILOGE("BundleService Get ISystemAbilityManager failed ... \n");
         return -1;
     }
-    sptr<IRemoteObject> remote = systemAbilityMgr->CheckSystemAbility(STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID);
+    sptr<IRemoteObject> remote = systemAbilityMgr->GetSystemAbility(STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID);
     if (remote == nullptr) {
         HILOGE("DistributedFileService Get STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID = %d fail ... \n", STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID);
         return -1;
     }
 
-    sptr<IDistributedFileService> distributedFileService = iface_cast<IDistributedFileService>(remote);
-    if (distributedFileService == nullptr) {
+    sptr<IDistributedFileService> proxy = iface_cast<IDistributedFileService>(remote);
+    if (proxy == nullptr) {
         HILOGE("DistributedFileService == nullptr\n");
         return -1;
     }
-
-    HILOGE("DistributedFileService == distributedFileService");
-    int32_t result = 0;//distributedFileService->SendDistributedFile(deviceId, sessionID, srcList, dstList, num);
+    HILOGE("test: get SA proxy, call sendfile");
+    int32_t result = proxy->SendFile(deviceId, srcList, dstList, fileCnt);
     return result;
 }
 } // namespace ModuleSendFile
