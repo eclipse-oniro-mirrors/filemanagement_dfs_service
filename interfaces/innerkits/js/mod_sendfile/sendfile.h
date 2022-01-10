@@ -17,14 +17,15 @@
 #define SENDFILE_H
 
 #include <vector>
-#include "../common/napi/n_exporter.h"
+#include "napi/n_exporter.h"
 
 namespace OHOS {
 namespace DistributedFS {
 namespace ModuleSendFile {
 napi_value SendFile(napi_env env, napi_callback_info info);
 
-static int32_t ExecSendFile(const std::string deviceId, const std::vector<std::string>& srcList, const std::vector<std::string>& dstList, uint32_t num);
+static int32_t ExecSendFile(const std::string &deviceId, const std::vector<std::string>& srcList,
+    const std::vector<std::string>& dstList, uint32_t fileCnt);
 } // namespace ModuleSendFile
 } // namespace DistributedFS
 } // namespace OHOS

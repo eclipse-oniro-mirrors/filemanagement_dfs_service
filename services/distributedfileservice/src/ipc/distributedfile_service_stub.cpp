@@ -40,7 +40,6 @@ int DistributedFileServiceStub::OnRemoteRequest(uint32_t code,
                                                 MessageOption &option)
 {
     LOGD("xhl DistributedFileServiceStub : OnRemoteRequest enter, code %{public}d ", code);
-
     auto itFunc = memberFuncMap_.find(code);
     if (itFunc != memberFuncMap_.end()) {
         auto memberFunc = itFunc->second;
@@ -51,6 +50,7 @@ int DistributedFileServiceStub::OnRemoteRequest(uint32_t code,
 
     return IPCObjectStub::OnRemoteRequest(code, data, reply, option);
 }
+
 int DistributedFileServiceStub::test(MessageParcel &data, MessageParcel &reply)
 {
     LOGD("xhl DistributedFileServiceStub : sendTest enter");
@@ -60,11 +60,27 @@ int DistributedFileServiceStub::test(MessageParcel &data, MessageParcel &reply)
 
 int32_t DistributedFileServiceStub::SendFileStub(MessageParcel &data, MessageParcel &reply)
 {
-    LOGD("xhl DistributedFileServiceStub : SendFileStub enter");
-    std::string cid = "123";
+    std::string cid = data.ReadString();
+    if (cid.empty()) {
+        LOGE("DistributedFileServiceStub : Failed to get app device id, error: invalid device id");
+        return DISTRIBUTEDFILE_DIR_NAME_IS_EMPTY;
+    }
+
+    int32_t sourceListNumber = data.ReadInt32();
     std::vector<std::string> srcList;
+    for (int32_t index = 0; index < sourceListNumber; ++index) {
+        srcList.push_back(data.ReadString());
+    }
     std::vector<std::string> dstList;
-    uint32_t fileCount = 3;
+    int32_t destinationListNumber = data.ReadInt32();
+    for (int32_t index = 0; index < destinationListNumber; ++index) {
+        dstList.push_back(data.ReadString());
+    }
+    uint32_t fileCount = data.ReadUint32();
+
+    LOGI("DistributedFileServiceStub : cid %{public}s, srcList size %{public}d, dstList size %{public}d,"
+        "fileCout %{public}d", cid.c_str(), sourceListNumber, destinationListNumber, fileCount);
+
     int32_t result = SendFile(cid, srcList, dstList, fileCount);
     LOGD("xhl DistributedFileServiceStub : SendFileStub result = %{public}d", result);
     if (!reply.WriteInt32(result)) {

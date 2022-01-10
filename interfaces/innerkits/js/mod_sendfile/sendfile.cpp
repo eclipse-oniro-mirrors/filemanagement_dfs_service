@@ -17,13 +17,13 @@
 
 #include <tuple>
 
-#include "../common/napi/n_class.h"
-#include "../common/napi/n_func_arg.h"
-#include "../common/napi/n_val.h"
-#include "../common/uni_error.h"
+#include "napi/n_class.h"
+#include "napi/n_func_arg.h"
+#include "napi/n_val.h"
+#include "uni_error.h"
 
-#include "../common/napi/n_async/n_async_work_callback.h"
-#include "../common/napi/n_async/n_async_work_promise.h"
+#include "napi/n_async/n_async_work_callback.h"
+#include "napi/n_async/n_async_work_promise.h"
 
 #include "system_ability_definition.h"
 #include "i_distributedfile_service.h"
@@ -35,19 +35,16 @@
 namespace OHOS {
 namespace DistributedFS {
 namespace ModuleSendFile {
-// using namespace OHOS::DistributedFile;
 using namespace OHOS::Storage::DistributedFile;
 
 napi_value SendFile(napi_env env, napi_callback_info info)
 {
-    HILOGI("napi_value SendFile Start");
     NFuncArg funcArg(env, info);
     if (!funcArg.InitArgs(NARG_CNT::FOUR, NARG_CNT::FIVE)) {
         UniError(EINVAL).ThrowErr(env, "Number of arguments unmatched");
         return nullptr;
     }
 
-    HILOGI("napi_value SendFile parse params");
     bool succ = false;
     auto resultCode = std::make_shared<int32_t>();
 
@@ -114,7 +111,8 @@ napi_value SendFile(napi_env env, napi_callback_info info)
     return NVal::CreateUndefined(env).val_;
 }
 
-int32_t ExecSendFile(const std::string deviceId, const std::vector<std::string>& srcList, const std::vector<std::string>& dstList, uint32_t fileCnt)
+int32_t ExecSendFile(const std::string &deviceId, const std::vector<std::string>& srcList,
+    const std::vector<std::string>& dstList, uint32_t fileCnt)
 {
     sptr<ISystemAbilityManager> systemAbilityMgr =
         SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
@@ -124,16 +122,19 @@ int32_t ExecSendFile(const std::string deviceId, const std::vector<std::string>&
     }
     sptr<IRemoteObject> remote = systemAbilityMgr->GetSystemAbility(STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID);
     if (remote == nullptr) {
-        HILOGE("DistributedFileService Get STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID = %d fail ... \n", STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID);
+        HILOGE("DistributedFileService Get STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID = %{public}d fail ... \n",
+            STORAGE_DISTRIBUTED_FILE_SERVICE_SA_ID);
         return -1;
     }
+    HILOGI("ExecSendFile remote %{public}p", remote.GetRefPtr());
 
     sptr<IDistributedFileService> proxy = iface_cast<IDistributedFileService>(remote);
     if (proxy == nullptr) {
         HILOGE("DistributedFileService == nullptr\n");
         return -1;
     }
-    HILOGE("test: get SA proxy, call sendfile");
+    HILOGI("ExecSendFile distributedFileService %{public}p", proxy.GetRefPtr());
+
     int32_t result = proxy->SendFile(deviceId, srcList, dstList, fileCnt);
     return result;
 }

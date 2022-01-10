@@ -36,7 +36,6 @@ ohos_shared_library("sendfile") {
   ]
 
   include_dirs = [
-    ".",
     "//foundation/storage/distributed_file_manager/interfaces/innerkits/js/common/napi/n_async",
     "//foundation/storage/distributed_file_manager/services/distributedfileservice/include/ipc",
     "//foundation/storage/distributed_file_manager/services/distributedfileservice/include",
@@ -45,7 +44,7 @@ ohos_shared_library("sendfile") {
     "//foundation/communication/ipc/interfaces/innerkits/libdbinder/include",
     "//foundation/distributedschedule/samgr/services/samgr/native/include",
     "//foundation/distributedschedule/samgr/interfaces/innerkits/samgr_proxy/include",
-
+    "//foundation/storage/distributed_file_manager/interfaces/innerkits/js/common",
     "//base/hiviewdfx/hilog/interfaces/native/innerkits/include",
     "//foundation/ace/napi/interfaces/kits",
     "//utils/system/safwk/native/include",
