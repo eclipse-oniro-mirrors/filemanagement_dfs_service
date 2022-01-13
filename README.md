@@ -17,7 +17,7 @@
 ## **目录**
 
 ```raw
-/foundation/storage/distributed_file_manager
+/foundation/filemanagement/dfs_service
 ├── frameworks                      // 接口实现
 │   └── native                      // c/c++ 接口实现
 ├── interfaces                      // 接口声明
