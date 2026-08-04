@@ -228,7 +228,7 @@ public:
     /**
      * @brief 注册
      *
-     * @param callback 注册上传回调
+     * @param uploadCallbackInfo 注册上传回调
      * @return int32_t 返回执行结果
      */
     virtual int32_t RegisterUploadCallback(const UploadCallbackInfo &uploadCallbackInfo) = 0;
