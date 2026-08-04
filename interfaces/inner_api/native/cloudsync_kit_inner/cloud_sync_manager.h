@@ -210,7 +210,7 @@ public:
      * @brief 获取下载传输列表
      *
      * @param uriVec 文件uri list
-     * @param downloadCallback 检测结果列表
+     * @param downloadList 检测结果列表
      * @return int32_t 获取下载列表执行结果
      */
     virtual int32_t GetDownloadList(const std::vector<std::string> &uriVec,
