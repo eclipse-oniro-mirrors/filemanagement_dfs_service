@@ -235,7 +235,7 @@ public:
     /**
      * @brief 解除注册的回调
      *
-     * @param callback 注册上传回调
+     * @param uploadCallbackInfo 注册上传回调
      * @return int32_t 返回执行结果
      */
     virtual int32_t UnRegisterUploadCallback(const UploadCallbackInfo &uploadCallbackInfo) = 0;
