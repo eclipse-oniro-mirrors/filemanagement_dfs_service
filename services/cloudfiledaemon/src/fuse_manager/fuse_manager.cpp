@@ -870,6 +870,19 @@ static bool NeedKeepCacheOnPath(const string &cachePath)
     return ret > 0 && val > 0;
 }
 
+static void CleanCacheFileIfUnmarked(const string &cachePath)
+{
+    if (cachePath.empty() || access(cachePath.c_str(), F_OK) != 0) {
+        return;
+    }
+    if (NeedKeepCacheOnPath(cachePath)) {
+        return;
+    }
+    if (unlink(cachePath.c_str()) < 0) {
+        LOGE("unlink cache file fail, err: %{public}d", errno);
+    }
+}
+
 /* Retain a VID_ file's cache iff its keep-cache xattr is > 0. Non-VID_ files are unaffected
    (IsVideoType false). Used at release to decide retain vs clean. */
 static bool NeedKeepCache(shared_ptr<CloudInode> cInode, struct FuseData *data)
@@ -1060,6 +1073,15 @@ static shared_ptr<CloudFile::CloudAssetReadSession> CreateReadSession(shared_ptr
     }
 }
 
+static void CleanCacheOnOpenFailure(shared_ptr<CloudInode>& cInode, struct FuseData *data)
+{
+#ifndef SUPPORT_WATCH_LITE
+    if (cInode->cacheFileIndex) {
+        CleanCacheFileIfUnmarked(VideoCachePath(cInode->path, data));
+    }
+#endif
+}
+
 static void CloudOpenHelper(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi,
     struct FuseData *data, shared_ptr<CloudInode>& cInode, shared_ptr<CloudFdInfo> cloudFdInfo)
 {
@@ -1095,6 +1117,7 @@ static void CloudOpenHelper(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
             } else {
                 EraseCloudFdCache(data, fi->fh);
                 fuse_inval(data->se, cInode->parent, ino, cInode->mBase->name);
+                CleanCacheOnOpenFailure(cInode, data);
                 fuse_reply_err(req, -ret);
                 cInode->readSession = nullptr;
             }

@@ -41,6 +41,12 @@ constexpr int32_t USER_ID = 100;
 constexpr mode_t KEEP_CACHE_DIR_MODE = 0755;
 constexpr int MAX_EMPTY_PARENTS = 4;
 
+static bool FileExists(const string &path)
+{
+    struct stat st;
+    return stat(path.c_str(), &st) == 0;
+}
+
 /* Best-effort mkdir of every parent component of `path` (ignores EEXIST). */
 static void MakeParentDirs(const string &path)
 {
@@ -711,6 +717,232 @@ HWTEST_F(FuseManagerStaticTest, SetKeepCacheRoundTrip001, TestSize.Level1)
     unlink(cachePath.c_str());
     RemoveEmptyParents(cachePath);
     GTEST_LOG_(INFO) << "SetKeepCacheRoundTrip001 end";
+}
+
+/**
+ * @tc.name: CleanCacheFileIfUnmarkedTest001
+ * @tc.desc: empty path is a no-op (no crash, no file touched)
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(FuseManagerStaticTest, CleanCacheFileIfUnmarkedTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest001 start";
+    try {
+        CleanCacheFileIfUnmarked("");
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest001 end";
+}
+
+/**
+ * @tc.name: CleanCacheFileIfUnmarkedTest002
+ * @tc.desc: non-existent file is a no-op (stat fails, returns early)
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(FuseManagerStaticTest, CleanCacheFileIfUnmarkedTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest002 start";
+    EXPECT_CALL(*insMock, access(_, _)).WillRepeatedly(Return(-1));
+    try {
+        string nonExist = "/mnt/hmdfs/100/account/device_view/local/files/Photo/.clean_nofile_XXXXXX";
+        CleanCacheFileIfUnmarked(nonExist);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest002 failed";
+    }
+    GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest002 end";
+}
+
+/**
+ * @tc.name: CleanCacheFileIfUnmarkedTest003
+ * @tc.desc: file exists without keep-cache xattr -> deleted by CleanCacheFileIfUnmarked
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(FuseManagerStaticTest, CleanCacheFileIfUnmarkedTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest003 start";
+    char tmpl[] = "/mnt/hmdfs/100/account/device_view/local/files/Photo/.clean_unmarked_XXXXXX";
+    int fd = mkstemp(tmpl);
+    if (fd < 0) {
+        GTEST_SKIP() << "hmdfs Photo path unavailable, skip unmarked-cleanup test, errno: " << errno;
+    }
+    close(fd);
+    string cachePath(tmpl);
+
+    EXPECT_CALL(*insMock, access(_, _)).WillRepeatedly(Return(0));
+    try {
+        ASSERT_TRUE(FileExists(cachePath));
+        EXPECT_FALSE(NeedKeepCacheOnPath(cachePath));
+        CleanCacheFileIfUnmarked(cachePath);
+        EXPECT_FALSE(FileExists(cachePath));
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest003 failed";
+    }
+    unlink(cachePath.c_str());
+    GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest003 end";
+}
+
+/**
+ * @tc.name: CleanCacheFileIfUnmarkedTest004
+ * @tc.desc: file exists with keep-cache xattr (ioctl-marked) -> retained, not deleted
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(FuseManagerStaticTest, CleanCacheFileIfUnmarkedTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest004 start";
+    char tmpl[] = "/mnt/hmdfs/100/account/device_view/local/files/Photo/.clean_marked_XXXXXX";
+    int fd = mkstemp(tmpl);
+    if (fd < 0) {
+        GTEST_SKIP() << "hmdfs Photo path unavailable, skip marked-retain test, errno: " << errno;
+    }
+    close(fd);
+    string cachePath(tmpl);
+
+    EXPECT_CALL(*insMock, access(_, _)).WillRepeatedly(Return(0));
+    try {
+        SetKeepCacheXattr(cachePath, KEEP_CACHE_READ);
+        ASSERT_TRUE(NeedKeepCacheOnPath(cachePath));
+        CleanCacheFileIfUnmarked(cachePath);
+        EXPECT_TRUE(FileExists(cachePath));
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest004 failed";
+    }
+    unlink(cachePath.c_str());
+    GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest004 end";
+}
+
+/**
+ * @tc.name: CleanCacheFileIfUnmarkedTest005
+ * @tc.desc: B3e: file has keep-cache xattr but value=0 (not >0) -> deleted
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(FuseManagerStaticTest, CleanCacheFileIfUnmarkedTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest005 start";
+    char tmpl[] = "/mnt/hmdfs/100/account/device_view/local/files/Photo/.clean_zero_xattr_XXXXXX";
+    int fd = mkstemp(tmpl);
+    if (fd < 0) {
+        GTEST_SKIP() << "hmdfs Photo path unavailable, skip zero-xattr test, errno: " << errno;
+    }
+    close(fd);
+    string cachePath(tmpl);
+
+    EXPECT_CALL(*insMock, access(_, _)).WillRepeatedly(Return(0));
+    try {
+        int32_t zero = 0;
+        setxattr(cachePath.c_str(), CLOUD_KEEP_CACHE_XATTR_NAME.c_str(), &zero, sizeof(zero), 0);
+        EXPECT_FALSE(NeedKeepCacheOnPath(cachePath));
+        CleanCacheFileIfUnmarked(cachePath);
+        EXPECT_FALSE(FileExists(cachePath));
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest005 failed";
+    }
+    unlink(cachePath.c_str());
+    GTEST_LOG_(INFO) << "CleanCacheFileIfUnmarkedTest005 end";
+}
+
+/**
+ * @tc.name: OpenFailCleanCacheTest001
+ * @tc.desc: cacheFileIndex set, no xattr -> file deleted
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(FuseManagerStaticTest, OpenFailCleanCacheTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "OpenFailCleanCacheTest001 start";
+    FuseData data;
+    data.userId = USER_ID;
+    data.photoBundleName = "open_fail_cleanup";
+    shared_ptr<CloudInode> cloudInode = make_shared<CloudInode>();
+    cloudInode->mBase = make_shared<MetaBase>("VID_open_fail.mp4");
+    cloudInode->mBase->size = 100;
+    cloudInode->mBase->fileType = FILE_TYPE_CONTENT;
+    cloudInode->path = "/VID_open_fail.mp4";
+    /* cacheFileIndex set */
+    cloudInode->cacheFileIndex = std::make_unique<CLOUD_CACHE_STATUS[]>(1);
+    cloudInode->cacheFileIndex[0] = NOT_CACHE;
+    data.inodeCache.insert({10, cloudInode});
+
+    string cachePath = VideoCachePath(cloudInode->path, &data);
+    MakeParentDirs(cachePath);
+    std::FILE *fp = fopen(cachePath.c_str(), "w");
+    if (fp == nullptr) {
+        GTEST_SKIP() << "hmdfs cache path unavailable, skip open-fail cleanup test, errno: " << errno;
+    }
+    fclose(fp);
+
+    EXPECT_CALL(*insMock, access(_, _)).WillRepeatedly(Return(0));
+    try {
+        ASSERT_TRUE(FileExists(cachePath));
+        EXPECT_FALSE(NeedKeepCacheOnPath(cachePath));
+#ifndef SUPPORT_WATCH_LITE
+        if (cloudInode->cacheFileIndex) {
+            CleanCacheFileIfUnmarked(VideoCachePath(cloudInode->path, &data));
+        }
+        EXPECT_FALSE(FileExists(cachePath));
+#endif
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "OpenFailCleanCacheTest001 failed";
+    }
+    unlink(cachePath.c_str());
+    RemoveEmptyParents(cachePath);
+    GTEST_LOG_(INFO) << "OpenFailCleanCacheTest001 end";
+}
+
+/**
+ * @tc.name: OpenFailCleanCacheTest002
+ * @tc.desc: cacheFileIndex null -> file untouched
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(FuseManagerStaticTest, OpenFailCleanCacheTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "OpenFailCleanCacheTest002 start";
+    FuseData data;
+    data.userId = USER_ID;
+    data.photoBundleName = "open_fail_noidx";
+    shared_ptr<CloudInode> cloudInode = make_shared<CloudInode>();
+    cloudInode->mBase = make_shared<MetaBase>("VID_open_fail_noidx.mp4");
+    cloudInode->mBase->size = 100;
+    cloudInode->mBase->fileType = FILE_TYPE_CONTENT;
+    cloudInode->path = "/VID_open_fail_noidx.mp4";
+    /* cacheFileIndex null */
+    data.inodeCache.insert({10, cloudInode});
+
+    string cachePath = VideoCachePath(cloudInode->path, &data);
+    MakeParentDirs(cachePath);
+    std::FILE *fp = fopen(cachePath.c_str(), "w");
+    if (fp == nullptr) {
+        GTEST_SKIP() << "hmdfs cache path unavailable, skip open-fail noidx test, errno: " << errno;
+    }
+    fclose(fp);
+
+    try {
+        ASSERT_TRUE(FileExists(cachePath));
+#ifndef SUPPORT_WATCH_LITE
+        if (cloudInode->cacheFileIndex) {
+            CleanCacheFileIfUnmarked(VideoCachePath(cloudInode->path, &data));
+        }
+#endif
+        EXPECT_TRUE(FileExists(cachePath));
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "OpenFailCleanCacheTest002 failed";
+    }
+    unlink(cachePath.c_str());
+    RemoveEmptyParents(cachePath);
+    GTEST_LOG_(INFO) << "OpenFailCleanCacheTest002 end";
 }
 
 /**
@@ -1502,6 +1734,7 @@ HWTEST_F(FuseManagerStaticTest, DoReadSliceTest001, TestSize.Level1) {
     EXPECT_CALL(*readSessionMock, PRead(_, _, _, _)).WillOnce(Return(0));
     EXPECT_CALL(*insMock, fuse_req_userdata(_)).WillRepeatedly(Return(reinterpret_cast<void*>(data)));
     EXPECT_CALL(*insMock, MyOpen).WillOnce(Return(0));
+    EXPECT_CALL(*insMock, fcntl(_, _)).WillRepeatedly(Return(0));
     bool result = DoReadSlice(req, cInode, readSessionMock, readArgs, needCheck);
     ffrt::wait();
     EXPECT_TRUE(result);
@@ -2003,6 +2236,7 @@ HWTEST_F(FuseManagerStaticTest, CloudReleaseTest001, TestSize.Level1) {
     EXPECT_CALL(*readSessionMock, CancelSession()).Times(AnyNumber());
     EXPECT_CALL(*insMock, fuse_lowlevel_notify_inval_entry(_, _, _, _)).Times(AnyNumber()).WillRepeatedly(Return(0));
     EXPECT_CALL(*readSessionMock, Close(_)).WillOnce(Return(false));
+    EXPECT_CALL(*insMock, fcntl(_, _)).WillRepeatedly(Return(0));
     CloudRelease(req, ino, &fi);
     EXPECT_EQ(cloudInode->sessionRefCount, 0);
     ffrt::wait();
