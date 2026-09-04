@@ -7303,4 +7303,297 @@ HWTEST_F(CloudDiskRdbStoreTest, UpdateTotalDownloadSizeTest001, TestSize.Level1)
     }
     GTEST_LOG_(INFO) << "UpdateTotalDownloadSizeTest001 End";
 }
+
+/**
+ * @tc.name: CheckParentUploadStatusTest001
+ * @tc.desc: Verify CheckParentUploadStatus when rdbStore_ is nullptr, should return E_RDB.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskRdbStoreTest, CheckParentUploadStatusTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest001 Start";
+    // rdbStore_ 为空时 RDBPTR_IS_NULLPTR 宏直接返回 E_RDB
+    clouddiskrdbStore_->rdbStore_ = nullptr;
+    bool parentUploaded = true;
+    int32_t ret = clouddiskrdbStore_->CheckParentUploadStatus("recordId", parentUploaded);
+    EXPECT_EQ(ret, E_RDB);
+    // 输出参数在任何错误路径下都应为确定值 false（入口统一初始化）
+    EXPECT_EQ(parentUploaded, false);
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest001 End";
+}
+
+/**
+ * @tc.name: CheckParentUploadStatusTest002
+ * @tc.desc: Verify CheckParentUploadStatus when record not exists (no row), parent considered uploaded.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskRdbStoreTest, CheckParentUploadStatusTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest002 Start";
+    auto rdb = make_shared<RdbStoreMock>();
+    clouddiskrdbStore_->rdbStore_ = rdb;
+    auto rset = make_shared<ResultSetMock>();
+    // 查询记录自身父目录：GoToNextRow 返回非 E_OK 表示记录不存在/无行
+    EXPECT_CALL(*rdb, QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), true))
+        .WillOnce(Return(ByMove(rset)));
+    EXPECT_CALL(*rset, GoToNextRow()).WillOnce(Return(E_RDB));
+
+    bool parentUploaded = false;
+    int32_t ret = clouddiskrdbStore_->CheckParentUploadStatus("recordId", parentUploaded);
+    EXPECT_EQ(ret, E_OK);
+    // 查不到记录时父目录按"已上传"处理，避免 DB 异常阻塞上传流程
+    EXPECT_EQ(parentUploaded, true);
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest002 End";
+}
+
+/**
+ * @tc.name: CheckParentUploadStatusTest003
+ * @tc.desc: Verify CheckParentUploadStatus when parent is ROOT_CLOUD_ID, considered uploaded.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskRdbStoreTest, CheckParentUploadStatusTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest003 Start";
+    auto rdb = make_shared<RdbStoreMock>();
+    clouddiskrdbStore_->rdbStore_ = rdb;
+    auto rset = make_shared<ResultSetMock>();
+    // 查询记录自身父目录，返回父目录 cloudId = ROOT_CLOUD_ID("rootId")
+    EXPECT_CALL(*rdb, QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), true))
+        .WillOnce(Return(ByMove(rset)));
+    EXPECT_CALL(*rset, GoToNextRow()).WillOnce(Return(E_OK));
+    EXPECT_CALL(*rset, GetColumnIndex(_, _)).WillRepeatedly(DoAll(SetArgReferee<1>(0), Return(E_OK)));
+    EXPECT_CALL(*rset, GetString(_, _)).WillRepeatedly(DoAll(SetArgReferee<1>(ROOT_CLOUD_ID), Return(E_OK)));
+
+    bool parentUploaded = false;
+    int32_t ret = clouddiskrdbStore_->CheckParentUploadStatus("recordId", parentUploaded);
+    EXPECT_EQ(ret, E_OK);
+    // 父目录为云盘根目录，无需检查直接视为已上传
+    EXPECT_EQ(parentUploaded, true);
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest003 End";
+}
+
+/**
+ * @tc.name: CheckParentUploadStatusTest004
+ * @tc.desc: Verify CheckParentUploadStatus when parent equals rootId_, considered uploaded.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskRdbStoreTest, CheckParentUploadStatusTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest004 Start";
+    auto rdb = make_shared<RdbStoreMock>();
+    clouddiskrdbStore_->rdbStore_ = rdb;
+    clouddiskrdbStore_->rootId_ = "custom_root_id"; // 模拟业务实际根目录 cloudId
+    auto rset = make_shared<ResultSetMock>();
+    EXPECT_CALL(*rdb, QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), true))
+        .WillOnce(Return(ByMove(rset)));
+    EXPECT_CALL(*rset, GoToNextRow()).WillOnce(Return(E_OK));
+    EXPECT_CALL(*rset, GetColumnIndex(_, _)).WillRepeatedly(DoAll(SetArgReferee<1>(0), Return(E_OK)));
+    EXPECT_CALL(*rset, GetString(_, _)).WillRepeatedly(DoAll(SetArgReferee<1>("custom_root_id"), Return(E_OK)));
+
+    bool parentUploaded = false;
+    int32_t ret = clouddiskrdbStore_->CheckParentUploadStatus("recordId", parentUploaded);
+    EXPECT_EQ(ret, E_OK);
+    // 父目录为业务根目录 rootId_，视为已上传
+    EXPECT_EQ(parentUploaded, true);
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest004 End";
+}
+
+/**
+ * @tc.name: CheckParentUploadStatusTest005
+ * @tc.desc: Verify CheckParentUploadStatus when parent directory is TYPE_SYNCED, considered uploaded.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskRdbStoreTest, CheckParentUploadStatusTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest005 Start";
+    auto rdb = make_shared<RdbStoreMock>();
+    clouddiskrdbStore_->rdbStore_ = rdb;
+    // 第一次查询：记录自身的父目录；第二次查询（GetDirtyType）：父目录的 DIRTY_TYPE
+    auto rset1 = make_shared<ResultSetMock>();
+    auto rset2 = make_shared<ResultSetMock>();
+    EXPECT_CALL(*rdb, QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), true))
+        .WillOnce(Return(ByMove(rset1)))
+        .WillOnce(Return(ByMove(rset2)));
+    // 第一次查询返回父目录 cloudId = "parent1"
+    EXPECT_CALL(*rset1, GoToNextRow()).WillOnce(Return(E_OK));
+    EXPECT_CALL(*rset1, GetColumnIndex(_, _)).WillRepeatedly(DoAll(SetArgReferee<1>(0), Return(E_OK)));
+    EXPECT_CALL(*rset1, GetString(_, _)).WillRepeatedly(DoAll(SetArgReferee<1>("parent1"), Return(E_OK)));
+    // 第二次查询返回父目录 DIRTY_TYPE = TYPE_SYNCED（已上传）
+    EXPECT_CALL(*rset2, GoToNextRow()).WillOnce(Return(E_OK));
+    EXPECT_CALL(*rset2, GetColumnIndex(_, _)).WillRepeatedly(DoAll(SetArgReferee<1>(0), Return(E_OK)));
+    EXPECT_CALL(*rset2, GetInt(_, _))
+        .WillRepeatedly(DoAll(SetArgReferee<1>(static_cast<int32_t>(DirtyType::TYPE_SYNCED)), Return(E_OK)));
+
+    bool parentUploaded = false;
+    int32_t ret = clouddiskrdbStore_->CheckParentUploadStatus("recordId", parentUploaded);
+    EXPECT_EQ(ret, E_OK);
+    // 父目录 DIRTY_TYPE == TYPE_SYNCED，判定已上传，子记录放行
+    EXPECT_EQ(parentUploaded, true);
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest005 End";
+}
+
+/**
+ * @tc.name: CheckParentUploadStatusTest006
+ * @tc.desc: Verify CheckParentUploadStatus when parent directory is not synced (TYPE_NEW),
+ *           considered not uploaded.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskRdbStoreTest, CheckParentUploadStatusTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest006 Start";
+    auto rdb = make_shared<RdbStoreMock>();
+    clouddiskrdbStore_->rdbStore_ = rdb;
+    auto rset1 = make_shared<ResultSetMock>();
+    auto rset2 = make_shared<ResultSetMock>();
+    EXPECT_CALL(*rdb, QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), true))
+        .WillOnce(Return(ByMove(rset1)))
+        .WillOnce(Return(ByMove(rset2)));
+    // 第一次查询返回父目录 cloudId = "parent1"
+    EXPECT_CALL(*rset1, GoToNextRow()).WillOnce(Return(E_OK));
+    EXPECT_CALL(*rset1, GetColumnIndex(_, _)).WillRepeatedly(DoAll(SetArgReferee<1>(0), Return(E_OK)));
+    EXPECT_CALL(*rset1, GetString(_, _)).WillRepeatedly(DoAll(SetArgReferee<1>("parent1"), Return(E_OK)));
+    // 第二次查询返回父目录 DIRTY_TYPE = TYPE_NEW（未上传）
+    EXPECT_CALL(*rset2, GoToNextRow()).WillOnce(Return(E_OK));
+    EXPECT_CALL(*rset2, GetColumnIndex(_, _)).WillRepeatedly(DoAll(SetArgReferee<1>(0), Return(E_OK)));
+    EXPECT_CALL(*rset2, GetInt(_, _))
+        .WillRepeatedly(DoAll(SetArgReferee<1>(static_cast<int32_t>(DirtyType::TYPE_NEW)), Return(E_OK)));
+
+    bool parentUploaded = false;
+    int32_t ret = clouddiskrdbStore_->CheckParentUploadStatus("recordId", parentUploaded);
+    EXPECT_EQ(ret, E_OK);
+    // 父目录尚未上传，子记录应被保序拦截
+    EXPECT_EQ(parentUploaded, false);
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest006 End";
+}
+
+/**
+ * @tc.name: CheckParentUploadStatusTest007
+ * @tc.desc: Verify CheckParentUploadStatus when GetDirtyType query fails, returns error code.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskRdbStoreTest, CheckParentUploadStatusTest007, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest007 Start";
+    auto rdb = make_shared<RdbStoreMock>();
+    clouddiskrdbStore_->rdbStore_ = rdb;
+    auto rset1 = make_shared<ResultSetMock>();
+    // 第二次查询（GetDirtyType）返回 nullptr，父目录状态查询失败
+    EXPECT_CALL(*rdb, QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), true))
+        .WillOnce(Return(ByMove(rset1)))
+        .WillOnce(Return(nullptr));
+    EXPECT_CALL(*rset1, GoToNextRow()).WillOnce(Return(E_OK));
+    EXPECT_CALL(*rset1, GetColumnIndex(_, _)).WillRepeatedly(DoAll(SetArgReferee<1>(0), Return(E_OK)));
+    EXPECT_CALL(*rset1, GetString(_, _)).WillRepeatedly(DoAll(SetArgReferee<1>("parent1"), Return(E_OK)));
+
+    bool parentUploaded = false;
+    int32_t ret = clouddiskrdbStore_->CheckParentUploadStatus("recordId", parentUploaded);
+    EXPECT_EQ(ret, E_RDB);
+    // 状态查询失败时返回错误码，调用方因 checkRet != E_OK 不会跳过记录（保守放行）
+    EXPECT_EQ(parentUploaded, false);
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest007 End";
+}
+
+/**
+ * @tc.name: CheckParentUploadStatusTest008
+ * @tc.desc: Verify CheckParentUploadStatus when first query returns null, returns E_RDB.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskRdbStoreTest, CheckParentUploadStatusTest008, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest008 Start";
+    auto rdb = make_shared<RdbStoreMock>();
+    clouddiskrdbStore_->rdbStore_ = rdb;
+    EXPECT_CALL(*rdb, QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), true))
+        .WillOnce(Return(nullptr));
+
+    bool parentUploaded = true;
+    int32_t ret = clouddiskrdbStore_->CheckParentUploadStatus("recordId", parentUploaded);
+    EXPECT_EQ(ret, E_RDB);
+    // 输出参数在任何错误路径下都应为确定值 false（入口统一初始化）
+    EXPECT_EQ(parentUploaded, false);
+    GTEST_LOG_(INFO) << "CheckParentUploadStatusTest008 End";
+}
+
+/**
+ * @tc.name: OnParentUploadCompleteTest001
+ * @tc.desc: Verify OnParentUploadComplete when rdbStore_ is nullptr, returns safely.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskRdbStoreTest, OnParentUploadCompleteTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "OnParentUploadCompleteTest001 Start";
+    // RDBPTR_IS_NULLPTR 宏内嵌 return E_RDB 不适用于 void 函数，此处验证手写的空指针保护
+    clouddiskrdbStore_->rdbStore_ = nullptr;
+    clouddiskrdbStore_->OnParentUploadComplete("parent1");
+    EXPECT_TRUE(true); // 走到空指针保护直接返回，不崩溃
+    GTEST_LOG_(INFO) << "OnParentUploadCompleteTest001 End";
+}
+
+/**
+ * @tc.name: OnParentUploadCompleteTest002
+ * @tc.desc: Verify OnParentUploadComplete when query returns null, returns safely.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskRdbStoreTest, OnParentUploadCompleteTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "OnParentUploadCompleteTest002 Start";
+    auto rdb = make_shared<RdbStoreMock>();
+    clouddiskrdbStore_->rdbStore_ = rdb;
+    EXPECT_CALL(*rdb, QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), true))
+        .WillOnce(Return(nullptr));
+    clouddiskrdbStore_->OnParentUploadComplete("parent1");
+    EXPECT_TRUE(true); // 查询失败直接返回，不崩溃
+    GTEST_LOG_(INFO) << "OnParentUploadCompleteTest002 End";
+}
+
+/**
+ * @tc.name: OnParentUploadCompleteTest003
+ * @tc.desc: Verify OnParentUploadComplete when no pending child, should not trigger sync.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskRdbStoreTest, OnParentUploadCompleteTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "OnParentUploadCompleteTest003 Start";
+    auto &helper = CloudDiskSyncHelper::GetInstance();
+    helper.UnregisterRepeatingTriggerSync(BUNDLE_NAME, USER_ID); // 清理可能残留的触发注册
+    auto rdb = make_shared<RdbStoreMock>();
+    clouddiskrdbStore_->rdbStore_ = rdb;
+    auto rset = make_shared<ResultSetMock>();
+    EXPECT_CALL(*rdb, QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), true))
+        .WillOnce(Return(ByMove(rset)));
+    // 无待上传子记录：GoToNextRow 首次即非 E_OK
+    EXPECT_CALL(*rset, GoToNextRow()).WillOnce(Return(E_RDB));
+
+    clouddiskrdbStore_->OnParentUploadComplete("parent1");
+    // 子记录全部已上传/已删除，不应触发 RegisterTriggerSync
+    EXPECT_EQ(helper.triggerInfoMap_.count(to_string(USER_ID) + BUNDLE_NAME), 0u);
+    GTEST_LOG_(INFO) << "OnParentUploadCompleteTest003 End";
+}
+
+/**
+ * @tc.name: OnParentUploadCompleteTest004
+ * @tc.desc: Verify OnParentUploadComplete when pending child exists, should trigger sync.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskRdbStoreTest, OnParentUploadCompleteTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "OnParentUploadCompleteTest004 Start";
+    auto &helper = CloudDiskSyncHelper::GetInstance();
+    helper.UnregisterRepeatingTriggerSync(BUNDLE_NAME, USER_ID); // 清理可能残留的触发注册
+    auto rdb = make_shared<RdbStoreMock>();
+    clouddiskrdbStore_->rdbStore_ = rdb;
+    auto rset = make_shared<ResultSetMock>();
+    EXPECT_CALL(*rdb, QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), true))
+        .WillOnce(Return(ByMove(rset)));
+    // 查到 1 个待上传子记录后结束遍历（仅计数，不再读取列内容）
+    EXPECT_CALL(*rset, GoToNextRow())
+        .WillOnce(Return(E_OK))
+        .WillOnce(Return(E_RDB));
+
+    clouddiskrdbStore_->OnParentUploadComplete("parent1");
+    // 存在待上传子记录，应注册定时触发，下一轮自动补传
+    EXPECT_GT(helper.triggerInfoMap_.count(to_string(USER_ID) + BUNDLE_NAME), 0u);
+    helper.UnregisterRepeatingTriggerSync(BUNDLE_NAME, USER_ID); // 清理本次注册，避免影响其他用例
+    GTEST_LOG_(INFO) << "OnParentUploadCompleteTest004 End";
+}
 } // namespace OHOS::FileManagement::CloudDisk::Test
