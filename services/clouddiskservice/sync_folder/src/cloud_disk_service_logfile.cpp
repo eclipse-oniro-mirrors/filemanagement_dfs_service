@@ -265,7 +265,7 @@ int32_t CloudDiskServiceLogFile::GenerateLogBlock(const struct EventInfo &eventI
     }
     WriteLogFile(logBlock);
     line = logBlock.line;
-    LOGD("Generate log line:%{public}llu, operationType:%{public}d", line, logBlock.operationType);
+    LOGD("[Generate log line:%{public}" PRIu64 "], operationType:%{public}d", line, logBlock.operationType);
     return E_OK;
 }
 
@@ -419,7 +419,7 @@ int32_t CloudDiskServiceLogFile::ProduceLog(const struct EventInfo &eventInfo)
 int32_t CloudDiskServiceLogFile::PraseLog(const uint64_t line, ChangeData &data, bool &isEof)
     __attribute__((no_sanitize("unsigned-integer-overflow")))
 {
-    LOGD("prase line:%{public}llu, currentline:%{public}llu", line, currentLine_.load());
+    LOGD("[prase line:%{public}" PRIu64 "], currentline:%{public}" PRIu64, line, currentLine_.load());
     if (line == currentLine_.load()) {
         isEof = true;
         return E_OK;
