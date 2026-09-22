@@ -17,8 +17,10 @@
       # Decompress API
       *OHOS::FileManagement::Decompress::CreateInnerFile*;
       *OHOS::FileManagement::Decompress::CheckBundleSupported*;
-      *OHOS::FileManagement::Decompress::CheckModuleApiVersionSupported*;
       *OHOS::FileManagement::Decompress::GetSystemFeature*;
+      *OHOS::FileManagement::Decompress::BundelInstallFinished*;
+      *OHOS::FileManagement::Decompress::DecompressGainsReporter*;
+      *OHOS::FileManagement::Decompress::DecompressFaultReporter*;
     };
 
   local:

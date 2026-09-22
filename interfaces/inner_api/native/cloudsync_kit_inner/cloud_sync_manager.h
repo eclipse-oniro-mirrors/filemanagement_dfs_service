@@ -258,6 +258,8 @@ public:
     virtual int32_t GetDecompressUnsupportedList(std::vector<std::string> &unsupportedList) = 0;
 
     virtual int32_t GetDecompressSystemFeature(bool &systemFeature) = 0;
+
+    virtual int32_t GetDecompressCrossFsConfig(bool &crossFsConfig) = 0;
 };
 } // namespace OHOS::FileManagement::CloudSync
 

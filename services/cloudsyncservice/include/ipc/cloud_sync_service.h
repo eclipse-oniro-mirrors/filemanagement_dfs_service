@@ -145,6 +145,7 @@ public:
     ErrCode ResumeUpload(const std::string &uri) override;
     ErrCode GetDecompressUnsupportedList(std::vector<std::string> &unsupportedList) override;
     ErrCode GetDecompressSystemFeature(bool &systemFeature) override;
+    ErrCode GetDecompressCrossFsConfig(bool &crossFsConfig) override;
 private:
     std::string GetHmdfsPath(const std::string &uri, int32_t userId);
     void OnStart(const SystemAbilityOnDemandReason &startReason) override;

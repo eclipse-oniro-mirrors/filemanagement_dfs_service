@@ -569,6 +569,7 @@ ohos_shared_library("libdecompress") {
 
   sources = [
     "decompress/src/decompress.cpp",
+    "decompress/src/decompress_gains_reporter.cpp",
   ]
 
   public_configs = [ ":decompress_public_config" ]

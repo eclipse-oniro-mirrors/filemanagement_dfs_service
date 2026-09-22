@@ -862,3 +862,386 @@ HWTEST_F(DecompressConfigManagerTest, GetUnsupportedList_TruncateAtMax_001, Test
     unlink(filePath.c_str());
     GTEST_LOG_(INFO) << "GetUnsupportedList_TruncateAtMax_001 end";
 }
+
+/**
+ * @tc.name: GetCrossFsConfig_001
+ * @tc.desc: Test GetCrossFsConfig when file exists with true value
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_001 begin";
+    std::string filePath = TEST_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+    std::ofstream file(filePath);
+    ASSERT_TRUE(file.is_open());
+
+    nlohmann::json jsonObj;
+    jsonObj["crossFsConfig"] = true;
+    file << jsonObj.dump();
+    file.close();
+
+    auto& manager = DecompressConfigManager::GetInstance();
+    bool crossFsConfig = manager.GetCrossFsConfig();
+
+    EXPECT_TRUE(crossFsConfig);
+
+    unlink(filePath.c_str());
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_001 end";
+}
+
+/**
+ * @tc.name: GetCrossFsConfig_002
+ * @tc.desc: Test GetCrossFsConfig when file exists with false value
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_002 begin";
+    std::string filePath = TEST_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+    std::ofstream file(filePath);
+    ASSERT_TRUE(file.is_open());
+
+    nlohmann::json jsonObj;
+    jsonObj["crossFsConfig"] = false;
+    file << jsonObj.dump();
+    file.close();
+
+    auto& manager = DecompressConfigManager::GetInstance();
+    bool crossFsConfig = manager.GetCrossFsConfig();
+
+    EXPECT_FALSE(crossFsConfig);
+
+    unlink(filePath.c_str());
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_002 end";
+}
+
+/**
+ * @tc.name: GetCrossFsConfig_003
+ * @tc.desc: Test GetCrossFsConfig when file not exists
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_003 begin";
+    auto& manager = DecompressConfigManager::GetInstance();
+    bool crossFsConfig = manager.GetCrossFsConfig();
+
+    EXPECT_FALSE(crossFsConfig);
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_003 end";
+}
+
+/**
+ * @tc.name: GetCrossFsConfig_004
+ * @tc.desc: Test GetCrossFsConfig when file has invalid format
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_004 begin";
+    std::string filePath = TEST_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+    std::ofstream file(filePath);
+    ASSERT_TRUE(file.is_open());
+
+    file << "{invalid json format}";
+    file.close();
+
+    auto& manager = DecompressConfigManager::GetInstance();
+    bool crossFsConfig = manager.GetCrossFsConfig();
+
+    EXPECT_FALSE(crossFsConfig);
+
+    unlink(filePath.c_str());
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_004 end";
+}
+
+/**
+ * @tc.name: GetCrossFsConfig_005
+ * @tc.desc: Test GetCrossFsConfig when file missing crossFsConfig field
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_005 begin";
+    std::string filePath = TEST_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+    std::ofstream file(filePath);
+    ASSERT_TRUE(file.is_open());
+
+    nlohmann::json jsonObj;
+    jsonObj["unsupportedList"] = nlohmann::json::array();
+    file << jsonObj.dump();
+    file.close();
+
+    auto& manager = DecompressConfigManager::GetInstance();
+    bool crossFsConfig = manager.GetCrossFsConfig();
+
+    EXPECT_FALSE(crossFsConfig);
+
+    unlink(filePath.c_str());
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_005 end";
+}
+
+/**
+ * @tc.name: GetCrossFsConfig_006
+ * @tc.desc: Test GetCrossFsConfig when crossFsConfig is not a boolean
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_006 begin";
+    std::string filePath = TEST_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+    std::ofstream file(filePath);
+    ASSERT_TRUE(file.is_open());
+
+    nlohmann::json jsonObj;
+    jsonObj["crossFsConfig"] = "not_a_boolean";
+    file << jsonObj.dump();
+    file.close();
+
+    auto& manager = DecompressConfigManager::GetInstance();
+    bool crossFsConfig = manager.GetCrossFsConfig();
+
+    EXPECT_FALSE(crossFsConfig);
+
+    unlink(filePath.c_str());
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_006 end";
+}
+
+/**
+ * @tc.name: GetCrossFsConfig_DefaultPriority_001
+ * @tc.desc: Both default and system config exist; default takes priority
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_DefaultPriority_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_DefaultPriority_001 begin";
+    auto& manager = DecompressConfigManager::GetInstance();
+
+    nlohmann::json sysJson;
+    sysJson["crossFsConfig"] = false;
+    std::string sysFile = TEST_SYS_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+    std::ofstream sysOfs(sysFile);
+    ASSERT_TRUE(sysOfs.is_open());
+    sysOfs << sysJson.dump();
+    sysOfs.close();
+
+    nlohmann::json defJson;
+    defJson["crossFsConfig"] = true;
+    std::string defFile = TEST_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+    std::ofstream defOfs(defFile);
+    ASSERT_TRUE(defOfs.is_open());
+    defOfs << defJson.dump();
+    defOfs.close();
+
+    EXPECT_TRUE(manager.GetCrossFsConfig());
+
+    unlink(defFile.c_str());
+    unlink(sysFile.c_str());
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_DefaultPriority_001 end";
+}
+
+/**
+ * @tc.name: GetCrossFsConfig_FallbackToSys_001
+ * @tc.desc: Default config missing; falls back to system config
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_FallbackToSys_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_FallbackToSys_001 begin";
+    auto& manager = DecompressConfigManager::GetInstance();
+
+    nlohmann::json sysJson;
+    sysJson["crossFsConfig"] = true;
+    std::string sysFile = TEST_SYS_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+    std::ofstream sysOfs(sysFile);
+    ASSERT_TRUE(sysOfs.is_open());
+    sysOfs << sysJson.dump();
+    sysOfs.close();
+
+    EXPECT_TRUE(manager.GetCrossFsConfig());
+
+    unlink(sysFile.c_str());
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_FallbackToSys_001 end";
+}
+
+/**
+ * @tc.name: GetCrossFsConfig_DefaultParseFailFallsBack_001
+ * @tc.desc: Default config has invalid JSON; falls back to system config
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_DefaultParseFailFallsBack_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_DefaultParseFailFallsBack_001 begin";
+    auto& manager = DecompressConfigManager::GetInstance();
+
+    std::string defFile = TEST_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+    std::ofstream defOfs(defFile);
+    ASSERT_TRUE(defOfs.is_open());
+    defOfs << "{invalid json}";
+    defOfs.close();
+
+    nlohmann::json sysJson;
+    sysJson["crossFsConfig"] = true;
+    std::string sysFile = TEST_SYS_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+    std::ofstream sysOfs(sysFile);
+    ASSERT_TRUE(sysOfs.is_open());
+    sysOfs << sysJson.dump();
+    sysOfs.close();
+
+    EXPECT_TRUE(manager.GetCrossFsConfig());
+
+    unlink(defFile.c_str());
+    unlink(sysFile.c_str());
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_DefaultParseFailFallsBack_001 end";
+}
+
+/**
+ * @tc.name: GetCrossFsConfig_BothMissing_001
+ * @tc.desc: Neither default nor system config exists; returns false
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_BothMissing_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_BothMissing_001 begin";
+    auto& manager = DecompressConfigManager::GetInstance();
+    EXPECT_FALSE(manager.GetCrossFsConfig());
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_BothMissing_001 end";
+}
+
+/**
+ * @tc.name: GetCrossFsConfig_DynamicUpdate_001
+ * @tc.desc: Test config file update is reflected immediately
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_DynamicUpdate_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_DynamicUpdate_001 begin";
+    std::string filePath = TEST_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+
+    auto& manager = DecompressConfigManager::GetInstance();
+
+    std::ofstream file1(filePath);
+    ASSERT_TRUE(file1.is_open());
+    nlohmann::json jsonObj1;
+    jsonObj1["crossFsConfig"] = true;
+    file1 << jsonObj1.dump();
+    file1.close();
+
+    EXPECT_TRUE(manager.GetCrossFsConfig());
+
+    std::ofstream file2(filePath);
+    ASSERT_TRUE(file2.is_open());
+    nlohmann::json jsonObj2;
+    jsonObj2["crossFsConfig"] = false;
+    file2 << jsonObj2.dump();
+    file2.close();
+
+    EXPECT_FALSE(manager.GetCrossFsConfig());
+
+    unlink(filePath.c_str());
+    GTEST_LOG_(INFO) << "GetCrossFsConfig_DynamicUpdate_001 end";
+}
+
+/**
+ * @tc.name: ParseCrossFsConfig_001
+ * @tc.desc: Test ParseCrossFsConfig with truncated JSON
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, ParseCrossFsConfig_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ParseCrossFsConfig_001 begin";
+    std::string filePath = TEST_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+    std::ofstream file(filePath);
+    ASSERT_TRUE(file.is_open());
+
+    file << "{\"crossFsConfig\":}";
+    file.close();
+
+    auto& manager = DecompressConfigManager::GetInstance();
+    bool crossFsConfig = manager.GetCrossFsConfig();
+
+    EXPECT_FALSE(crossFsConfig);
+
+    unlink(filePath.c_str());
+    GTEST_LOG_(INFO) << "ParseCrossFsConfig_001 end";
+}
+
+/**
+ * @tc.name: CombinedConfig_003
+ * @tc.desc: Test unsupportedList, systemFeature and crossFsConfig read from same file
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, CombinedConfig_003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CombinedConfig_003 begin";
+    std::string filePath = TEST_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+    std::ofstream file(filePath);
+    ASSERT_TRUE(file.is_open());
+
+    nlohmann::json jsonObj;
+    jsonObj["unsupportedList"] = {"com.test.app1", "com.test.app2"};
+    jsonObj["systemFeature"] = true;
+    jsonObj["crossFsConfig"] = true;
+    file << jsonObj.dump();
+    file.close();
+
+    auto& manager = DecompressConfigManager::GetInstance();
+    std::vector<std::string> unsupportedList = manager.GetUnsupportedList();
+    bool systemFeature = manager.GetSystemFeature();
+    bool crossFsConfig = manager.GetCrossFsConfig();
+
+    EXPECT_EQ(unsupportedList.size(), 2);
+    EXPECT_EQ(unsupportedList[0], "com.test.app1");
+    EXPECT_EQ(unsupportedList[1], "com.test.app2");
+    EXPECT_TRUE(systemFeature);
+    EXPECT_TRUE(crossFsConfig);
+
+    unlink(filePath.c_str());
+    GTEST_LOG_(INFO) << "CombinedConfig_003 end";
+}
+
+/**
+ * @tc.name: CombinedConfig_004
+ * @tc.desc: Test all three config fields with false values
+ * @tc.type: FUNC
+ * @tc.require: I5NJ2K
+ */
+HWTEST_F(DecompressConfigManagerTest, CombinedConfig_004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CombinedConfig_004 begin";
+    std::string filePath = TEST_CONFIG_DIR + "/" + FAKE_DECOMPRESSION_FILE;
+    std::ofstream file(filePath);
+    ASSERT_TRUE(file.is_open());
+
+    nlohmann::json jsonObj;
+    jsonObj["unsupportedList"] = {"com.test.app3"};
+    jsonObj["systemFeature"] = false;
+    jsonObj["crossFsConfig"] = false;
+    file << jsonObj.dump();
+    file.close();
+
+    auto& manager = DecompressConfigManager::GetInstance();
+    std::vector<std::string> unsupportedList = manager.GetUnsupportedList();
+    bool systemFeature = manager.GetSystemFeature();
+    bool crossFsConfig = manager.GetCrossFsConfig();
+
+    EXPECT_EQ(unsupportedList.size(), 1);
+    EXPECT_EQ(unsupportedList[0], "com.test.app3");
+    EXPECT_FALSE(systemFeature);
+    EXPECT_FALSE(crossFsConfig);
+
+    unlink(filePath.c_str());
+    GTEST_LOG_(INFO) << "CombinedConfig_004 end";
+}

@@ -1154,6 +1154,17 @@ ErrCode CloudSyncService::GetDecompressSystemFeature(bool &systemFeature)
     return E_OK;
 }
 
+ErrCode CloudSyncService::GetDecompressCrossFsConfig(bool &crossFsConfig)
+{
+    LOGD("Begin GetDecompressCrossFsConfig");
+    
+    auto &manager = DecompressConfigManager::GetInstance();
+    crossFsConfig = manager.GetCrossFsConfig();
+    
+    LOGD("End GetDecompressCrossFsConfig, crossFsConfig: %{public}s", crossFsConfig ? "true" : "false");
+    return E_OK;
+}
+
 int32_t CloudSyncService::StartDownloadFile(const std::string &uri,
                                             const sptr<IRemoteObject> &downloadCallback,
                                             int64_t &downloadId)

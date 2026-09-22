@@ -646,6 +646,20 @@ int32_t CloudSyncManagerImpl::GetDecompressSystemFeature(bool &systemFeature)
     return ret;
 }
 
+int32_t CloudSyncManagerImpl::GetDecompressCrossFsConfig(bool &crossFsConfig)
+{
+    LOGI("GetDecompressCrossFsConfig start");
+    auto CloudSyncServiceProxy = ServiceProxy::GetInstance("GetDecompressCrossFsConfig");
+    if (!CloudSyncServiceProxy) {
+        LOGE("proxy is null");
+        return E_SA_LOAD_FAILED;
+    }
+    int32_t ret = CloudSyncServiceProxy->GetDecompressCrossFsConfig(crossFsConfig);
+    LOGI("GetDecompressCrossFsConfig end, ret %{public}d, feature %{public}s",
+        ret, crossFsConfig ? "true" : "false");
+    return ret;
+}
+
 int32_t CloudSyncManagerImpl::StopDownloadFile(int64_t downloadId, bool needClean)
 {
     LOGI("StopDownloadFile start");

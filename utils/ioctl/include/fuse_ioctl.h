@@ -16,6 +16,7 @@
 #ifndef FUSE_IOCTL_H
 #define FUSE_IOCTL_H
 
+#include <cstdint>
 #include <sys/ioctl.h>
 
 namespace OHOS {
@@ -39,7 +40,38 @@ static const unsigned int HMDFS_DAEMON_IOC_MASK = 0x80;
 #define HMDFS_IOC_CLEAN_CACHE_DAEMON _IO(HMDFS_IOC, HMDFS_DAEMON_IOC_MASK + 0x01)
 #define HMDFS_IOC_SET_KEEP_CACHE _IOW(HMDFS_IOC, HMDFS_DAEMON_IOC_MASK + 0x02, int32_t)
 
-#define HMFS_IOC_PDEDLUP_CREATE _IOW(HMFS_IOCTL_MAGIC, HMFS_DEDUP_IOC_BASE + 8, struct HmfsPdedupCreate)
+/* HMFS pdedup (pyysical dedup / no-decompress) ioctl interface */
+struct hmfs_pdedup_extent {
+    uint64_t outer_off; /* offset in outer file */
+    uint64_t inner_off; /* offset in inner file */
+    uint64_t len;       /* map len */
+} __attribute__((packed));
+
+#define HMFS_PDEDUP_NAME_MAX 256
+struct hmfs_pdedup_create_arg_common {
+    int32_t version;                 /* pdedup version*/
+    int32_t inner_fd;                /* fd of inner file*/
+    uint64_t file_size;              /* expected size of outer file*/
+    uint32_t nr_extents;             /* extents num */
+    int32_t mode;                    /* expected mode of outher file */
+    char name[HMFS_PDEDUP_NAME_MAX];  /* expected name of outer file */
+};
+
+struct hmfs_pdedup_create_arg_v1 {
+    struct hmfs_pdedup_create_arg_common common;
+    struct hmfs_pdedup_extent extents[]; /* map extends */
+};
+
+#define HMFS_PDEDUP_CREATE_FLAG_BUILD_HASH 0x1
+#define HMFS_PDEDUP_CREATE_RESERVED_NUM 64
+struct hmfs_pdedup_create_arg_v2 {
+    struct hmfs_pdedup_create_arg_common common;
+    uint64_t flags;
+    uint64_t reserved[HMFS_PDEDUP_CREATE_RESERVED_NUM];
+    struct hmfs_pdedup_extent extents[]; /* map extends */
+};
+
+#define HMFS_IOC_PDEDLUP_CREATE _IOW(HMFS_IOCTL_MAGIC, HMFS_DEDUP_IOC_BASE + 8, struct hmfs_pdedup_create_arg_v1)
 
 } // namespace CloudFile
 } // namespace FileManagement

@@ -111,6 +111,7 @@ public:
     MOCK_METHOD1(GetCachedTotalSize, int32_t(int64_t &totalSize));
     MOCK_METHOD1(GetDecompressUnsupportedList, int32_t(std::vector<std::string> &unsupportedList));
     MOCK_METHOD1(GetDecompressSystemFeature, int32_t(bool &systemFeature));
+    MOCK_METHOD1(GetDecompressCrossFsConfig, int32_t(bool &crossFsConfig));
 };
 } // namespace OHOS::FileManagement::CloudSync
 #endif // OHOS_FILEMGMT_CLOUD_SYNC_MANAGER_MOCK
