@@ -13,7 +13,9 @@
  * limitations under the License.
  */
 
+#include <future>
 #include <gtest/gtest.h>
+#include <thread>
 
 #include "battersrvclient_mock.h"
 #include "cloud_file_kit.h"
@@ -70,6 +72,16 @@ public:
                 const std::string &bundleName, std::map<std::string, std::string> &param));
     MOCK_METHOD2(GetCloudAssetsDownloader, std::shared_ptr<CloudAssetsDownloader>(const int32_t userId,
                 const std::string &bundleName));
+    MOCK_METHOD4(ResolveNotificationEvent, int32_t(const int32_t userId,
+                const std::string &extraData, std::string &appBundleName, std::string &prepareTraceId));
+};
+
+class NotifyEventDataSyncManagerMock : public CloudFile::DataSyncManager {
+public:
+    MOCK_METHOD(int32_t, ResetCursor, (const std::string &bundleName, const int32_t &userId, bool flag), (override));
+    MOCK_METHOD(int32_t, TriggerStartSync,
+                (const std::string &bundleName, int32_t userId, bool forceFlag,
+                 SyncTriggerType triggerType, std::string prepareTraceId), (override));
 };
 
 class CloudSyncServiceTest : public testing::Test {
@@ -1472,8 +1484,7 @@ HWTEST_F(CloudSyncServiceTest, OnAddSystemAbilityTest002, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "OnAddSystemAbilityTest002 start";
     try {
-        int32_t MEMORY_MANAGER_SA_ID = 1909;
-        int32_t systemAbilityId = MEMORY_MANAGER_SA_ID;
+        int32_t systemAbilityId = 1909;
         std::string deviceId = "";
         EXPECT_CALL(*saMgrClient_, GetSystemAbilityManager()).WillRepeatedly(Return(nullptr));
         servicePtr_->OnAddSystemAbility(systemAbilityId, deviceId);
@@ -3338,6 +3349,202 @@ HWTEST_F(CloudSyncServiceTest, ResumeUploadTest003, TestSize.Level1)
         GTEST_LOG_(INFO) << "ResumeUploadTest003 failed";
     }
     GTEST_LOG_(INFO) << "ResumeUploadTest003 end";
+}
+/**
+ * @tc.name: NotifyEventChangeTest001
+ * @tc.desc: Verify the NotifyEventChange function with permission denied.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, NotifyEventChangeTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest001 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        int32_t userId = 100;
+        std::string eventId = "test_event";
+        std::string extraData = "{}";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(false));
+        auto ret = servicePtr_->NotifyEventChange(userId, eventId, extraData);
+        EXPECT_EQ(ret, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_FALSE(true);
+        GTEST_LOG_(INFO) << "NotifyEventChangeTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest001 end";
+}
+
+/**
+ * @tc.name: NotifyEventChangeTest002
+ * @tc.desc: Verify the NotifyEventChange function when caller is not system app.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, NotifyEventChangeTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest002 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        int32_t userId = 100;
+        std::string eventId = "test_event";
+        std::string extraData = "{}";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(false));
+        auto ret = servicePtr_->NotifyEventChange(userId, eventId, extraData);
+        EXPECT_EQ(ret, E_PERMISSION_SYSTEM);
+    } catch (...) {
+        EXPECT_FALSE(true);
+        GTEST_LOG_(INFO) << "NotifyEventChangeTest002 failed";
+    }
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest002 end";
+}
+
+/**
+ * @tc.name: NotifyEventChangeTest003
+ * @tc.desc: Verify the NotifyEventChange function when CloudFileKit instance is nullptr.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, NotifyEventChangeTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest003 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        int32_t userId = 100;
+        std::string eventId = "test_event";
+        std::string extraData = "{}";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        CloudFile::CloudFileKit *savedInstance = CloudFile::CloudFileKit::instance_;
+        CloudFile::CloudFileKit::instance_ = nullptr;
+        auto ret = servicePtr_->NotifyEventChange(userId, eventId, extraData);
+        EXPECT_EQ(ret, E_NULLPTR);
+        CloudFile::CloudFileKit::instance_ = savedInstance;
+    } catch (...) {
+        EXPECT_FALSE(true);
+        GTEST_LOG_(INFO) << "NotifyEventChangeTest003 failed";
+    }
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest003 end";
+}
+
+/**
+ * @tc.name: NotifyEventChangeTest004
+ * @tc.desc: Verify the NotifyEventChange function when ResolveNotificationEvent fails.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, NotifyEventChangeTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest004 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        int32_t userId = 100;
+        std::string eventId = "test_event";
+        std::string extraData = "{}";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        auto cloudFileKitMock = new (nothrow) CloudFileKitMock();
+        CloudFile::CloudFileKit::instance_ = cloudFileKitMock;
+        EXPECT_CALL(*cloudFileKitMock, ResolveNotificationEvent(_, _, _, _)).WillOnce(Return(E_INVAL_ARG));
+        auto ret = servicePtr_->NotifyEventChange(userId, eventId, extraData);
+        EXPECT_EQ(ret, E_CLOUD_SDK);
+        delete cloudFileKitMock;
+        CloudFile::CloudFileKit::instance_ = nullptr;
+    } catch (...) {
+        EXPECT_FALSE(true);
+        GTEST_LOG_(INFO) << "NotifyEventChangeTest004 failed";
+    }
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest004 end";
+}
+
+/**
+ * @tc.name: NotifyEventChangeTest005
+ * @tc.desc: Verify the NotifyEventChange function without a reset cursor type.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, NotifyEventChangeTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest005 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        int32_t userId = 100;
+        std::string eventId = "test_event";
+        std::string extraData = "{}";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        auto cloudFileKitMock = new (nothrow) CloudFileKitMock();
+        CloudFile::CloudFileKit::instance_ = cloudFileKitMock;
+        EXPECT_CALL(*cloudFileKitMock, ResolveNotificationEvent(_, _, _, _))
+            .WillOnce(DoAll(SetArgReferee<2>("com.ohos.photos"), SetArgReferee<3>("traceId"), Return(E_OK)));
+        auto ret = servicePtr_->NotifyEventChange(userId, eventId, extraData);
+        EXPECT_EQ(ret, E_OK);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        delete cloudFileKitMock;
+        CloudFile::CloudFileKit::instance_ = nullptr;
+    } catch (...) {
+        EXPECT_FALSE(true);
+        GTEST_LOG_(INFO) << "NotifyEventChangeTest005 failed";
+    }
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest005 end";
+}
+
+/**
+ * @tc.name: NotifyEventChangeTest006
+ * @tc.desc: Verify that extraData type controls cursor reset independently of eventId.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, NotifyEventChangeTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest006 start";
+    struct TestCase {
+        std::string eventId;
+        std::string extraData;
+        bool resetCursor;
+    };
+    const std::vector<TestCase> testCases = {
+        {"test_event", R"({"type":"reset_cursor"})", true},
+        {"test_event", R"({"type":["reset_cursor"]})", false},
+        {"test_event", R"([{"type":"reset_cursor"}])", false},
+        {"test_event", "null", false},
+        {"test_event", "", false},
+        {"test_event", R"({"type":"reset_cursor")", false},
+    };
+    for (const auto &testCase : testCases) {
+        SCOPED_TRACE(testCase.extraData);
+        constexpr int32_t userId = 100;
+        auto dataSyncManager = make_shared<NotifyEventDataSyncManagerMock>();
+        auto service = sptr(new CloudSyncService(SA_ID));
+        service->dataSyncManager_ = dataSyncManager;
+        auto syncDone = make_shared<std::promise<void>>();
+        auto syncFuture = syncDone->get_future();
+
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        CloudFileKitMock cloudFileKitMock;
+        auto savedInstance = CloudFile::CloudFileKit::instance_;
+        CloudFile::CloudFileKit::instance_ = &cloudFileKitMock;
+        EXPECT_CALL(cloudFileKitMock, ResolveNotificationEvent(userId, testCase.extraData, _, _))
+            .WillOnce(DoAll(SetArgReferee<2>("com.ohos.photos"), SetArgReferee<3>("traceId"), Return(E_OK)));
+        Sequence sequence;
+        EXPECT_CALL(*dataSyncManager, ResetCursor(SHARED_ALBUM_BUNDLE_NAME, userId, true))
+            .Times(testCase.resetCursor ? 1 : 0).InSequence(sequence);
+        EXPECT_CALL(*dataSyncManager,
+            TriggerStartSync("com.ohos.photos", userId, false, SyncTriggerType::CLOUD_TRIGGER, "traceId"))
+            .InSequence(sequence)
+            .WillOnce(Invoke([syncDone]() {
+                syncDone->set_value_at_thread_exit();
+                return E_OK;
+            }));
+
+        auto ret = service->NotifyEventChange(userId, testCase.eventId, testCase.extraData);
+        CloudFile::CloudFileKit::instance_ = savedInstance;
+        EXPECT_EQ(ret, E_OK);
+        ASSERT_EQ(syncFuture.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+        EXPECT_TRUE(Mock::VerifyAndClearExpectations(dataSyncManager.get()));
+    }
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest006 end";
 }
 } // namespace Test
 } // namespace FileManagement::CloudSync
