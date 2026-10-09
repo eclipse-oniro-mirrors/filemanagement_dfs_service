@@ -41,6 +41,7 @@
 #include "mem_mgr_client.h"
 #include "net_conn_callback_observer.h"
 #include "network_status.h"
+#include "nlohmann/json.hpp"
 #include "parameters.h"
 #include "periodic_check_task.h"
 #include "plugin_loader.h"
@@ -980,7 +981,7 @@ int32_t CloudSyncService::NotifyDataChange(const std::string &accoutId, const st
 
 int32_t CloudSyncService::NotifyEventChange(int32_t userId, const std::string &eventId, const std::string &extraData)
 {
-    LOGI("Begin NotifyEventChange");
+    LOGI("Begin NotifyEventChange, eventId: %{public}s, extraData: %{public}s", eventId.c_str(), extraData.c_str());
     RETURN_ON_ERR(CheckPermissions(PERM_CLOUD_SYNC_MANAGER, true));
 
     auto instance = CloudFile::CloudFileKit::GetInstance();
@@ -997,7 +998,14 @@ int32_t CloudSyncService::NotifyEventChange(int32_t userId, const std::string &e
         return E_CLOUD_SDK;
     }
 
-    std::thread([this, appBundleName, userId, prepareTraceId]() {
+    auto extraDataJson = nlohmann::json::parse(extraData, nullptr, false);
+    bool needResetCursor = !extraDataJson.is_discarded() && extraDataJson.contains("type") &&
+        extraDataJson["type"].is_string() && extraDataJson["type"] == "reset_cursor";
+    std::thread([this, appBundleName, userId, prepareTraceId, needResetCursor]() {
+        if (needResetCursor) {
+            LOGI("reset shared album cursor");
+            dataSyncManager_->ResetCursor(SHARED_ALBUM_BUNDLE_NAME, userId, true);
+        }
         dataSyncManager_->TriggerStartSync(appBundleName, userId, false, SyncTriggerType::CLOUD_TRIGGER,
                                            prepareTraceId);
     }).detach();
