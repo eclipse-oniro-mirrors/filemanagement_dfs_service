@@ -62,6 +62,9 @@ using namespace OHOS::Security::AccessToken;
 using ChargeState = PowerMgr::BatteryChargeState;
 using PluggedType = PowerMgr::BatteryPluggedType;
 constexpr int32_t SA_ID = 5204;
+constexpr int32_t NOTIFY_EVENT_SYNC_TIMEOUT_SECONDS = 5;
+constexpr int32_t RESOLVE_EVENT_BUNDLE_NAME_ARG_INDEX = 2;
+constexpr int32_t RESOLVE_EVENT_TRACE_ID_ARG_INDEX = 3;
 
 class CloudFileKitMock : public CloudFile::CloudFileKit {
 public:
@@ -90,6 +93,7 @@ public:
     static void TearDownTestCase(void);
     void SetUp();
     void TearDown();
+    void VerifyNotifyEventCursorReset(const std::string &extraData, bool resetCursor);
     static inline std::shared_ptr<SystemAbilityManagerClientMock> saMgrClient_ = nullptr;
     static inline sptr<ISystemAbilityManagerMock> saMgr_ = nullptr;
     static inline shared_ptr<CloudDiskServiceAccessTokenMock> dfsuAccessToken_ = nullptr;
@@ -3476,7 +3480,8 @@ HWTEST_F(CloudSyncServiceTest, NotifyEventChangeTest005, TestSize.Level1)
         auto cloudFileKitMock = new (nothrow) CloudFileKitMock();
         CloudFile::CloudFileKit::instance_ = cloudFileKitMock;
         EXPECT_CALL(*cloudFileKitMock, ResolveNotificationEvent(_, _, _, _))
-            .WillOnce(DoAll(SetArgReferee<2>("com.ohos.photos"), SetArgReferee<3>("traceId"), Return(E_OK)));
+            .WillOnce(DoAll(SetArgReferee<RESOLVE_EVENT_BUNDLE_NAME_ARG_INDEX>("com.ohos.photos"),
+                SetArgReferee<RESOLVE_EVENT_TRACE_ID_ARG_INDEX>("traceId"), Return(E_OK)));
         auto ret = servicePtr_->NotifyEventChange(userId, eventId, extraData);
         EXPECT_EQ(ret, E_OK);
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -3489,62 +3494,127 @@ HWTEST_F(CloudSyncServiceTest, NotifyEventChangeTest005, TestSize.Level1)
     GTEST_LOG_(INFO) << "NotifyEventChangeTest005 end";
 }
 
+void CloudSyncServiceTest::VerifyNotifyEventCursorReset(const std::string &extraData, bool resetCursor)
+{
+    SCOPED_TRACE(extraData);
+    constexpr int32_t userId = 100;
+    auto dataSyncManager = make_shared<NotifyEventDataSyncManagerMock>();
+    auto service = sptr(new CloudSyncService(SA_ID));
+    service->dataSyncManager_ = dataSyncManager;
+    auto syncDone = make_shared<std::promise<void>>();
+    auto syncFuture = syncDone->get_future();
+
+    EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+    EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+    CloudFileKitMock cloudFileKitMock;
+    auto savedInstance = CloudFile::CloudFileKit::instance_;
+    CloudFile::CloudFileKit::instance_ = &cloudFileKitMock;
+    EXPECT_CALL(cloudFileKitMock, ResolveNotificationEvent(userId, extraData, _, _))
+        .WillOnce(DoAll(SetArgReferee<RESOLVE_EVENT_BUNDLE_NAME_ARG_INDEX>("com.ohos.photos"),
+            SetArgReferee<RESOLVE_EVENT_TRACE_ID_ARG_INDEX>("traceId"), Return(E_OK)));
+    Sequence sequence;
+    EXPECT_CALL(*dataSyncManager, ResetCursor(SHARED_ALBUM_BUNDLE_NAME, userId, true))
+        .Times(resetCursor ? 1 : 0).InSequence(sequence);
+    EXPECT_CALL(*dataSyncManager,
+        TriggerStartSync("com.ohos.photos", userId, false, SyncTriggerType::CLOUD_TRIGGER, "traceId"))
+        .InSequence(sequence)
+        .WillOnce(Invoke([syncDone]() {
+            syncDone->set_value_at_thread_exit();
+            return E_OK;
+        }));
+
+    EXPECT_EQ(service->NotifyEventChange(userId, "test_event", extraData), E_OK);
+    CloudFile::CloudFileKit::instance_ = savedInstance;
+    ASSERT_EQ(syncFuture.wait_for(std::chrono::seconds(NOTIFY_EVENT_SYNC_TIMEOUT_SECONDS)),
+        std::future_status::ready);
+    EXPECT_TRUE(Mock::VerifyAndClearExpectations(dataSyncManager.get()));
+}
+
 /**
  * @tc.name: NotifyEventChangeTest006
- * @tc.desc: Verify that extraData type controls cursor reset independently of eventId.
+ * @tc.desc: Verify cursor reset is controlled by body.type in the extraData data string.
  * @tc.type: FUNC
  * @tc.require: NA
  */
 HWTEST_F(CloudSyncServiceTest, NotifyEventChangeTest006, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "NotifyEventChangeTest006 start";
-    struct TestCase {
-        std::string eventId;
-        std::string extraData;
-        bool resetCursor;
+    const std::vector<std::pair<std::string, bool>> testCases = {
+        {R"({"data":"{\"body\":{\"type\":\"reset_cursor\"}}"})", true},
+        {R"({"header":{"token":"123456"},
+            "data":"{\"userId\":\"100\",\"body\":{\"type\":\"reset_cursor\"}}"})", true},
+        {R"({"data":"{\"body\":{\"type\":\"other\"}}"})", false},
+        {R"({"data":"{\"body\":{\"type\":\"\"}}"})", false},
     };
-    const std::vector<TestCase> testCases = {
-        {"test_event", R"({"type":"reset_cursor"})", true},
-        {"test_event", R"({"type":["reset_cursor"]})", false},
-        {"test_event", R"([{"type":"reset_cursor"}])", false},
-        {"test_event", "null", false},
-        {"test_event", "", false},
-        {"test_event", R"({"type":"reset_cursor")", false},
-    };
-    for (const auto &testCase : testCases) {
-        SCOPED_TRACE(testCase.extraData);
-        constexpr int32_t userId = 100;
-        auto dataSyncManager = make_shared<NotifyEventDataSyncManagerMock>();
-        auto service = sptr(new CloudSyncService(SA_ID));
-        service->dataSyncManager_ = dataSyncManager;
-        auto syncDone = make_shared<std::promise<void>>();
-        auto syncFuture = syncDone->get_future();
-
-        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
-        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
-        CloudFileKitMock cloudFileKitMock;
-        auto savedInstance = CloudFile::CloudFileKit::instance_;
-        CloudFile::CloudFileKit::instance_ = &cloudFileKitMock;
-        EXPECT_CALL(cloudFileKitMock, ResolveNotificationEvent(userId, testCase.extraData, _, _))
-            .WillOnce(DoAll(SetArgReferee<2>("com.ohos.photos"), SetArgReferee<3>("traceId"), Return(E_OK)));
-        Sequence sequence;
-        EXPECT_CALL(*dataSyncManager, ResetCursor(SHARED_ALBUM_BUNDLE_NAME, userId, true))
-            .Times(testCase.resetCursor ? 1 : 0).InSequence(sequence);
-        EXPECT_CALL(*dataSyncManager,
-            TriggerStartSync("com.ohos.photos", userId, false, SyncTriggerType::CLOUD_TRIGGER, "traceId"))
-            .InSequence(sequence)
-            .WillOnce(Invoke([syncDone]() {
-                syncDone->set_value_at_thread_exit();
-                return E_OK;
-            }));
-
-        auto ret = service->NotifyEventChange(userId, testCase.eventId, testCase.extraData);
-        CloudFile::CloudFileKit::instance_ = savedInstance;
-        EXPECT_EQ(ret, E_OK);
-        ASSERT_EQ(syncFuture.wait_for(std::chrono::seconds(5)), std::future_status::ready);
-        EXPECT_TRUE(Mock::VerifyAndClearExpectations(dataSyncManager.get()));
+    for (const auto &[extraData, resetCursor] : testCases) {
+        VerifyNotifyEventCursorReset(extraData, resetCursor);
     }
     GTEST_LOG_(INFO) << "NotifyEventChangeTest006 end";
+}
+
+/**
+ * @tc.name: NotifyEventChangeTest007
+ * @tc.desc: Verify invalid outer JSON, missing data and non-string data do not reset the cursor.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, NotifyEventChangeTest007, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest007 start";
+    const std::vector<std::string> testCases = {
+        "", "invalid json", "null", "[]", "{}",
+        R"({"data":null})", R"({"data":123})", R"({"data":true})", R"({"data":[]})",
+        R"({"data":{"body":{"type":"reset_cursor"}}})",
+    };
+    for (const auto &extraData : testCases) {
+        VerifyNotifyEventCursorReset(extraData, false);
+    }
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest007 end";
+}
+
+/**
+ * @tc.name: NotifyEventChangeTest008
+ * @tc.desc: Verify invalid inner JSON, missing body and non-object body do not reset the cursor.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, NotifyEventChangeTest008, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest008 start";
+    const std::vector<std::string> testCases = {
+        R"({"data":""})", R"({"data":"invalid json"})", R"({"data":"null"})", R"({"data":"[]"})",
+        R"({"data":"{}"})",
+        R"({"data":"{\"body\":null}"})", R"({"data":"{\"body\":[]}"})",
+        R"({"data":"{\"body\":123}"})", R"({"data":"{\"body\":true}"})",
+        R"({"data":"{\"body\":\"reset_cursor\"}"})",
+    };
+    for (const auto &extraData : testCases) {
+        VerifyNotifyEventCursorReset(extraData, false);
+    }
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest008 end";
+}
+
+/**
+ * @tc.name: NotifyEventChangeTest009
+ * @tc.desc: Verify missing type and non-string type do not reset the cursor.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, NotifyEventChangeTest009, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest009 start";
+    const std::vector<std::string> testCases = {
+        R"({"data":"{\"body\":{}}"})",
+        R"({"data":"{\"body\":{\"type\":null}}"})",
+        R"({"data":"{\"body\":{\"type\":123}}"})",
+        R"({"data":"{\"body\":{\"type\":true}}"})",
+        R"({"data":"{\"body\":{\"type\":[\"reset_cursor\"]}}"})",
+        R"({"data":"{\"body\":{\"type\":{\"value\":\"reset_cursor\"}}}"})",
+    };
+    for (const auto &extraData : testCases) {
+        VerifyNotifyEventCursorReset(extraData, false);
+    }
+    GTEST_LOG_(INFO) << "NotifyEventChangeTest009 end";
 }
 } // namespace Test
 } // namespace FileManagement::CloudSync
