@@ -26,29 +26,16 @@
 #include "rdb_errno.h"
 #include "utils_directory.h"
 #include "utils_log.h"
-#include "hisysevent.h"
 #include "meta_file.h"
 
 namespace OHOS {
 namespace FileManagement {
 namespace CloudDisk {
-#ifndef CLOUD_SYNC_SYS_EVENT
-#define CLOUD_SYNC_SYS_EVENT(eventName, type, ...)    \
-    HiSysEventWrite(HiviewDFX::HiSysEvent::Domain::FILEMANAGEMENT, eventName, type, \
-                    ##__VA_ARGS__)
-#endif
 
 using namespace std;
 static const int32_t MAX_FILE_COUNT_PER_DIR = 2;
-static const string FILEMANAGER_BUNDLE_NAME = "com.hmos.filemanager";
-static const int32_t OP_TYPE_INDEX = 1;
-static const int32_t OP_TIME_INDEX = 2;
-static const int32_t FILE_INODE_INDEX = 3;
-static const int32_t FILE_UID_INDEX = 4;
-static const int32_t PROCESS_NAME_INDEX = 5;
-static const int32_t PROCESS_PID_INDEX = 6;
-static const int32_t PROCESS_UID_INDEX = 7;
-static const int32_t CLOUD_ID_INDEX = 8;
+static const int32_t OP_TIME_INDEX = 1;
+static const int32_t PROCESS_NAME_INDEX = 2;
 
 OperationLogHandler& OperationLogHandler::GetInstance()
 {
@@ -465,54 +452,47 @@ bool OperationLogHandler::ReadFileStatFields(NativeRdb::ResultSet &resultSet, co
     if (MetaFile::GetParentDir(entry.filePath) != dir) {
         return false;
     }
-    int32_t opTypeRet = resultSet.GetInt(OP_TYPE_INDEX, entry.opType);
-    if (opTypeRet != E_OK) {
-        return false;
-    }
     int32_t opTimeRet = resultSet.GetLong(OP_TIME_INDEX, entry.opTime);
     if (opTimeRet != E_OK) {
-        return false;
-    }
-    int32_t fileInodeRet = resultSet.GetLong(FILE_INODE_INDEX, entry.fileInode);
-    if (fileInodeRet != E_OK) {
-        return false;
-    }
-    int32_t fileUidRet = resultSet.GetLong(FILE_UID_INDEX, entry.fileUid);
-    if (fileUidRet != E_OK) {
         return false;
     }
     int32_t processNameRet = resultSet.GetString(PROCESS_NAME_INDEX, entry.processName);
     if (processNameRet != E_OK) {
         return false;
     }
-    int32_t processPidRet = resultSet.GetLong(PROCESS_PID_INDEX, entry.processPid);
-    if (processPidRet != E_OK) {
-        return false;
-    }
-    int32_t processUidRet = resultSet.GetLong(PROCESS_UID_INDEX, entry.processUid);
-    if (processUidRet != E_OK) {
-        return false;
-    }
-    int32_t cloudIdRet = resultSet.GetString(CLOUD_ID_INDEX, entry.cloudId);
-    if (cloudIdRet != E_OK) {
-        return false;
-    }
 
     return true;
 }
 
-int32_t OperationLogHandler::ReportFileStats(
-    std::shared_ptr<NativeRdb::RdbStore> rdbStore, const std::string &dir)
+void OperationLogHandler::AppendStatRecord(std::string &operationInfo, const std::string &dirPath,
+    const std::string &fileName, int64_t opTime, const std::string &processName, int32_t fileCount)
+{
+    std::string record = "[";
+    record += GetAnonyStringLocal(dirPath);
+    record += ",";
+    record += fileName.empty() ? fileName : GetAnonyStringLocal(fileName);
+    record += ",";
+    record += std::to_string(opTime);
+    record += ",";
+    record += processName.empty() ? processName : GetAnonyStringLocal(processName);
+    record += ",";
+    record += std::to_string(fileCount);
+    record += "]";
+    if (!operationInfo.empty()) {
+        operationInfo += ",";
+    }
+    operationInfo += record;
+}
+
+int32_t OperationLogHandler::ReportFileStatsToInfo(
+    std::shared_ptr<NativeRdb::RdbStore> rdbStore, const std::string &dir, std::string &operationInfo)
 {
     NativeRdb::AbsRdbPredicates predicates(OperationLogColumn::TABLE_NAME);
     std::string likePattern = dir.empty() ? "/%" : dir + "/%";
     predicates.Like(OperationLogColumn::FILE_PATH, likePattern);
     std::vector<std::string> columns = {
-        OperationLogColumn::FILE_PATH, OperationLogColumn::OP_TYPE,
-        OperationLogColumn::OP_TIME, OperationLogColumn::FILE_INODE,
-        OperationLogColumn::FILE_UID, OperationLogColumn::PROCESS_NAME,
-        OperationLogColumn::PROCESS_PID, OperationLogColumn::PROCESS_UID,
-        OperationLogColumn::CLOUD_ID
+        OperationLogColumn::FILE_PATH, OperationLogColumn::OP_TIME,
+        OperationLogColumn::PROCESS_NAME
     };
     auto resultSet = rdbStore->Query(predicates, columns);
     if (resultSet == nullptr) {
@@ -525,25 +505,18 @@ int32_t OperationLogHandler::ReportFileStats(
         if (!ReadFileStatFields(*resultSet, dir, entry)) {
             continue;
         }
-        int32_t ret = CLOUD_SYNC_SYS_EVENT("CLOUD_DISK_OPERATION_LOG_STAT",
-            HiviewDFX::HiSysEvent::EventType::STATISTIC,
-            "bundle_name", FILEMANAGER_BUNDLE_NAME, "cloud_id", entry.cloudId,
-            "dir_path", GetAnonyStringLocal(dir), "file_count", 1,
-            "file_inode", entry.fileInode, "file_name", GetAnonyStringLocal(MetaFile::GetFileName(entry.filePath)),
-            "file_uid", entry.fileUid, "op_time", entry.opTime, "op_type", entry.opType,
-            "process_name", GetAnonyStringLocal(entry.processName),
-            "process_pid", entry.processPid, "process_uid", entry.processUid);
-        if (ret != E_OK) {
-            LOGE("report file stat failed, ret=%{public}d", ret);
-        }
+        std::string fileName = MetaFile::GetFileName(entry.filePath);
+        LOGI("GetFileName result, dir=%{public}s, fileNameLen=%{public}zu",
+            GetAnonyStringLocal(dir).c_str(), fileName.size());
+        AppendStatRecord(operationInfo, dir, fileName, entry.opTime, entry.processName, 1);
         actualCount++;
     }
     resultSet->Close();
     return actualCount;
 }
  
-int32_t OperationLogHandler::ReportDirStats(
-    std::shared_ptr<NativeRdb::RdbStore> rdbStore, const std::string &dir)
+int32_t OperationLogHandler::ReportDirStatsToInfo(
+    std::shared_ptr<NativeRdb::RdbStore> rdbStore, const std::string &dir, std::string &operationInfo)
 {
     NativeRdb::AbsRdbPredicates predicates(OperationLogColumn::TABLE_NAME);
     std::string likePattern = dir.empty() ? "/%" : dir + "/%";
@@ -572,20 +545,15 @@ int32_t OperationLogHandler::ReportDirStats(
         resultSet->Close();
         return 0;
     }
-    int32_t ret = CLOUD_SYNC_SYS_EVENT("CLOUD_DISK_OPERATION_LOG_STAT",
-        HiviewDFX::HiSysEvent::EventType::STATISTIC,
-        "bundle_name", FILEMANAGER_BUNDLE_NAME,
-        "dir_path", GetAnonyStringLocal(dir), "file_count", fileCount);
-    if (ret != E_OK) {
-        LOGE("report dir stat failed, ret=%{public}d", ret);
-    }
+    AppendStatRecord(operationInfo, dir, "", 0, "", fileCount);
     resultSet->Close();
     return fileCount;
 }
 
-int32_t OperationLogHandler::ReportOperationLogStat()
+int32_t OperationLogHandler::GetOperationLogStatInfo(std::string &operationInfo)
 {
-    LOGI("ReportOperationLogStat starts");
+    LOGI("GetOperationLogStatInfo starts, inputLen=%{public}zu", operationInfo.length());
+    operationInfo.clear();
     auto rdbStore = OperationLogStore::GetInstance().GetRaw();
     if (rdbStore == nullptr) {
         return E_RDB;
@@ -602,29 +570,25 @@ int32_t OperationLogHandler::ReportOperationLogStat()
             paths.push_back(kv.first);
         }
         std::string commonParent = GetCommonParentDir(paths);
-        int32_t ret = CLOUD_SYNC_SYS_EVENT("CLOUD_DISK_OPERATION_LOG_STAT",
-            HiviewDFX::HiSysEvent::EventType::STATISTIC,
-            "bundle_name", FILEMANAGER_BUNDLE_NAME,
-            "dir_path", GetAnonyStringLocal(commonParent), "file_count", totalCount);
-        if (ret != E_OK) {
-            LOGE("report combined dir stat failed, ret=%{public}d", ret);
-        }
+        LOGI("aggregate into common parent dir, dirCount=%{public}zu, totalFileCount=%{public}d",
+            dirCounts.size(), totalCount);
+        AppendStatRecord(operationInfo, commonParent, "", 0, "", totalCount);
         return E_OK;
     }
     for (const auto &kv : dirCounts) {
         int32_t expectedCount = kv.second;
         int32_t actualCount = 0;
         if (expectedCount < MAX_FILE_COUNT_PER_DIR) {
-            actualCount = ReportFileStats(rdbStore, kv.first);
+            actualCount = ReportFileStatsToInfo(rdbStore, kv.first, operationInfo);
         } else {
-            actualCount = ReportDirStats(rdbStore, kv.first);
+            actualCount = ReportDirStatsToInfo(rdbStore, kv.first, operationInfo);
         }
         if (actualCount != expectedCount) {
-            LOGW("ReportOperationLogStat count mismatch, dir=%{public}s, expected=%{public}d + actual=%{public}d",
+            LOGW("GetOperationLogStatInfo count mismatch, dir=%{public}s, expected=%{public}d + actual=%{public}d",
                 GetAnonyStringLocal(kv.first).c_str(), expectedCount, actualCount);
         }
     }
-    LOGI("ReportOperationLogStat done, dirs=%{public}zu", dirCounts.size());
+    LOGI("GetOperationLogStatInfo done, dirs=%{public}zu", dirCounts.size());
     return E_OK;
 }
 } // namespace CloudDisk
