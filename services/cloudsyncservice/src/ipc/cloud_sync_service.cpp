@@ -979,6 +979,28 @@ int32_t CloudSyncService::NotifyDataChange(const std::string &accoutId, const st
     return E_OK;
 }
 
+static bool NeedResetCursor(const std::string &extraData)
+{
+    auto extraDataJson = nlohmann::json::parse(extraData, nullptr, false);
+    if (extraDataJson.is_discarded() || !extraDataJson.contains("data") || !extraDataJson["data"].is_string()) {
+        LOGE("parse extraData failed");
+        return false;
+    }
+
+    auto dataJson = nlohmann::json::parse(extraDataJson["data"].get<std::string>(), nullptr, false);
+    if (dataJson.is_discarded() || !dataJson.contains("body") || !dataJson["body"].is_object()) {
+        LOGE("parse dataJson failed");
+        return false;
+    }
+
+    if (!dataJson["body"].contains("type") || !dataJson["body"]["type"].is_string()) {
+        LOGD("parse body failed");
+        return false;
+    }
+
+    return dataJson["body"]["type"] == "reset_cursor";
+}
+
 int32_t CloudSyncService::NotifyEventChange(int32_t userId, const std::string &eventId, const std::string &extraData)
 {
     LOGI("Begin NotifyEventChange, eventId: %{public}s, extraData: %{public}s", eventId.c_str(), extraData.c_str());
@@ -998,9 +1020,7 @@ int32_t CloudSyncService::NotifyEventChange(int32_t userId, const std::string &e
         return E_CLOUD_SDK;
     }
 
-    auto extraDataJson = nlohmann::json::parse(extraData, nullptr, false);
-    bool needResetCursor = !extraDataJson.is_discarded() && extraDataJson.contains("type") &&
-        extraDataJson["type"].is_string() && extraDataJson["type"] == "reset_cursor";
+    bool needResetCursor = NeedResetCursor(extraData);
     std::thread([this, appBundleName, userId, prepareTraceId, needResetCursor]() {
         if (needResetCursor) {
             LOGI("reset shared album cursor");
