@@ -35,7 +35,7 @@ interface OHOS.FileManagement.CloudSync.ICloudSyncService
     void UnRegisterFileSyncCallbackInner([in] String callbackId, [in] String bundleName);
     void RegisterCallbackInner([in] IRemoteObject remoteObject, [in] String callbackId, [in] String bundleName);
     void RegisterFileSyncCallbackInner([in] IRemoteObject remoteObject, [in] String callbackId, [in] String bundleName);
-    void StartSyncInner([in] boolean forceFlag, [in] String bundleName);
+    void StartSyncInner([in] int type, [in] String bundleName);
     void StartFileSyncInner([in] boolean forceFlag, [in] String bundleName);
     void TriggerSyncInner([in] String bundleName, [in] int userId);
     void StopSyncInner([in] String bundleName, [in] boolean forceFlag);

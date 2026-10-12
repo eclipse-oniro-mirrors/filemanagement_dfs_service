@@ -22,7 +22,7 @@ const int32_t USERID_SECOND_MOCK = 2;
 const int32_t USERID_THIRD_MOCK = 3;
 int32_t DataSyncManager::TriggerStartSync(const std::string &bundleName,
                                           const int32_t userId,
-                                          bool forceFlag,
+                                          SyncMode type,
                                           SyncTriggerType triggerType,
                                           std::string prepareTraceId)
 {

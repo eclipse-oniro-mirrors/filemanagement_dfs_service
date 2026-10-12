@@ -188,7 +188,14 @@ int32_t CloudSyncManagerImpl::UnRegisterFileSyncCallback(const CallbackInfo &cal
 
 int32_t CloudSyncManagerImpl::StartSync(const std::string &bundleName)
 {
+    return StartSync(SyncMode::FORCE, bundleName);
+}
+
+int32_t CloudSyncManagerImpl::StartSync(SyncMode type, const std::string &bundleName)
+{
+    LOGI("StartSync type: %{public}d", type);
     if (!AccountUtils::IsAccountAvailable()) {
+        LOGE("IsAccountAvailable check failed");
         return E_INVAL_ARG;
     }
     auto CloudSyncServiceProxy = ServiceProxy::GetInstance("StartSync001");
@@ -197,7 +204,7 @@ int32_t CloudSyncManagerImpl::StartSync(const std::string &bundleName)
         return E_SA_LOAD_FAILED;
     }
     SetDeathRecipient(CloudSyncServiceProxy->AsObject());
-    return CloudSyncServiceProxy->StartSyncInner(true, bundleName);
+    return CloudSyncServiceProxy->StartSyncInner(static_cast<int32_t>(type), bundleName);
 }
 
 int32_t CloudSyncManagerImpl::StartFileSync(const std::string &bundleName)
@@ -304,7 +311,8 @@ int32_t CloudSyncManagerImpl::StartSync(bool forceFlag, const std::shared_ptr<Cl
         SetDeathRecipient(CloudSyncServiceProxy->AsObject());
     }
 
-    auto ret = CloudSyncServiceProxy->StartSyncInner(forceFlag, "");
+    auto type = forceFlag ? SyncMode::FORCE : SyncMode::NORMAL;
+    auto ret = CloudSyncServiceProxy->StartSyncInner(static_cast<int32_t>(type), "");
     SetStartSyncPending();
     return ret;
 }

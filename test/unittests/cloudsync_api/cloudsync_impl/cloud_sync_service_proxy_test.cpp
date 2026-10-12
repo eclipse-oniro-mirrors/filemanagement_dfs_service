@@ -167,8 +167,8 @@ HWTEST_F(CloudSyncServiceProxyTest, StartSyncInner001, TestSize.Level1)
     GTEST_LOG_(INFO) << "StartSyncInner Start";
     EXPECT_CALL(*mock_, SendRequest(_, _, _, _)).Times(1).WillOnce(Return(-1));
 
-    bool forceFlag = true;
-    int result = proxy_->StartSyncInner(forceFlag);
+    int32_t type = static_cast<int32_t>(SyncMode::FORCE);
+    int result = proxy_->StartSyncInner(type, "");
     EXPECT_EQ(result, E_BROKEN_IPC);
     GTEST_LOG_(INFO) << "StartSyncInner End";
 }
@@ -187,11 +187,11 @@ HWTEST_F(CloudSyncServiceProxyTest, StartSyncInner002, TestSize.Level1)
         .WillOnce(Invoke(mock_.GetRefPtr(), &CloudSyncServiceMock::InvokeSendRequest))
         .WillOnce(Return(EPERM));
 
-    bool forceFlag = true;
-    int result = proxy_->StartSyncInner(forceFlag);
+    int32_t type = static_cast<int32_t>(SyncMode::FORCE);
+    int result = proxy_->StartSyncInner(type, "");
     EXPECT_EQ(result, E_OK);
 
-    result = proxy_->StartSyncInner(forceFlag);
+    result = proxy_->StartSyncInner(type, "");
     EXPECT_NE(result, E_OK);
     GTEST_LOG_(INFO) << "StartSyncInner End";
 }

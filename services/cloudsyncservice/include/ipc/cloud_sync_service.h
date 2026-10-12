@@ -55,7 +55,7 @@ public:
     ErrCode RegisterFileSyncCallbackInner(const sptr<IRemoteObject> &remoteObject,
                                           const std::string &callbackId = "",
                                           const std::string &bundleName = "") override;
-    ErrCode StartSyncInner(bool forceFlag, const std::string &bundleName = "") override;
+    ErrCode StartSyncInner(int32_t type, const std::string &bundleName = "") override;
     ErrCode StartFileSyncInner(bool forceFlag, const std::string &bundleName = "") override;
     ErrCode TriggerSyncInner(const std::string &bundleName, int32_t userId) override;
     ErrCode StopSyncInner(const std::string &bundleName = "", bool forceFlag = false) override;

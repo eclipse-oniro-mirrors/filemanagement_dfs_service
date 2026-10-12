@@ -31,6 +31,12 @@ enum FieldKey : int32_t {
     FIELDKEY_LCD,
 };
 
+enum class SyncMode : int32_t {
+    NORMAL = 0,
+    FORCE = 1,
+    FORCE_THM = 2,
+};
+
 struct DownloadProgressObj : public Parcelable {
     enum Status : int32_t {
         RUNNING = 0,

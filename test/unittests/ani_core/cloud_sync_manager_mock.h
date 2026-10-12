@@ -33,6 +33,7 @@ public:
     MOCK_METHOD1(UnRegisterCallback, int32_t(const CallbackInfo &callbackInfo));
     MOCK_METHOD1(UnRegisterFileSyncCallback, int32_t(const CallbackInfo &callbackInfo));
     MOCK_METHOD1(StartSync, int32_t(const std::string &bundleName));
+    MOCK_METHOD2(StartSync, int32_t(SyncMode type, const std::string &bundleName));
     MOCK_METHOD1(StartFileSync, int32_t(const std::string &bundleName));
     MOCK_METHOD2(StartSync, int32_t(bool forceFlag, const std::shared_ptr<CloudSyncCallback> callback));
     MOCK_METHOD2(TriggerSync, int32_t(const std::string &bundleName, const int32_t &userId));
