@@ -15,6 +15,7 @@
 #include "periodic_check_task.h"
 
 #include "battery_status.h"
+#include "cloud_sync_common.h"
 #include "parameters.h"
 #include "screen_status.h"
 #include "system_load.h"
@@ -40,7 +41,8 @@ int32_t PeriodicCheckTask::RunTaskForBundle(int32_t userId, std::string bundleNa
         LOGI("PeriodicCheckTask::RunTaskForBundle isScreenOn or not charging");
         return E_STOP;
     }
-    int32_t ret = dataSyncManager_->TriggerStartSync(bundleName, userId, false, SyncTriggerType::TASK_TRIGGER);
+    int32_t ret = dataSyncManager_->TriggerStartSync(
+        bundleName, userId, SyncMode::NORMAL, SyncTriggerType::TASK_TRIGGER);
     if (ret != E_OK) {
         LOGE("trigger %{public}s periodic sync failed, ret: %{public}d", bundleName.c_str(), ret);
         return ret;

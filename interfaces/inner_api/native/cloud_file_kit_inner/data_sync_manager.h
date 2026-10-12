@@ -16,9 +16,11 @@
 #define OHOS_CLOUD_FILE_DATA_SYNC_MANAGER_H
 
 #include <bitset>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 
+#include "cloud_sync_common.h"
 #include "data_sync_const.h"
 #include "i_cloud_download_callback.h"
 #include "i_cloud_optimize_callback.h"
@@ -30,13 +32,14 @@ namespace OHOS::FileManagement::CloudFile {
 class DataSyncManager {
 public:
     using BundleNameUserInfo = CloudSync::BundleNameUserInfo;
+    using SyncMode = CloudSync::SyncMode;
     using SyncTriggerType = CloudSync::SyncTriggerType;
     DataSyncManager() = default;
     virtual ~DataSyncManager() = default;
 
     virtual int32_t TriggerStartSync(const std::string &bundleName,
                                      const int32_t userId,
-                                     bool forceFlag,
+                                     SyncMode type,
                                      SyncTriggerType triggerType,
                                      std::string prepareTraceId = "");
     virtual int32_t TriggerStopSync(const std::string &bundleName, const int32_t userId,

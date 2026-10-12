@@ -178,7 +178,7 @@ int32_t CloudSyncServiceProxy::RegisterFileSyncCallbackInner(const sptr<IRemoteO
     return E_OK;
 }
 
-int32_t CloudSyncServiceProxy::StartSyncInner(bool forceFlag, const std::string &bundleName)
+int32_t CloudSyncServiceProxy::StartSyncInner(int32_t type, const std::string &bundleName)
 {
     return E_OK;
 }

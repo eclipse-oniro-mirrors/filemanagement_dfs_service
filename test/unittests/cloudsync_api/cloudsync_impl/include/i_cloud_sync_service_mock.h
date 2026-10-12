@@ -37,7 +37,7 @@ public:
         const std::string &callbackId, const std::string &bundleName));
     MOCK_METHOD3(RegisterFileSyncCallbackInner, int32_t(const sptr<IRemoteObject> &remoteObject,
         const std::string &callbackId, const std::string &bundleName));
-    MOCK_METHOD2(StartSyncInner, int32_t(bool forceFlag, const std::string &bundleName));
+    MOCK_METHOD2(StartSyncInner, int32_t(int32_t type, const std::string &bundleName));
     MOCK_METHOD2(StartFileSyncInner, int32_t(bool forceFlag, const std::string &bundleName));
     MOCK_METHOD2(TriggerSyncInner, int32_t(const std::string &bundleName, int32_t userId));
     MOCK_METHOD2(StopSyncInner, int32_t(const std::string &bundleName, bool forceFlag));

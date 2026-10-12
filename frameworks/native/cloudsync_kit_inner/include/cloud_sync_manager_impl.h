@@ -39,6 +39,7 @@ public:
     int32_t UnRegisterCallback(const CallbackInfo &callbackInfo) override;
     int32_t UnRegisterFileSyncCallback(const CallbackInfo &callbackInfo) override;
     int32_t StartSync(const std::string &bundleName = "") override;
+    int32_t StartSync(SyncMode type, const std::string &bundleName = "") override;
     int32_t StartFileSync(const std::string &bundleName = "") override;
     int32_t StartSync(bool forceFlag, const std::shared_ptr<CloudSyncCallback> callback) override;
     int32_t TriggerSync(const std::string &bundleName, const int32_t &userId) override;

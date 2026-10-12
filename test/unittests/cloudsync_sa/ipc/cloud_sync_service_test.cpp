@@ -15,6 +15,7 @@
 
 #include <future>
 #include <gtest/gtest.h>
+#include <initializer_list>
 #include <thread>
 
 #include "battersrvclient_mock.h"
@@ -83,7 +84,7 @@ class NotifyEventDataSyncManagerMock : public CloudFile::DataSyncManager {
 public:
     MOCK_METHOD(int32_t, ResetCursor, (const std::string &bundleName, const int32_t &userId, bool flag), (override));
     MOCK_METHOD(int32_t, TriggerStartSync,
-                (const std::string &bundleName, int32_t userId, bool forceFlag,
+                (const std::string &bundleName, int32_t userId, SyncMode type,
                  SyncTriggerType triggerType, std::string prepareTraceId), (override));
 };
 
@@ -3354,6 +3355,7 @@ HWTEST_F(CloudSyncServiceTest, ResumeUploadTest003, TestSize.Level1)
     }
     GTEST_LOG_(INFO) << "ResumeUploadTest003 end";
 }
+
 /**
  * @tc.name: NotifyEventChangeTest001
  * @tc.desc: Verify the NotifyEventChange function with permission denied.
@@ -3516,7 +3518,7 @@ void CloudSyncServiceTest::VerifyNotifyEventCursorReset(const std::string &extra
     EXPECT_CALL(*dataSyncManager, ResetCursor(SHARED_ALBUM_BUNDLE_NAME, userId, true))
         .Times(resetCursor ? 1 : 0).InSequence(sequence);
     EXPECT_CALL(*dataSyncManager,
-        TriggerStartSync("com.ohos.photos", userId, false, SyncTriggerType::CLOUD_TRIGGER, "traceId"))
+        TriggerStartSync("com.ohos.photos", userId, SyncMode::NORMAL, SyncTriggerType::CLOUD_TRIGGER, "traceId"))
         .InSequence(sequence)
         .WillOnce(Invoke([syncDone]() {
             syncDone->set_value_at_thread_exit();
@@ -3615,6 +3617,390 @@ HWTEST_F(CloudSyncServiceTest, NotifyEventChangeTest009, TestSize.Level1)
         VerifyNotifyEventCursorReset(extraData, false);
     }
     GTEST_LOG_(INFO) << "NotifyEventChangeTest009 end";
+}
+
+/**
+ * @tc.name: StartSyncInnerTest001
+ * @tc.desc: Verify StartSyncInner returns E_PERMISSION_DENIED when caller lacks permission.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, StartSyncInnerTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "StartSyncInnerTest001 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(false));
+        int32_t ret = servicePtr_->StartSyncInner(static_cast<int32_t>(SyncMode::FORCE), "");
+        EXPECT_EQ(ret, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "StartSyncInnerTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "StartSyncInnerTest001 end";
+}
+
+/**
+ * @tc.name: StartSyncInnerTest002
+ * @tc.desc: Verify StartSyncInner returns E_PERMISSION_SYSTEM when caller is not system app.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, StartSyncInnerTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "StartSyncInnerTest002 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(false));
+        int32_t ret = servicePtr_->StartSyncInner(static_cast<int32_t>(SyncMode::FORCE), "");
+        EXPECT_EQ(ret, E_PERMISSION_SYSTEM);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "StartSyncInnerTest002 failed";
+    }
+    GTEST_LOG_(INFO) << "StartSyncInnerTest002 end";
+}
+
+/**
+ * @tc.name: StartSyncInnerTest003
+ * @tc.desc: Verify StartSyncInner returns E_INVAL_ARG when type is below valid range.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, StartSyncInnerTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "StartSyncInnerTest003 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        int32_t ret = servicePtr_->StartSyncInner(-1, "");
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "StartSyncInnerTest003 failed";
+    }
+    GTEST_LOG_(INFO) << "StartSyncInnerTest003 end";
+}
+
+/**
+ * @tc.name: StartSyncInnerTest004
+ * @tc.desc: Verify StartSyncInner returns E_INVAL_ARG when type is above valid range.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, StartSyncInnerTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "StartSyncInnerTest004 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        int32_t ret = servicePtr_->StartSyncInner(
+            static_cast<int32_t>(SyncMode::FORCE_THM) + 1, "");
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "StartSyncInnerTest004 failed";
+    }
+    GTEST_LOG_(INFO) << "StartSyncInnerTest004 end";
+}
+
+/**
+ * @tc.name: StartSyncInnerTest005
+ * @tc.desc: Verify StartSyncInner returns E_INVAL_ARG when GetCallerBundleName fails.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, StartSyncInnerTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "StartSyncInnerTest005 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).WillOnce(Return(E_INVAL_ARG));
+        int32_t ret = servicePtr_->StartSyncInner(static_cast<int32_t>(SyncMode::NORMAL), "");
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "StartSyncInnerTest005 failed";
+    }
+    GTEST_LOG_(INFO) << "StartSyncInnerTest005 end";
+}
+
+/**
+ * @tc.name: StartSyncInnerTest006
+ * @tc.desc: Verify StartSyncInner succeeds with NORMAL mode and empty bundleName.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, StartSyncInnerTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "StartSyncInnerTest006 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).WillOnce(Return(E_OK));
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).WillOnce(Return(100));
+        int32_t ret = servicePtr_->StartSyncInner(static_cast<int32_t>(SyncMode::NORMAL), "");
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "StartSyncInnerTest006 failed";
+    }
+    GTEST_LOG_(INFO) << "StartSyncInnerTest006 end";
+}
+
+/**
+ * @tc.name: StartSyncInnerTest007
+ * @tc.desc: Verify StartSyncInner returns E_PERMISSION_DENIED for cross-bundle without manager permission.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, StartSyncInnerTest007, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "StartSyncInnerTest007 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_))
+            .Times(2)
+            .WillOnce(Return(true))
+            .WillOnce(Return(false));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).WillOnce(Return(E_OK));
+        int32_t ret = servicePtr_->StartSyncInner(static_cast<int32_t>(SyncMode::FORCE), "com.ohos.photos");
+        EXPECT_EQ(ret, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "StartSyncInnerTest007 failed";
+    }
+    GTEST_LOG_(INFO) << "StartSyncInnerTest007 end";
+}
+
+/**
+ * @tc.name: StartSyncInnerTest008
+ * @tc.desc: Verify StartSyncInner propagates TriggerStartSync error.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, StartSyncInnerTest008, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "StartSyncInnerTest008 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).WillOnce(Return(E_OK));
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).WillOnce(Return(2));
+        int32_t ret = servicePtr_->StartSyncInner(static_cast<int32_t>(SyncMode::FORCE_THM), "");
+        EXPECT_NE(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "StartSyncInnerTest008 failed";
+    }
+    GTEST_LOG_(INFO) << "StartSyncInnerTest008 end";
+}
+
+/**
+ * @tc.name: StartSyncInnerTest009
+ * @tc.desc: Verify all three IPC values reach DataSyncManager as the corresponding SyncMode.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, StartSyncInnerTest009, TestSize.Level1)
+{
+    auto dataSyncManager = make_shared<NotifyEventDataSyncManagerMock>();
+    auto service = sptr(new CloudSyncService(SA_ID));
+    service->dataSyncManager_ = dataSyncManager;
+    EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).Times(3).WillRepeatedly(Return(true));
+    EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).Times(3).WillRepeatedly(Return(true));
+    EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).Times(3)
+        .WillRepeatedly(DoAll(SetArgReferee<0>(std::string("com.ohos.photos")), Return(E_OK)));
+    EXPECT_CALL(*dfsuAccessToken_, GetUserId()).Times(3).WillRepeatedly(Return(100));
+
+    for (auto mode : {SyncMode::NORMAL, SyncMode::FORCE, SyncMode::FORCE_THM}) {
+        EXPECT_CALL(*dataSyncManager,
+            TriggerStartSync("com.ohos.photos", 100, mode, SyncTriggerType::APP_TRIGGER, ""))
+            .WillOnce(Return(E_OK));
+        EXPECT_EQ(service->StartSyncInner(static_cast<int32_t>(mode), ""), E_OK);
+    }
+}
+
+/**
+ * @tc.name: StartFileSyncInnerTest001
+ * @tc.desc: Verify StartFileSyncInner returns E_INVAL_ARG when GetCallerBundleName fails.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, StartFileSyncInnerTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "StartFileSyncInnerTest001 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).WillOnce(Return(E_INVAL_ARG));
+        int32_t ret = servicePtr_->StartFileSyncInner(true, "");
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "StartFileSyncInnerTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "StartFileSyncInnerTest001 end";
+}
+
+/**
+ * @tc.name: StartFileSyncInnerTest002
+ * @tc.desc: Verify StartFileSyncInner succeeds with forceFlag true and empty bundleName.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, StartFileSyncInnerTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "StartFileSyncInnerTest002 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).WillOnce(Return(E_OK));
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).WillOnce(Return(100));
+        int32_t ret = servicePtr_->StartFileSyncInner(true, "");
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "StartFileSyncInnerTest002 failed";
+    }
+    GTEST_LOG_(INFO) << "StartFileSyncInnerTest002 end";
+}
+
+/**
+ * @tc.name: StartFileSyncInnerTest003
+ * @tc.desc: Verify StartFileSyncInner returns E_PERMISSION_DENIED for cross-bundle without manager permission.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, StartFileSyncInnerTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "StartFileSyncInnerTest003 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).WillOnce(Return(E_OK));
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(false));
+        int32_t ret = servicePtr_->StartFileSyncInner(false, "com.ohos.photos");
+        EXPECT_EQ(ret, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "StartFileSyncInnerTest003 failed";
+    }
+    GTEST_LOG_(INFO) << "StartFileSyncInnerTest003 end";
+}
+
+/**
+ * @tc.name: TriggerSyncInnerTest001
+ * @tc.desc: Verify TriggerSyncInner returns E_PERMISSION_DENIED when caller lacks permission.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerSyncInnerTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerSyncInnerTest001 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(false));
+        int32_t ret = servicePtr_->TriggerSyncInner("com.ohos.photos", 100);
+        EXPECT_EQ(ret, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerSyncInnerTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerSyncInnerTest001 end";
+}
+
+/**
+ * @tc.name: TriggerSyncInnerTest002
+ * @tc.desc: Verify TriggerSyncInner returns E_PERMISSION_SYSTEM when caller is not system app.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerSyncInnerTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerSyncInnerTest002 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(false));
+        int32_t ret = servicePtr_->TriggerSyncInner("com.ohos.photos", 100);
+        EXPECT_EQ(ret, E_PERMISSION_SYSTEM);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerSyncInnerTest002 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerSyncInnerTest002 end";
+}
+
+/**
+ * @tc.name: TriggerSyncInnerTest003
+ * @tc.desc: Verify TriggerSyncInner returns E_INVAL_ARG when bundleName is empty.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerSyncInnerTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerSyncInnerTest003 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        int32_t ret = servicePtr_->TriggerSyncInner("", 100);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerSyncInnerTest003 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerSyncInnerTest003 end";
+}
+
+/**
+ * @tc.name: TriggerSyncInnerTest004
+ * @tc.desc: Verify TriggerSyncInner returns E_INVAL_ARG when userId is below MIN_USER_ID.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerSyncInnerTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerSyncInnerTest004 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        int32_t ret = servicePtr_->TriggerSyncInner("com.ohos.photos", 99);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerSyncInnerTest004 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerSyncInnerTest004 end";
+}
+
+/**
+ * @tc.name: TriggerSyncInnerTest005
+ * @tc.desc: Verify TriggerSyncInner succeeds with valid bundleName and userId.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerSyncInnerTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerSyncInnerTest005 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        int32_t ret = servicePtr_->TriggerSyncInner("com.ohos.photos", 100);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerSyncInnerTest005 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerSyncInnerTest005 end";
 }
 } // namespace Test
 } // namespace FileManagement::CloudSync

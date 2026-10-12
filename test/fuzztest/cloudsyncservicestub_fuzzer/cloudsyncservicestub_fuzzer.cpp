@@ -326,9 +326,9 @@ void HandleStartSyncInnerFuzzTest(std::shared_ptr<CloudSyncServiceStub> cloudSyn
     if (!WriteInterfaceToken(datas)) {
         return;
     }
-    auto forceFlag = fuzzData.GetData<bool>();
-    datas.WriteBool(forceFlag);
-    string bundleName = fuzzData.GetStringFromData(static_cast<int>(size - BOOL_AT_SIZE));
+    auto type = fuzzData.GetData<int32_t>();
+    datas.WriteInt32(type);
+    string bundleName = fuzzData.GetStringFromData(static_cast<int>(size - U32_AT_SIZE));
     datas.WriteString(bundleName);
     datas.RewindRead(0);
     // SERVICE_CMD_START_SYNC

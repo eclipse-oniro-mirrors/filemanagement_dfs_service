@@ -23,9 +23,9 @@ class DataSyncManagerImpl : public DataSyncManager {
 public:
     virtual int32_t TriggerStartSync(const std::string &bundleName,
                                      const int32_t userId,
-                                     bool forceFlag,
+                                     SyncMode type,
                                      SyncTriggerType triggerType,
-                                     std::string prepareTraceId = "");
+                                     std::string prepareTraceId = "") override;
 };
 } // namespace OHOS::FileManagement::CloudFile
 

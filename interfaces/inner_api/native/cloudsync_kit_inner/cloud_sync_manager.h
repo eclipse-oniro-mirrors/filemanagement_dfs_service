@@ -55,6 +55,14 @@ public:
     virtual int32_t StartSync(const std::string &bundleName = "") = 0;
     virtual int32_t StartFileSync(const std::string &bundleName = "") = 0;
     /**
+     * @brief 按指定模式启动同步
+     *
+     * @param type 同步模式
+     * @param bundleName 应用包名
+     * @return int32_t 同步返回执行结果
+     */
+    virtual int32_t StartSync(SyncMode type, const std::string &bundleName = "") = 0;
+    /**
      * @brief 启动同步
      *
      * @param forceFlag 是否强制继续同步，当前仅支持低电量下暂停后继续上传
