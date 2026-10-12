@@ -80,6 +80,7 @@ ohos_unittest("cloud_sync_service_test") {
     "${services_path}/cloudsyncservice/src/cycle_task/cycle_task.cpp",
     "${services_path}/cloudsyncservice/src/cycle_task/cycle_task_runner.cpp",
     "${services_path}/cloudsyncservice/src/cycle_task/tasks/database_backup_task.cpp",
+    "${services_path}/cloudsyncservice/src/cycle_task/tasks/decompress_gains_report_task.cpp",
     "${services_path}/cloudsyncservice/src/cycle_task/tasks/database_supplement_task.cpp",
     "${services_path}/cloudsyncservice/src/cycle_task/tasks/optimize_cache_task.cpp",
     "${services_path}/cloudsyncservice/src/cycle_task/tasks/optimize_storage_task.cpp",
@@ -141,6 +142,7 @@ ohos_unittest("cloud_sync_service_test") {
     "${innerkits_native_path}/cloudsync_kit_inner:cloudsync_kit_inner",
     "${innerkits_native_path}/decompress_kit_inner:decompress_kit",
     "${services_path}/cloudsyncservice:cloud_sync_service_stub",
+    "${utils_path}:libdecompress",
     "${utils_path}:libdistributedfiledentry",
     "${utils_path}:libdistributedfileutils",
   ]

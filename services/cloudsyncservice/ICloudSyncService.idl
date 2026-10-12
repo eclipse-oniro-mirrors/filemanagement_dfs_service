@@ -102,4 +102,5 @@ interface OHOS.FileManagement.CloudSync.ICloudSyncService
     void ResumeUpload([in] String uri);
     void GetDecompressUnsupportedList([out] String[] unsupportedList);
     void GetDecompressSystemFeature([out] boolean systemFeature);
+    void GetDecompressCrossFsConfig([out] boolean crossFsConfig);
 }

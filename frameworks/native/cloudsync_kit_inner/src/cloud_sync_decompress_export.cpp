@@ -33,3 +33,11 @@ extern "C" API_EXPORT int32_t CloudSync_GetDecompressSystemFeature(bool* systemF
     }
     return CloudSyncManager::GetInstance().GetDecompressSystemFeature(*systemFeature);
 }
+
+extern "C" API_EXPORT int32_t CloudSync_GetDecompressCrossFsConfig(bool* crossFsConfig)
+{
+    if (crossFsConfig == nullptr) {
+        return -1;
+    }
+    return CloudSyncManager::GetInstance().GetDecompressCrossFsConfig(*crossFsConfig);
+}

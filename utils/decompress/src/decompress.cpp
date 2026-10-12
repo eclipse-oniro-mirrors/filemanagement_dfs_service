@@ -14,20 +14,22 @@
  */
 
 #include "decompress.h"
+#include "decompress_gains_reporter.h"
 
 #include <cerrno>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <dlfcn.h>
 #include <fcntl.h>
-#include <climits>
 #include <mutex>
-#include <sys/stat.h>
-#include <unordered_set>
-#include <unistd.h>
 #include <securec.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <unordered_set>
 
+#include "dfs_error.h"
 #include "fuse_ioctl.h"
 #include "utils_log.h"
 
@@ -36,50 +38,36 @@ namespace FileManagement {
 namespace Decompress {
 using namespace CloudFile;
 
-enum FileType {
-    SO_FILE = 1,
-    RESOURCE_FILE = 2,
-};
-
-struct HmfsPdedupExtent {
-    uint64_t outerOff; /** offset in outer file */
-    uint64_t innerOff; /** offset in inner file */
-    uint64_t len; /** map len */
-}__attribute__((packed));
-
-struct HmfsPdedupCreate {
-    int32_t version; /** pdedup version, default 1*/
-    int32_t innerFd; /** fd of inner file*/
-    uint64_t fileSize; /**  expected size of outer file*/
-    uint32_t nrExtents; /** extents num */
-    int32_t mode; /** expected mode of outher file */
-    char name[256]; /** expected name of outer file */
-    struct HmfsPdedupExtent extents[]; /** map extents */
-};
-
 namespace {
-    constexpr const char* PDEDUP_FEATURE_NODE_PATH = "/sys/fs/hmfs/userdata/support_pdedup";
-    constexpr size_t MAX_PATH_LENGTH = PATH_MAX;
-    constexpr const char* CLOUD_SYNC_LIB_PATH = "libcloudsync_kit_inner.z.so";
-    constexpr int MAX_RETRY = 2;
-    constexpr int RETRY_DELAY_US = 100000;
-    constexpr uint32_t MAX_UNCOMPATIBLE_TARGET_VERSION = 20;
-    constexpr uint32_t API_VERSION_MOD = 1000;
-}
+constexpr const char *PDEDUP_FEATURE_NODE_PATH = "/sys/fs/hmfs/userdata/support_pdedup";
+constexpr size_t MAX_PATH_LENGTH = PATH_MAX;
+constexpr const char *CLOUD_SYNC_LIB_PATH = "libcloudsync_kit_inner.z.so";
+constexpr int MAX_RETRY = 2;
+constexpr int RETRY_DELAY_US = 100000;
+constexpr const char *DST_PATH = "/data/app/el1/bundle/public";
+constexpr int32_t PDEDUP_CREATE_VERSION = 2;
+} // namespace
 
-using GetUnsupportedListFunc = int32_t(*)(std::vector<std::string>*);
-using GetSystemFeatureFunc = int32_t(*)(bool*);
+using GetUnsupportedListFunc = int32_t (*)(std::vector<std::string> *);
+using GetSystemFeatureFunc = int32_t (*)(bool *);
+using GetCrossFsConfigFunc = int32_t (*)(bool *);
 
 class CloudSyncLibraryManager {
 public:
-    static CloudSyncLibraryManager& GetInstance()
+    static CloudSyncLibraryManager &GetInstance()
     {
         static CloudSyncLibraryManager instance;
         return instance;
     }
 
-    void* GetHandle() const { return handle_; }
-    bool IsLoaded() const { return handle_ != nullptr; }
+    void *GetHandle() const
+    {
+        return handle_;
+    }
+    bool IsLoaded() const
+    {
+        return handle_ != nullptr;
+    }
 
     GetUnsupportedListFunc GetUnsupportedListSymbol()
     {
@@ -89,6 +77,11 @@ public:
     GetSystemFeatureFunc GetSystemFeatureSymbol()
     {
         return GetSymbolFunc<GetSystemFeatureFunc>("CloudSync_GetDecompressSystemFeature");
+    }
+
+    GetCrossFsConfigFunc GetCrossFsConfigSymbol()
+    {
+        return GetSymbolFunc<GetCrossFsConfigFunc>("CloudSync_GetDecompressCrossFsConfig");
     }
 
 private:
@@ -106,7 +99,7 @@ private:
     }
 
     template<typename FuncType>
-    FuncType GetSymbolFunc(const char* symbol)
+    FuncType GetSymbolFunc(const char *symbol)
     {
         if (handle_ == nullptr) {
             return nullptr;
@@ -118,7 +111,7 @@ private:
         return func;
     }
 
-    void* handle_ = nullptr;
+    void *handle_ = nullptr;
 };
 
 static bool SplitTargetPath(const std::string &targetPath, std::string &dirPath, std::string &fileName)
@@ -142,8 +135,7 @@ static bool ValidateSourcePath(const std::string &path)
 
     char resolvedPath[PATH_MAX] = {0};
     if (realpath(path.c_str(), resolvedPath) == nullptr) {
-        LOGE("realpath failed for source path: %{public}s, errno: %{public}d",
-             path.c_str(), errno);
+        LOGE("realpath failed for source path: %{public}s, errno: %{public}d", path.c_str(), errno);
         return false;
     }
 
@@ -165,8 +157,7 @@ static bool ValidateTargetPath(const std::string &targetPath)
 
     char resolvedDirPath[PATH_MAX] = {0};
     if (realpath(dirPath.c_str(), resolvedDirPath) == nullptr) {
-        LOGE("realpath failed for target directory: %{public}s, errno: %{public}d",
-             dirPath.c_str(), errno);
+        LOGE("realpath failed for target directory: %{public}s, errno: %{public}d", dirPath.c_str(), errno);
         return false;
     }
     return true;
@@ -182,14 +173,16 @@ static int OpenSourceFile(const std::string &sourcePath)
     return innerFd;
 }
 
-static struct HmfsPdedupCreate *PreparePdedupCreate(int innerFd,
-                                                    const std::string &fileName,
-                                                    uint32_t offset, uint32_t size)
+static struct hmfs_pdedup_create_arg_v2 *PreparePdedupCreate(int innerFd,
+                                                             const std::string &fileName,
+                                                             uint32_t offset,
+                                                             uint32_t size,
+                                                             bool generateBuildhash)
 {
-    size_t createSize = sizeof(struct HmfsPdedupCreate) + sizeof(struct HmfsPdedupExtent);
-    struct HmfsPdedupCreate *create = static_cast<struct HmfsPdedupCreate *>(malloc(createSize));
+    size_t createSize = sizeof(struct hmfs_pdedup_create_arg_v2) + sizeof(struct hmfs_pdedup_extent);
+    auto *create = static_cast<struct hmfs_pdedup_create_arg_v2 *>(malloc(createSize));
     if (!create) {
-        LOGE("Failed to allocate memory for HmfsPdedupCreate");
+        LOGE("Failed to allocate memory for pdedup create");
         return nullptr;
     }
 
@@ -200,96 +193,181 @@ static struct HmfsPdedupCreate *PreparePdedupCreate(int innerFd,
         return nullptr;
     }
 
-    create->version = 1;
-    create->innerFd = innerFd;
-    create->fileSize = size;
-    create->nrExtents = 1;
-    create->mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+    create->common.version = PDEDUP_CREATE_VERSION;
+    create->common.inner_fd = innerFd;
+    create->common.file_size = size;
+    create->common.nr_extents = 1;
+    create->common.mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+    create->flags = generateBuildhash ? HMFS_PDEDUP_CREATE_FLAG_BUILD_HASH : 0;
 
-    ret = strncpy_s(create->name, sizeof(create->name), fileName.c_str(), fileName.length());
+    ret = strncpy_s(create->common.name, sizeof(create->common.name), fileName.c_str(), fileName.length());
     if (ret != EOK) {
         LOGE("strncpy_s failed: %{public}d", ret);
         free(create);
         return nullptr;
     }
 
-    create->extents[0].outerOff = 0;
-    create->extents[0].innerOff = offset;
+    create->extents[0].outer_off = 0;
+    create->extents[0].inner_off = offset;
     create->extents[0].len = size;
 
     return create;
 }
 
-static bool ExecutePdedupCreate(int dirFd, struct HmfsPdedupCreate *create,
-                                const std::string &targetPath, uint32_t offset, uint32_t size)
+struct InnerFileCtx {
+    int innerFd = -1;
+    int dirFd = -1;
+    std::string dirPath;
+    std::string fileName;
+    struct hmfs_pdedup_create_arg_v2 *create = nullptr;
+};
+
+static bool ExecutePdedupCreate(InnerFileCtx &ctx, const CreateInnerFileParam &param)
 {
     for (int i = 0; i < MAX_RETRY; i++) {
-        int ioctlRet = ioctl(dirFd, HMFS_IOC_PDEDLUP_CREATE, create);
+        int ioctlRet = ioctl(ctx.dirFd, HMFS_IOC_PDEDLUP_CREATE, ctx.create);
         if (ioctlRet >= 0) {
-            LOGD("Successfully created pdedup file: %{public}s, offset: %{public}u, size: %{public}u",
-                targetPath.c_str(), offset, size);
+            LOGD("Successfully created pdedup file: %{private}s, offset: %{public}u, size: %{public}u",
+                 param.targetPath.c_str(), param.offset, param.size);
             return true;
         }
-
         if (errno == EINTR || errno == EAGAIN || errno == EBUSY || errno == ENOMEM) {
-            LOGW("ioctl retry %{public}d/%{public}d for %{public}s, errno: %{public}d",
-                 i + 1, MAX_RETRY, targetPath.c_str(), errno);
+            LOGW("ioctl retry %{public}d/%{public}d for %{public}s, errno: %{public}d", i + 1, MAX_RETRY,
+                 param.targetPath.c_str(), errno);
             usleep(RETRY_DELAY_US);
             continue;
         }
         break;
     }
 
-    LOGE("Failed to create pdedup for %{public}s, offset: %{public}u, errno: %{public}d",
-        targetPath.c_str(), offset, errno);
+    int32_t lastErrno = errno;
+    LOGE("Failed to create pdedup for %{public}s, offset: %{public}u, errno: %{public}d", param.targetPath.c_str(),
+         param.offset, lastErrno);
+    if (param.fileType == FileType::SO_FILE) {
+        DecompressFaultReporter::GetInstance().ReportFsCommonInfo(
+            {lastErrno, "Failed to create pdedup file", param.bundleName, ctx.fileName});
+    }
+
     return false;
 }
 
-bool CreateInnerFile(const std::string &sourcePath, const std::string &targetPath,
-                     const uint32_t &offset, const uint32_t &size, bool isSystemApp)
+static bool PrepareInnerFileResources(const CreateInnerFileParam &param, InnerFileCtx &ctx)
 {
-    LOGD("CreateInnerFile start, sourcePath: %{public}s, targetPath: %{public}s, offset: %{public}u, size: %{public}u",
-        sourcePath.c_str(), targetPath.c_str(), offset, size);
-    if (!ValidateSourcePath(sourcePath)) {
-        LOGE("Invalid source path: %{public}s", sourcePath.c_str());
+    if (!ValidateSourcePath(param.sourcePath)) {
+        LOGE("Invalid source path: %{public}s", param.sourcePath.c_str());
         return false;
     }
-    if (!ValidateTargetPath(targetPath)) {
-        LOGE("Invalid target path: %{public}s", targetPath.c_str());
+    if (!ValidateTargetPath(param.targetPath)) {
+        LOGE("Invalid target path: %{public}s", param.targetPath.c_str());
         return false;
     }
-    int innerFd = OpenSourceFile(sourcePath);
-    if (innerFd < 0) {
+    ctx.innerFd = OpenSourceFile(param.sourcePath);
+    if (ctx.innerFd < 0) {
         return false;
     }
-    std::string dirPath;
-    std::string fileName;
-    if (!SplitTargetPath(targetPath, dirPath, fileName)) {
-        close(innerFd);
+    if (!SplitTargetPath(param.targetPath, ctx.dirPath, ctx.fileName)) {
+        close(ctx.innerFd);
+        ctx.innerFd = -1;
         return false;
     }
-    LOGD("SplitTargetPath result, dirPath: %{public}s, fileName: %{public}s", dirPath.c_str(), fileName.c_str());
-    int dirFd = open(dirPath.c_str(), O_RDONLY | O_DIRECTORY);
-    if (dirFd < 0) {
-        LOGE("Failed to open directory: %{public}s, errno: %{public}d", dirPath.c_str(), errno);
-        close(innerFd);
+    LOGD("SplitTargetPath result, dirPath: %{private}s, fileName: %{public}s", ctx.dirPath.c_str(),
+         ctx.fileName.c_str());
+    ctx.dirFd = open(ctx.dirPath.c_str(), O_RDONLY | O_DIRECTORY);
+    if (ctx.dirFd < 0) {
+        LOGE("Failed to open directory: %{public}s, errno: %{public}d", ctx.dirPath.c_str(), errno);
+        close(ctx.innerFd);
+        ctx.innerFd = -1;
         return false;
     }
-    struct HmfsPdedupCreate *create = PreparePdedupCreate(innerFd, fileName, offset, size);
-    if (!create) {
-        close(dirFd);
-        close(innerFd);
+    return true;
+}
+
+bool CreateInnerFile(const CreateInnerFileParam &param)
+{
+    LOGD(
+        "CreateInnerFile start, sourcePath: %{private}s, targetPath: %{private}s, offset: %{public}u, size: "
+        "%{public}u, "
+        "bundleName: %{public}s, isSystemApp: %{public}d, fileType: %{public}d, generateBuildhash: %{public}d",
+        param.sourcePath.c_str(), param.targetPath.c_str(), param.offset, param.size, param.bundleName.c_str(),
+        static_cast<int>(param.isSystemApp), static_cast<int>(param.fileType),
+        static_cast<int>(param.generateBuildhash));
+    InnerFileCtx ctx;
+    if (!PrepareInnerFileResources(param, ctx)) {
         return false;
     }
-    bool success = ExecutePdedupCreate(dirFd, create, targetPath, offset, size);
-    LOGD("ExecutePdedupCreate result: %{public}s", success ? "true" : "false");
-    free(create);
-    close(dirFd);
-    close(innerFd);
+    ctx.create = PreparePdedupCreate(ctx.innerFd, ctx.fileName, param.offset, param.size, param.generateBuildhash);
+    if (!ctx.create) {
+        close(ctx.dirFd);
+        close(ctx.innerFd);
+        return false;
+    }
+    bool success = ExecutePdedupCreate(ctx, param);
+    free(ctx.create);
+    close(ctx.dirFd);
+    close(ctx.innerFd);
+    DecompressGainsReporter::GetInstance().UpdateGainsInfo(param, success);
     return success;
 }
 
-bool CheckBundleSupported(const std::string &bundleName, const bool isKeepAlive)
+bool BundelInstallFinished(const std::string &bundleName)
+{
+    return DecompressGainsReporter::GetInstance().DumpAndReport(bundleName);
+}
+
+static void InitUnsupportedCache(std::unordered_set<std::string> &cache)
+{
+    auto &manager = CloudSyncLibraryManager::GetInstance();
+    if (!manager.IsLoaded()) {
+        LOGE("Failed to load cloud sync library");
+        return;
+    }
+    auto func = manager.GetUnsupportedListSymbol();
+    if (func != nullptr) {
+        std::vector<std::string> unsupportedList;
+        int32_t ret = func(&unsupportedList);
+        if (ret == 0) {
+            for (const auto &name : unsupportedList) {
+                cache.insert(name);
+            }
+            LOGI("Cached unsupported list: %{public}zu items", cache.size());
+        } else {
+            LOGE("Get unsupported list failed, ret: %{public}d", ret);
+        }
+    }
+}
+
+static bool IsSupportDiffFileSystem()
+{
+    static bool cachedConfig = false;
+    static std::once_flag initFlag;
+
+    std::call_once(initFlag, []() {
+        auto &manager = CloudSyncLibraryManager::GetInstance();
+        if (!manager.IsLoaded()) {
+            LOGE("Failed to load cloud sync library for cross fs config");
+            return;
+        }
+
+        auto func = manager.GetCrossFsConfigSymbol();
+        if (func != nullptr) {
+            bool crossFsConfig = false;
+            int32_t ret = func(&crossFsConfig);
+            if (ret == 0) {
+                cachedConfig = crossFsConfig;
+                LOGI("Cross fs config cached: %{public}s", cachedConfig ? "true" : "false");
+            } else {
+                LOGE("Get cross fs config via IPC failed, ret: %{public}d", ret);
+            }
+        }
+    });
+
+    return cachedConfig;
+}
+
+bool CheckBundleSupported(const std::string &bundleName,
+                          const bool isKeepAlive,
+                          const std::string &hapPath,
+                          const bool generateBuildhash)
 {
     if (isKeepAlive) {
         LOGD("Bundle %{public}s iskeepAlive is true", bundleName.c_str());
@@ -298,54 +376,43 @@ bool CheckBundleSupported(const std::string &bundleName, const bool isKeepAlive)
     static std::unordered_set<std::string> unsupportedCache;
     static std::once_flag initFlag;
 
-    std::call_once(initFlag, []() {
-        auto& manager = CloudSyncLibraryManager::GetInstance();
-        if (!manager.IsLoaded()) {
-            LOGE("Failed to load cloud sync library");
-            return;
-        }
-
-        auto func = manager.GetUnsupportedListSymbol();
-        if (func != nullptr) {
-            std::vector<std::string> unsupportedList;
-            int32_t ret = func(&unsupportedList);
-            if (ret == 0) {
-                for (const auto& name : unsupportedList) {
-                    unsupportedCache.insert(name);
-                }
-                LOGD("Cached unsupported list: %{public}zu items", unsupportedCache.size());
-            } else {
-                LOGE("Get unsupported list failed, ret: %{public}d", ret);
-            }
-        }
-    });
+    std::call_once(initFlag, []() { InitUnsupportedCache(unsupportedCache); });
 
     bool supported = unsupportedCache.find(bundleName) == unsupportedCache.end();
+    if (supported) {
+        struct stat hapStat = {};
+        struct stat dstStat = {};
+        if (stat(hapPath.c_str(), &hapStat) != 0) {
+            LOGE("stat hapPath failed: %{private}s, errno: %{public}d", hapPath.c_str(), errno);
+            return false;
+        }
+        if (stat(DST_PATH, &dstStat) != 0) {
+            LOGE("stat dstPath failed: %{private}s, errno: %{public}d", DST_PATH, errno);
+            return false;
+        }
+        bool sameFileSystem = (hapStat.st_dev == dstStat.st_dev);
+        if (!sameFileSystem) {
+            bool supportDiffFs = IsSupportDiffFileSystem();
+            supported = supportDiffFs && generateBuildhash;
+            LOGD("Bundle %{public}s different filesystem, supportDiffFs: %{public}s, generateBuildhash: %{public}s, "
+                 "supported: %{public}s",
+                 bundleName.c_str(), supportDiffFs ? "true" : "false", generateBuildhash ? "true" : "false",
+                 supported ? "true" : "false");
+        }
+    }
+
     LOGD("Bundle %{public}s is %{public}s", bundleName.c_str(), supported ? "supported" : "not supported");
     return supported;
 }
 
-bool CheckModuleApiVersionSupported(const std::string &moduleName,
-                                    const uint32_t targetVersion,
-                                    const uint32_t minVersion)
-{
-    uint32_t apiVersion = targetVersion % API_VERSION_MOD;
-    LOGD("Module %{public}s apiVersion %{public}u, targetVersion: %{public}u, minVersion: %{public}u",
-        moduleName.c_str(), apiVersion, targetVersion, minVersion);
-    if (apiVersion <= MAX_UNCOMPATIBLE_TARGET_VERSION) {
-        return false;
-    }
-    return true;
-}
-
 static bool ReadPdedupFeatureNode()
 {
-    FILE* file = fopen(PDEDUP_FEATURE_NODE_PATH, "r");
+    FILE *file = fopen(PDEDUP_FEATURE_NODE_PATH, "r");
     if (file == nullptr) {
         LOGD("Failed to open pdedup feature node file: %{public}s", PDEDUP_FEATURE_NODE_PATH);
         return false;
     }
-    char* line = nullptr;
+    char *line = nullptr;
     size_t len = 0;
     ssize_t read = getline(&line, &len, file);
     if (fclose(file) != 0) {
@@ -359,8 +426,8 @@ static bool ReadPdedupFeatureNode()
         return false;
     }
     bool supported = (line != nullptr && line[0] == '1');
-    LOGD("Pdedup feature node content: %{public}s, supported: %{public}s",
-         line ? line : "", supported ? "true" : "false");
+    LOGD("Pdedup feature node content: %{public}s, supported: %{public}s", line ? line : "",
+         supported ? "true" : "false");
     if (line != nullptr) {
         free(line);
     }
@@ -379,7 +446,7 @@ bool GetSystemFeature()
             return;
         }
 
-        auto& manager = CloudSyncLibraryManager::GetInstance();
+        auto &manager = CloudSyncLibraryManager::GetInstance();
         if (!manager.IsLoaded()) {
             LOGE("Failed to load cloud sync library");
             return;

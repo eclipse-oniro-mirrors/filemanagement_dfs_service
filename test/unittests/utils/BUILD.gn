@@ -273,6 +273,7 @@ ohos_unittest("decompress_test") {
   sources = [
     "./decompress/decompress_test.cpp",
     "./decompress/decompress_mock.cpp",
+    "${utils_path}/decompress/src/decompress_gains_reporter.cpp",
   ]
 
   include_dirs = [
@@ -283,7 +284,7 @@ ohos_unittest("decompress_test") {
     "${utils_path}/inner_api",
   ]
 
-  ldflags = []
+  ldflags = ["-Wl,--wrap=statfs"]
 
   external_deps = [
     "c_utils:utils",
@@ -297,6 +298,47 @@ ohos_unittest("decompress_test") {
   defines += [
     "LOG_DOMAIN=0xD004307",
     "LOG_TAG=\"UTILS\"",
+  ]
+
+  cflags = [
+    "-Wno-reserved-identifier",
+    "-Wno-reserved-macro-identifier",
+  ]
+
+  use_exceptions = true
+}
+
+ohos_unittest("decompress_gains_reporter_test") {
+  module_out_path = "dfs_service/dfs_service"
+
+  sources = [
+    "./decompress/decompress_gains_reporter_test.cpp",
+    "./decompress/decompress_mock.cpp",
+  ]
+
+  include_dirs = [
+    "${utils_path}/decompress/include",
+    "${utils_path}/decompress/src",
+    "${utils_path}/ioctl/include",
+    "${utils_path}/log/include",
+    "${utils_path}/inner_api",
+    "${distributedfile_path}/test/unittests/utils/decompress/mock",
+  ]
+
+  ldflags = ["-Wl,--wrap=statfs"]
+
+  external_deps = [
+    "c_utils:utils",
+    "googletest:gmock_main",
+    "googletest:gtest_main",
+    "hilog:libhilog",
+    "bounds_checking_function:libsec_shared",
+  ]
+
+  defines = [ "private=public" ]
+  defines += [
+    "LOG_DOMAIN=0xD004311",
+    "LOG_TAG=\"DecompressUtils\"",
   ]
 
   cflags = [
@@ -351,6 +393,7 @@ group("utils_test") {
     ":utils_directory_test",
     ":account_utils_test",
     ":decompress_test",
+    ":decompress_gains_reporter_test",
     ":recycle_size_cache_test",
   ]
 }
