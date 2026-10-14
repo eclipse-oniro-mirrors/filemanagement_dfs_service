@@ -45,9 +45,7 @@ public:
     int32_t CleanOldRecords();
     int32_t CleanAllRecords();
     std::map<std::string, int32_t> QueryDirFileCounts(std::shared_ptr<NativeRdb::RdbStore> rdbStore);
-    int32_t ReportFileStats(std::shared_ptr<NativeRdb::RdbStore> rdbStore, const std::string &dir);
-    int32_t ReportDirStats(std::shared_ptr<NativeRdb::RdbStore> rdbStore, const std::string &dir);
-    int32_t ReportOperationLogStat();
+    int32_t GetOperationLogStatInfo(std::string &operationInfo);
     static std::string GetCommonParentDir(const std::vector<std::string> &paths);
     static bool ReadFileStatFields(NativeRdb::ResultSet &resultSet, const std::string &dir, OperationLogEntry &entry);
     static std::string GetAnonyStringLocal(const std::string &value);
@@ -64,6 +62,12 @@ private:
     bool IsRecoverableError(int32_t errCode);
     int32_t CheckAndCleanRecords();
     int32_t GetRecordCount(int32_t &count);
+    void AppendStatRecord(std::string &operationInfo, const std::string &dirPath,
+        const std::string &fileName, int64_t opTime, const std::string &processName, int32_t fileCount);
+    int32_t ReportFileStatsToInfo(std::shared_ptr<NativeRdb::RdbStore> rdbStore,
+        const std::string &dir, std::string &operationInfo);
+    int32_t ReportDirStatsToInfo(std::shared_ptr<NativeRdb::RdbStore> rdbStore,
+        const std::string &dir, std::string &operationInfo);
 
     OperationLogQueue queue_;
     std::thread writeThread_;
