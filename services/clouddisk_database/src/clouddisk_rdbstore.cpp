@@ -1008,12 +1008,7 @@ int32_t CloudDiskRdbStore::HasTHMSetXattr(const std::string &name, const std::st
     if (value.empty() || !all_of(value.begin(), value.end(), ::isdigit)) {
         return E_INVAL_ARG;
     }
-    int32_t val = 0;
-    try {
-        val = std::stoi(value);
-    } catch (...) {
-        return E_INVAL_ARG;
-    }
+    int32_t val = static_cast<int32_t>(strtol(value.c_str(), nullptr, 10));
     if (val != 0 && val != 1) {
         CLOUD_FILE_FAULT_REPORT(CloudFile::CloudFileFaultInfo{bundleName_, CloudFile::FaultOperation::SETEXTATTR,
             CloudFile::FaultType::INNER_ERROR, E_INVAL_ARG, "setxattr unknown value"});
@@ -1272,11 +1267,7 @@ int32_t CloudDiskRdbStore::RecycleSetXattr(std::string &name, const std::string 
         return EINVAL;
     }
     int32_t val = 0;
-    try {
-        val = std::stoi(value);
-    } catch (...) {
-        return EINVAL;
-    }
+    int32_t val = static_cast<int32_t>(strtol(value.c_str(), nullptr, 10));
     if (val == static_cast<int32_t>(TrashOptType::RESTORE)) {
         return HandleRestoreXattr(name, parentCloudId, cloudId);
     }
@@ -1540,12 +1531,7 @@ int32_t CloudDiskRdbStore::FavoriteSetXattr(const std::string &cloudId, const st
     if (!isNum) {
         return EINVAL;
     }
-    int32_t val = 0;
-    try {
-        val = std::stoi(value);
-    } catch (...) {
-        return EINVAL;
-    }
+    bool isNum = !value.empty() && std::all_of(value.begin(), value.end(), ::isdigit);
     ValuesBucket setXAttr;
     if (val == 0) {
         setXAttr.PutInt(FileColumn::IS_FAVORITE, CANCEL_STATE);
@@ -2640,12 +2626,7 @@ static int32_t GetUserIdAndBundleName(RdbStore &store, uint32_t &userId, string 
         LOGE("invalid user Id");
         return E_INVAL_ARG;
     }
-    try {
-        userId = static_cast<uint32_t>(std::stoi(userIdStr));
-    } catch (...) {
-        LOGE("invalid user Id");
-        return E_INVAL_ARG;
-    }
+    userId = static_cast<uint32_t>(strtol(userIdStr.c_str(), nullptr, 10));
     return E_OK;
 }
 
