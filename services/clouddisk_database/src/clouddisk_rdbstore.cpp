@@ -14,7 +14,7 @@
  */
 
 #include "clouddisk_rdbstore.h"
-RecycleSetXattr
+
 #include <cinttypes>
 #include <ctime>
 #include <filesystem>
