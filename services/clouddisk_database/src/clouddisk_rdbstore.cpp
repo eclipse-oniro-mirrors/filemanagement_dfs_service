@@ -14,7 +14,7 @@
  */
 
 #include "clouddisk_rdbstore.h"
-
+RecycleSetXattr
 #include <cinttypes>
 #include <ctime>
 #include <filesystem>
@@ -1266,7 +1266,6 @@ int32_t CloudDiskRdbStore::RecycleSetXattr(std::string &name, const std::string 
     if (!isNum) {
         return EINVAL;
     }
-    int32_t val = 0;
     int32_t val = static_cast<int32_t>(strtol(value.c_str(), nullptr, 10));
     if (val == static_cast<int32_t>(TrashOptType::RESTORE)) {
         return HandleRestoreXattr(name, parentCloudId, cloudId);
