@@ -1530,7 +1530,7 @@ int32_t CloudDiskRdbStore::FavoriteSetXattr(const std::string &cloudId, const st
     if (!isNum) {
         return EINVAL;
     }
-    bool isNum = !value.empty() && std::all_of(value.begin(), value.end(), ::isdigit);
+    int32_t val = static_cast<int32_t>(strtol(value.c_str(), nullptr, 10));
     ValuesBucket setXAttr;
     if (val == 0) {
         setXAttr.PutInt(FileColumn::IS_FAVORITE, CANCEL_STATE);
