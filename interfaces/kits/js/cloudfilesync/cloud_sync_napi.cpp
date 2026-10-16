@@ -1245,6 +1245,11 @@ napi_value CloudSyncNapi::GetBatchFileSyncState(const napi_env &env, const NFunc
     }
 
     auto [succ, uris, ignore] = arrayVal.ToStringArray();
+    if (!succ) {
+        LOGE("ToStringArray failed");
+        NError(E_PARAMS).ThrowErr(env);
+        return nullptr;
+    }
     auto ctx = std::make_shared<BatchContext>();
     ctx->uriList.swap(uris);
 
