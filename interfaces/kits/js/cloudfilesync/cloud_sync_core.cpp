@@ -110,6 +110,17 @@ FsResult<void> CloudSyncCore::DoStart()
     return FsResult<void>::Success();
 }
 
+FsResult<void> CloudSyncCore::DoStartWithType(SyncMode type)
+{
+    int32_t ret = CloudSyncManager::GetInstance().StartSync(type, GetBundleName());
+    if (ret != E_OK) {
+        LOGE("Start Sync with type failed, result: %{public}d", ret);
+        return FsResult<void>::Error(Convert2ErrNum(ret));
+    }
+
+    return FsResult<void>::Success();
+}
+
 FsResult<void> CloudSyncCore::DoStop()
 {
     string bundleName = GetBundleName();

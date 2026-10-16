@@ -165,6 +165,30 @@ void CloudSyncAni::CloudSyncStart(ani_env *env, ani_object object)
     }
 }
 
+void CloudSyncAni::CloudSyncStartWithType(ani_env *env, ani_object object, ani_enum_item type)
+{
+    auto [success, typeValue] = ANIUtils::EnumToInt32(env, type);
+    if (!success || typeValue < static_cast<int32_t>(SyncMode::NORMAL) ||
+        typeValue > static_cast<int32_t>(SyncMode::FORCE_THM)) {
+        LOGE("Invalid sync type");
+        ErrorHandler::Throw(env, JsErrCode::E_PARAMS_);
+        return;
+    }
+
+    auto cloudSync = CloudSyncUnwrap(env, object);
+    if (cloudSync == nullptr) {
+        LOGE("Cannot wrap cloudsync.");
+        ErrorHandler::Throw(env, E_PERMISSION);
+        return;
+    }
+    auto data = cloudSync->DoStartWithType(static_cast<SyncMode>(typeValue));
+    if (!data.IsSuccess()) {
+        const auto &err = data.GetError();
+        LOGE("cloud sync do start with type failed, ret = %{public}d", err.GetErrNo());
+        ErrorHandler::Throw(env, err);
+    }
+}
+
 void CloudSyncAni::CloudSyncStop(ani_env *env, ani_object object)
 {
     auto cloudSync = CloudSyncUnwrap(env, object);

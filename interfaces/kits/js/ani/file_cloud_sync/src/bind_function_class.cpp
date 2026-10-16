@@ -44,6 +44,8 @@ static ani_status BindContextOnGallery(ani_env *env)
         return ret;
     }
     std::string onOffSign = Builder::BuildSignatureDescriptor({Builder::BuildFunctionalObject(1, false)});
+    std::string startWithTypeSign =
+        Builder::BuildSignatureDescriptor({Builder::BuildEnum("@ohos.file.cloudSync.cloudSync.SyncType")});
     std::array methods = {
         ani_native_function{CT.c_str(), V_SIGN.c_str(),
             reinterpret_cast<void *>(CloudSyncAni::CloudSyncConstructor)},
@@ -51,6 +53,8 @@ static ani_status BindContextOnGallery(ani_env *env)
         ani_native_function{"offProgress", onOffSign.c_str(), reinterpret_cast<void *>(CloudSyncAni::CloudSyncOff0)},
         ani_native_function{"offProgress", V_SIGN.c_str(), reinterpret_cast<void *>(CloudSyncAni::CloudSyncOff1)},
         ani_native_function{"GallerySyncStart", V_SIGN.c_str(), reinterpret_cast<void *>(CloudSyncAni::CloudSyncStart)},
+        ani_native_function{"GallerySyncStartWithType", startWithTypeSign.c_str(),
+                            reinterpret_cast<void *>(CloudSyncAni::CloudSyncStartWithType)},
         ani_native_function{"GallerySyncStop", V_SIGN.c_str(), reinterpret_cast<void *>(CloudSyncAni::CloudSyncStop)},
     };
 
