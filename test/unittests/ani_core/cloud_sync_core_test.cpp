@@ -242,6 +242,39 @@ HWTEST_F(CloudSyncCoreTest, DoStartTest2, TestSize.Level1)
 }
 
 /**
+ * @tc.name: DoStartWithTypeTest1
+ * @tc.desc: Verify all sync modes are passed to CloudSyncManager and succeed
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncCoreTest, DoStartWithTypeTest1, TestSize.Level1)
+{
+    CloudSyncCore *cloudSync = CloudSyncCore::Constructor().GetData().value();
+    auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+    const SyncMode modes[] = {SyncMode::NORMAL, SyncMode::FORCE, SyncMode::FORCE_THM};
+    for (const auto mode : modes) {
+        EXPECT_CALL(cloudMock, StartSync(mode, "")).WillOnce(Return(E_OK));
+        auto ret = cloudSync->DoStartWithType(mode);
+        EXPECT_TRUE(ret.IsSuccess());
+    }
+}
+
+/**
+ * @tc.name: DoStartWithTypeTest2
+ * @tc.desc: Verify sync errors are returned to the caller
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncCoreTest, DoStartWithTypeTest2, TestSize.Level1)
+{
+    CloudSyncCore *cloudSync = CloudSyncCore::Constructor().GetData().value();
+    auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+    EXPECT_CALL(cloudMock, StartSync(SyncMode::FORCE_THM, "")).WillOnce(Return(OHOS::FileManagement::E_PERMISSION));
+
+    auto ret = cloudSync->DoStartWithType(SyncMode::FORCE_THM);
+    ASSERT_FALSE(ret.IsSuccess());
+    EXPECT_EQ(ret.GetError().GetErrNo(), OHOS::FileManagement::E_PERMISSION);
+}
+
+/**
  * @tc.name: DoStop
  * @tc.desc: Verify the CloudSyncCore::DoStop function
  * @tc.type: FUNC
