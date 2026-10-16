@@ -2625,7 +2625,13 @@ static int32_t GetUserIdAndBundleName(RdbStore &store, uint32_t &userId, string 
         LOGE("invalid user Id");
         return E_INVAL_ARG;
     }
-    userId = static_cast<uint32_t>(strtol(userIdStr.c_str(), nullptr, 10));
+    errno = 0;
+    long userIdVal = strtol(userIdStr.c_str(), nullptr, 10);
+    if (errno == ERANGE || userIdVal < 0 || userIdVal > UINT32_MAX) {
+        LOGE("invalid user Id");
+        return E_INVAL_ARG;
+    }
+    userId = static_cast<uint32_t>(userIdVal);
     return E_OK;
 }
 
