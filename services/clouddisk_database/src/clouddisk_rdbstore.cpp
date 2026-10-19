@@ -1005,10 +1005,10 @@ int32_t CloudDiskRdbStore::HasTHMSetXattr(const std::string &name, const std::st
     const std::string &cloudId, const std::string &value)
 {
     RDBPTR_IS_NULLPTR(rdbStore_);
-    if (!all_of(value.begin(), value.end(), ::isdigit)) {
+    if (value.empty() || !all_of(value.begin(), value.end(), ::isdigit)) {
         return E_INVAL_ARG;
     }
-    int32_t val = std::stoi(value);
+    int32_t val = static_cast<int32_t>(strtol(value.c_str(), nullptr, 10));
     if (val != 0 && val != 1) {
         CLOUD_FILE_FAULT_REPORT(CloudFile::CloudFileFaultInfo{bundleName_, CloudFile::FaultOperation::SETEXTATTR,
             CloudFile::FaultType::INNER_ERROR, E_INVAL_ARG, "setxattr unknown value"});
@@ -1262,11 +1262,11 @@ static int32_t UpdateParent(const int32_t userId, const string &bundleName, cons
 int32_t CloudDiskRdbStore::RecycleSetXattr(std::string &name, const std::string &parentCloudId,
     const std::string &cloudId, const std::string &value)
 {
-    bool isNum = std::all_of(value.begin(), value.end(), ::isdigit);
+    bool isNum = !value.empty() && std::all_of(value.begin(), value.end(), ::isdigit);
     if (!isNum) {
         return EINVAL;
     }
-    int32_t val = std::stoi(value);
+    int32_t val = static_cast<int32_t>(strtol(value.c_str(), nullptr, 10));
     if (val == static_cast<int32_t>(TrashOptType::RESTORE)) {
         return HandleRestoreXattr(name, parentCloudId, cloudId);
     }
@@ -1526,11 +1526,11 @@ int32_t CloudDiskRdbStore::FavoriteSetXattr(const std::string &cloudId, const st
 {
     LOGD("favoriteSetXattr, value %{public}s", value.c_str());
     RDBPTR_IS_NULLPTR(rdbStore_);
-    bool isNum = std::all_of(value.begin(), value.end(), ::isdigit);
+    bool isNum = !value.empty() && std::all_of(value.begin(), value.end(), ::isdigit);
     if (!isNum) {
         return EINVAL;
     }
-    int32_t val = std::stoi(value);
+    int32_t val = static_cast<int32_t>(strtol(value.c_str(), nullptr, 10));
     ValuesBucket setXAttr;
     if (val == 0) {
         setXAttr.PutInt(FileColumn::IS_FAVORITE, CANCEL_STATE);
@@ -2620,12 +2620,18 @@ static int32_t GetUserIdAndBundleName(RdbStore &store, uint32_t &userId, string 
 {
     string userIdStr;
     GenCloudSyncTriggerFuncParams(store, userIdStr, bundleName);
-    bool isValid = std::all_of(userIdStr.begin(), userIdStr.end(), ::isdigit);
+    bool isValid = !userIdStr.empty() && std::all_of(userIdStr.begin(), userIdStr.end(), ::isdigit);
     if (!isValid) {
         LOGE("invalid user Id");
         return E_INVAL_ARG;
     }
-    userId = static_cast<uint32_t>(std::stoi(userIdStr));
+    errno = 0;
+    long userIdVal = strtol(userIdStr.c_str(), nullptr, 10);
+    if (errno == ERANGE || userIdVal < 0 || userIdVal > UINT32_MAX) {
+        LOGE("invalid user Id");
+        return E_INVAL_ARG;
+    }
+    userId = static_cast<uint32_t>(userIdVal);
     return E_OK;
 }
 

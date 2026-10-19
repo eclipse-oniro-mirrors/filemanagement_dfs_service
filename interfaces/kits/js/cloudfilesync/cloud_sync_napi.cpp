@@ -722,7 +722,7 @@ static bool CheckIsValidUri(Uri uri)
         LOGE("sandboxPath is not equal to realPath");
         return false;
     }
-    if (sandboxPath.find("/data/storage/el2/cloud") != 0) {
+    if (sandboxPath.find("/data/storage/el2/cloud/") != 0) {
         LOGE("not surported uri");
         return false;
     }
@@ -1236,14 +1236,22 @@ napi_value CloudSyncNapi::GetBatchFileSyncState(const napi_env &env, const NFunc
         return nullptr;
     }
 
-    auto [succ, uris, ignore] = arrayVal.ToStringArray();
-    auto ctx = std::make_shared<BatchContext>();
-    ctx->uriList.swap(uris);
-    if (ctx->uriList.size() > GET_FILE_SYNC_MAX) {
+    uint32_t arrayLen = 0;
+    napi_status status = napi_get_array_length(env, arrayVal.val_, &arrayLen);
+    if (status != napi_ok || arrayLen > static_cast<uint32_t>(GET_FILE_SYNC_MAX)) {
         LOGE("The parameter is too long");
         NError(E_PARAMS).ThrowErr(env);
         return nullptr;
     }
+
+    auto [succ, uris, ignore] = arrayVal.ToStringArray();
+    if (!succ) {
+        LOGE("ToStringArray failed");
+        NError(E_PARAMS).ThrowErr(env);
+        return nullptr;
+    }
+    auto ctx = std::make_shared<BatchContext>();
+    ctx->uriList.swap(uris);
 
     auto cbExec = [env, ctx]() ->NError {
         int32_t result = 0;
