@@ -694,6 +694,11 @@ HWTEST_F(CloudDiskServiceStaticTest, ConvertPlaceholderToEmptyFile_NotPlaceholde
         int fd = open(testFilePath.c_str(), O_CREAT | O_RDWR, 0644);
         if (fd >= 0) {
             close(fd);
+            EXPECT_CALL(*insMock_, fgetxattr(_, _, _, _))
+                .WillRepeatedly(Invoke([](int, const char *, void *, size_t) {
+                    errno = ENODATA;
+                    return -1;
+                }));
             int32_t ret = ConvertPlaceholderToEmptyFile(testFilePath);
             EXPECT_EQ(ret, E_NOT_A_PLACEHOLDER);
             unlink(testFilePath.c_str());
@@ -815,6 +820,11 @@ HWTEST_F(CloudDiskServiceStaticTest, ConvertPlaceholderToEmptyFile_TruncateFail_
             insMock_->EnableMock();
             close(fd);
 
+            EXPECT_CALL(*insMock_, fgetxattr(_, _, _, _))
+                .WillRepeatedly(Invoke([](int, const char *, void *value, size_t size) {
+                    *static_cast<uint8_t *>(value) = PLACEHOLDER_TEST_VALUE_LOCAL;
+                    return static_cast<ssize_t>(size);
+                }));
             EXPECT_CALL(*insMock_, ftruncate(_, _)).WillOnce(Return(-1));
             int32_t ret = ConvertPlaceholderToEmptyFile(testFilePath);
             EXPECT_NE(ret, 0);
@@ -848,6 +858,11 @@ HWTEST_F(CloudDiskServiceStaticTest, ConvertPlaceholderToEmptyFile_SetXattrFail_
             insMock_->EnableMock();
             close(fd);
 
+            EXPECT_CALL(*insMock_, fgetxattr(_, _, _, _))
+                .WillRepeatedly(Invoke([](int, const char *, void *value, size_t size) {
+                    *static_cast<uint8_t *>(value) = PLACEHOLDER_TEST_VALUE_LOCAL;
+                    return static_cast<ssize_t>(size);
+                }));
             EXPECT_CALL(*insMock_, ftruncate(_, _)).WillOnce(Return(0));
             EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _)).WillOnce(Return(-1));
             int32_t ret = ConvertPlaceholderToEmptyFile(testFilePath);
@@ -881,6 +896,12 @@ HWTEST_F(CloudDiskServiceStaticTest, ConvertPlaceholderToEmptyFile_XattrValueZer
             Assistant::ins = insMock_;
             insMock_->EnableMock();
             close(fd);
+
+            EXPECT_CALL(*insMock_, fgetxattr(_, _, _, _))
+                .WillRepeatedly(Invoke([](int, const char *, void *value, size_t size) {
+                    *static_cast<uint8_t *>(value) = PLACEHOLDER_TEST_VALUE_NONE;
+                    return static_cast<ssize_t>(size);
+                }));
 
             int32_t ret = ConvertPlaceholderToEmptyFile(testFilePath);
             EXPECT_EQ(ret, E_NOT_A_PLACEHOLDER);
@@ -917,6 +938,11 @@ HWTEST_F(CloudDiskServiceStaticTest, ConvertPlaceholderToEmptyFile_SetXattrFail_
 
             chmod(testFilePath.c_str(), 0444);
 
+            EXPECT_CALL(*insMock_, fgetxattr(_, _, _, _))
+                .WillRepeatedly(Invoke([](int, const char *, void *value, size_t size) {
+                    *static_cast<uint8_t *>(value) = PLACEHOLDER_TEST_VALUE_LOCAL;
+                    return static_cast<ssize_t>(size);
+                }));
             EXPECT_CALL(*insMock_, ftruncate(_, _)).WillRepeatedly(Return(0));
             EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _)).WillOnce(Return(-1));
 
@@ -977,8 +1003,18 @@ HWTEST_F(CloudDiskServiceStaticTest, UpdatePlaceholderAttr_Success_002, TestSize
             metaData.atimeMs = 1234567890000;
             metaData.mtimeMs = 1234567900000;
 
+            EXPECT_CALL(*insMock_, stat(_, _))
+                .WillRepeatedly(Invoke([](const char *, struct stat *buf) {
+                    buf->st_mode = S_IFREG;
+                    return 0;
+                }));
             EXPECT_CALL(*insMock_, ftruncate(_, _)).WillRepeatedly(Return(0));
             EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _)).WillRepeatedly(Return(0));
+            EXPECT_CALL(*insMock_, fgetxattr(_, _, _, _))
+                .WillRepeatedly(Invoke([](int, const char *, void *value, size_t size) {
+                    *static_cast<uint8_t *>(value) = PLACEHOLDER_TEST_VALUE_LOCAL;
+                    return static_cast<ssize_t>(size);
+                }));
             EXPECT_CALL(*insMock_, futimens(_, _)).WillRepeatedly(Return(0));
             EXPECT_CALL(*insMock_, close(_)).WillRepeatedly(Return(0));
 
@@ -1014,8 +1050,18 @@ HWTEST_F(CloudDiskServiceStaticTest, UpdatePlaceholderAttr_LargeSize_003, TestSi
             metaData.atimeMs = 1234567890000;
             metaData.mtimeMs = 1234567900000;
 
+            EXPECT_CALL(*insMock_, stat(_, _))
+                .WillRepeatedly(Invoke([](const char *, struct stat *buf) {
+                    buf->st_mode = S_IFREG;
+                    return 0;
+                }));
             EXPECT_CALL(*insMock_, ftruncate(_, _)).WillRepeatedly(Return(0));
             EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _)).WillRepeatedly(Return(0));
+            EXPECT_CALL(*insMock_, fgetxattr(_, _, _, _))
+                .WillRepeatedly(Invoke([](int, const char *, void *value, size_t size) {
+                    *static_cast<uint8_t *>(value) = PLACEHOLDER_TEST_VALUE_LOCAL;
+                    return static_cast<ssize_t>(size);
+                }));
             EXPECT_CALL(*insMock_, futimens(_, _)).WillRepeatedly(Return(0));
             EXPECT_CALL(*insMock_, close(_)).WillRepeatedly(Return(0));
 
@@ -1051,8 +1097,18 @@ HWTEST_F(CloudDiskServiceStaticTest, UpdatePlaceholderAttr_ZeroSize_004, TestSiz
             metaData.atimeMs = 1234567890000;
             metaData.mtimeMs = 1234567900000;
 
+            EXPECT_CALL(*insMock_, stat(_, _))
+                .WillRepeatedly(Invoke([](const char *, struct stat *buf) {
+                    buf->st_mode = S_IFREG;
+                    return 0;
+                }));
             EXPECT_CALL(*insMock_, ftruncate(_, _)).WillRepeatedly(Return(0));
             EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _)).WillRepeatedly(Return(0));
+            EXPECT_CALL(*insMock_, fgetxattr(_, _, _, _))
+                .WillRepeatedly(Invoke([](int, const char *, void *value, size_t size) {
+                    *static_cast<uint8_t *>(value) = PLACEHOLDER_TEST_VALUE_LOCAL;
+                    return static_cast<ssize_t>(size);
+                }));
             EXPECT_CALL(*insMock_, futimens(_, _)).WillRepeatedly(Return(0));
             EXPECT_CALL(*insMock_, close(_)).WillRepeatedly(Return(0));
 
@@ -1162,8 +1218,18 @@ HWTEST_F(CloudDiskServiceStaticTest, UpdatePlaceholderAttr_CloseFd_007, TestSize
             metaData.atimeMs = 1234567890000;
             metaData.mtimeMs = 1234567900000;
 
+            EXPECT_CALL(*insMock_, stat(_, _))
+                .WillRepeatedly(Invoke([](const char *, struct stat *buf) {
+                    buf->st_mode = S_IFREG;
+                    return 0;
+                }));
             EXPECT_CALL(*insMock_, ftruncate(_, _)).WillRepeatedly(Return(0));
             EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _)).WillRepeatedly(Return(0));
+            EXPECT_CALL(*insMock_, fgetxattr(_, _, _, _))
+                .WillRepeatedly(Invoke([](int, const char *, void *value, size_t size) {
+                    *static_cast<uint8_t *>(value) = PLACEHOLDER_TEST_VALUE_LOCAL;
+                    return static_cast<ssize_t>(size);
+                }));
             EXPECT_CALL(*insMock_, futimens(_, _)).WillRepeatedly(Return(0));
             EXPECT_CALL(*insMock_, close(_)).WillRepeatedly(Return(0));
 
@@ -1236,6 +1302,16 @@ HWTEST_F(CloudDiskServiceStaticTest, UpdatePlaceholderAttr_SecondTruncateFail_00
             metaData.atimeMs = 1234567890000;
             metaData.mtimeMs = 1234567900000;
 
+            EXPECT_CALL(*insMock_, stat(_, _))
+                .WillRepeatedly(Invoke([](const char *, struct stat *buf) {
+                    buf->st_mode = S_IFREG;
+                    return 0;
+                }));
+            EXPECT_CALL(*insMock_, fgetxattr(_, _, _, _))
+                .WillRepeatedly(Invoke([](int, const char *, void *value, size_t size) {
+                    *static_cast<uint8_t *>(value) = PLACEHOLDER_TEST_VALUE_LOCAL;
+                    return static_cast<ssize_t>(size);
+                }));
             EXPECT_CALL(*insMock_, ftruncate(_, _))
                 .WillOnce(Return(0))
                 .WillOnce(Return(-1));

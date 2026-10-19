@@ -66,7 +66,7 @@ namespace {
 constexpr mode_t PLACEHOLDER_FILE_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP;
 constexpr uint64_t MILLISECONDS_PER_SECOND = 1000;
 constexpr uint64_t NANOSECONDS_PER_MILLISECOND = 1000000;
-constexpr size_t PLACEHOLDER_CUSTOM_INFO_MAX_SIZE = 4096;
+constexpr size_t PLACEHOLDER_CUSTOM_INFO_MAX_SIZE = 1024;
 constexpr uint64_t MAX_PLACEHOLDER_LOGICAL_SIZE = static_cast<uint64_t>(std::numeric_limits<off_t>::max());
 constexpr const char *CLOUD_DISK_CUSTOM_INFO_XATTR = "user.clouddisk.custominfo";
 constexpr int32_t DEHYDRATE_EXTEND_MAX_ATTEMPTS = 3;
@@ -2299,6 +2299,11 @@ static int32_t ValidatePlaceholderForUpdate(int32_t fd, const std::string &hmdfs
              currentState);
         return E_INVALID_PLACEHOLDER_STATE;
     }
+    if (!IsPlaceholderState(currentState)) {
+        LOGE("not a placeholder, path:%{public}s, state:%{public}u", GetAnonyStringStrictly(hmdfsPath).c_str(),
+             currentState);
+        return E_NOT_A_PLACEHOLDER;
+    }
     return E_OK;
 }
 
@@ -2333,10 +2338,54 @@ static int32_t ResolvePlaceholderUpdateCaller(const std::string &syncFolder, int
     return ret;
 }
 
+static int32_t ApplyUpdatedAttributes(int32_t fd,
+    const PlaceholderInfo &metaData,
+    const PlaceholderCustomInfo &customInfo,
+    const std::string &hmdfsPath,
+    uint8_t &oldState)
+{
+    if (!customInfo.data.empty() &&
+        fsetxattr(fd, CLOUD_DISK_CUSTOM_INFO_XATTR, customInfo.data.data(), customInfo.data.size(), 0) < 0) {
+        int32_t error = errno;
+        LOGE("set custom info failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(),
+             error);
+        return ConvertErrnoToCloudDiskError(error);
+    }
+    if (ftruncate(fd, 0) < 0) {
+        int32_t error = errno;
+        LOGE("ftruncate to zero failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(),
+             error);
+        return ConvertErrnoToCloudDiskError(error);
+    }
+    if (ftruncate(fd, static_cast<off_t>(metaData.logicalSize)) < 0) {
+        int32_t error = errno;
+        LOGE("ftruncate to new size failed, path:%{public}s, errno:%{public}d",
+             GetAnonyStringStrictly(hmdfsPath).c_str(), error);
+        return ConvertErrnoToCloudDiskError(error);
+    }
+    int32_t ret = SetFilePlaceholderState(fd, PLACEHOLDER_STATE_UNHYDRATED, oldState);
+    if (ret != E_OK) {
+        LOGE("set placeholder state failed, path:%{public}s, errno:%{public}d",
+             GetAnonyStringStrictly(hmdfsPath).c_str(), ret);
+        return ConvertPlaceholderStateErrnoToCloudDiskError(ret);
+    }
+    struct timespec times[2] = {
+        MillisecondsToTimespec(metaData.atimeMs),
+        MillisecondsToTimespec(metaData.mtimeMs),
+    };
+    if (futimens(fd, times) < 0) {
+        int32_t error = errno;
+        LOGE("set times failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(),
+             error);
+        return ConvertErrnoToCloudDiskError(error);
+    }
+    return E_OK;
+}
+
 static int32_t UpdatePlaceholderAttr(const std::string &hmdfsPath,
-                                     const PlaceholderInfo &metaData,
-                                     const PlaceholderUpdateContext &context = {},
-                                     const PlaceholderCustomInfo &customInfo = {})
+    const PlaceholderInfo &metaData,
+    const PlaceholderUpdateContext &context = {},
+    const PlaceholderCustomInfo &customInfo = {})
 {
     if (metaData.logicalSize > MAX_PLACEHOLDER_LOGICAL_SIZE) {
         return E_FILE_TOO_LARGE;
@@ -2357,18 +2406,10 @@ static int32_t UpdatePlaceholderAttr(const std::string &hmdfsPath,
     if (ret != E_OK) {
         return ret;
     }
-    if (ftruncate(fd, 0) < 0) {
-        int32_t error = errno;
-        LOGE("ftruncate to zero failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(),
-             error);
-        return ConvertErrnoToCloudDiskError(error);
-    }
     uint8_t oldState = PLACEHOLDER_STATE_NONE;
-    ret = SetPlaceholderFileAttributes(fd, metaData, &oldState, customInfo);
+    ret = ApplyUpdatedAttributes(fd, metaData, customInfo, hmdfsPath, oldState);
     if (ret != E_OK) {
-        LOGE("set placeholder file attr failed, path:%{public}s, errno:%{public}d",
-             GetAnonyStringStrictly(hmdfsPath).c_str(), ret);
-        return ConvertErrnoToCloudDiskError(ret);
+        return ret;
     }
     if (!IsValidPlaceholderState(oldState)) {
         LOGE("invalid old placeholder state, path:%{public}s, state:%{public}u",
