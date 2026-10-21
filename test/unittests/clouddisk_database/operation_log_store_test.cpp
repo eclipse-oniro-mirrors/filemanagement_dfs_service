@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 
 #include "dfs_error.h"
+#include "operation_log_column.h"
 #include "operation_log_store.h"
 #include "rdb_assistant.h"
 #include "rdb_errno.h"
@@ -49,6 +50,8 @@ void OperationLogStoreTest::SetUp(void)
     auto &store = OperationLogStore::GetInstance();
     store.rdbStore_ = nullptr;
     store.isInited_ = false;
+    store.anonRdbStore_ = nullptr;
+    store.anonIsInited_ = false;
 }
 
 void OperationLogStoreTest::TearDown(void)
@@ -56,6 +59,8 @@ void OperationLogStoreTest::TearDown(void)
     auto &store = OperationLogStore::GetInstance();
     store.rdbStore_ = nullptr;
     store.isInited_ = false;
+    store.anonRdbStore_ = nullptr;
+    store.anonIsInited_ = false;
     insMock_->DisableMock();
     insMock_ = nullptr;
 }
@@ -173,16 +178,19 @@ HWTEST_F(OperationLogStoreTest, TryOpenRdbStoreCantOpenRetrySuccessTest, TestSiz
 
 /**
  * @tc.name: StopWhenStoreNullTest
- * @tc.desc: Verify Stop returns early without changing state when the rdb store is null.
+ * @tc.desc: Verify Stop resets inited flags even when the rdb stores are null.
  * @tc.type: FUNC
  */
 HWTEST_F(OperationLogStoreTest, StopWhenStoreNullTest, TestSize.Level1)
 {
     auto &store = OperationLogStore::GetInstance();
     store.rdbStore_ = nullptr;
+    store.anonRdbStore_ = nullptr;
     store.isInited_ = true;
+    store.anonIsInited_ = true;
     store.Stop();
-    EXPECT_TRUE(store.isInited_);
+    EXPECT_FALSE(store.isInited_);
+    EXPECT_FALSE(store.anonIsInited_);
 }
 
 /**
@@ -193,12 +201,17 @@ HWTEST_F(OperationLogStoreTest, StopWhenStoreNullTest, TestSize.Level1)
 HWTEST_F(OperationLogStoreTest, StopResetsStateTest, TestSize.Level1)
 {
     auto rdb = make_shared<RdbStoreMock>();
+    auto anonRdb = make_shared<RdbStoreMock>();
     auto &store = OperationLogStore::GetInstance();
     store.rdbStore_ = rdb;
+    store.anonRdbStore_ = anonRdb;
     store.isInited_ = true;
+    store.anonIsInited_ = true;
     store.Stop();
     EXPECT_EQ(store.GetRaw(), nullptr);
+    EXPECT_EQ(store.GetAnonRaw(), nullptr);
     EXPECT_FALSE(store.isInited_);
+    EXPECT_FALSE(store.anonIsInited_);
 }
 
 /**
@@ -218,6 +231,51 @@ HWTEST_F(OperationLogStoreTest, InitSuccessTest, TestSize.Level1)
     EXPECT_TRUE(store.isInited_);
     EXPECT_EQ(store.GetRaw(), rdb);
     EXPECT_EQ(store.Init(100), E_OK);
+}
+
+/**
+ * @tc.name: GetAnonRawNullBeforeInitTest
+ * @tc.desc: Verify GetAnonRaw returns nullptr before the anon store is initialized.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogStoreTest, GetAnonRawNullBeforeInitTest, TestSize.Level1)
+{
+    EXPECT_EQ(OperationLogStore::GetInstance().GetAnonRaw(), nullptr);
+}
+
+/**
+ * @tc.name: InitAnonStoreSuccessTest
+ * @tc.desc: Verify Init with isAnon=true opens the anon db and is idempotent.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogStoreTest, InitAnonStoreSuccessTest, TestSize.Level1)
+{
+    auto anonRdb = make_shared<RdbStoreMock>();
+    EXPECT_CALL(*insMock_, GetDefaultDatabasePath(_, _, _))
+        .WillOnce(DoAll(SetArgReferee<2>(NativeRdb::E_OK), Return("/data/test_operation_log/anon_operation_log.db")));
+    EXPECT_CALL(*insMock_, GetRdbStore(_, _, _, _))
+        .WillOnce(DoAll(SetArgReferee<3>(NativeRdb::E_OK), Return(anonRdb)));
+    auto &store = OperationLogStore::GetInstance();
+    EXPECT_EQ(store.Init(100, true), E_OK);
+    EXPECT_TRUE(store.anonIsInited_);
+    EXPECT_EQ(store.GetAnonRaw(), anonRdb);
+    EXPECT_EQ(store.Init(100, true), E_OK);
+}
+
+/**
+ * @tc.name: InitAnonStoreFailTest
+ * @tc.desc: Verify Init with isAnon=true returns the rdb error when the anon db cannot be opened.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogStoreTest, InitAnonStoreFailTest, TestSize.Level1)
+{
+    EXPECT_CALL(*insMock_, GetDefaultDatabasePath(_, _, _))
+        .WillOnce(DoAll(SetArgReferee<2>(NativeRdb::E_OK), Return("/data/test_operation_log/anon_operation_log.db")));
+    EXPECT_CALL(*insMock_, GetRdbStore(_, _, _, _))
+        .WillOnce(DoAll(SetArgReferee<3>(NativeRdb::E_ERROR), Return(nullptr)));
+    auto &store = OperationLogStore::GetInstance();
+    EXPECT_EQ(store.Init(100, true), NativeRdb::E_ERROR);
+    EXPECT_FALSE(store.anonIsInited_);
 }
 
 /**
@@ -258,7 +316,7 @@ HWTEST_F(OperationLogStoreTest, InitOpenStoreFailTest, TestSize.Level1)
 HWTEST_F(OperationLogStoreTest, OnCreateSuccessTest, TestSize.Level1)
 {
     auto rdb = make_shared<RdbStoreMock>();
-    EXPECT_CALL(*rdb, ExecuteSql(_, _))
+    EXPECT_CALL(*rdb, ExecuteSql(HasSubstr(OperationLogColumn::TABLE_NAME), _))
         .WillOnce(Return(NativeRdb::E_OK))
         .WillOnce(Return(NativeRdb::E_OK));
     OperationLogRdbCallBack callback;
@@ -294,14 +352,73 @@ HWTEST_F(OperationLogStoreTest, OnCreateIndexFailTest, TestSize.Level1)
 }
 
 /**
+ * @tc.name: OnCreateAnonTableTest
+ * @tc.desc: Verify OperationLogRdbCallBack::OnCreate builds the full-field anon table and index.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogStoreTest, OnCreateAnonTableTest, TestSize.Level1)
+{
+    auto rdb = make_shared<RdbStoreMock>();
+    EXPECT_CALL(*rdb, ExecuteSql(HasSubstr(OperationLogColumn::ANON_TABLE_NAME), _))
+        .WillOnce(Return(NativeRdb::E_OK))
+        .WillOnce(Return(NativeRdb::E_OK));
+    OperationLogRdbCallBack callback(true);
+    EXPECT_EQ(callback.OnCreate(*rdb), NativeRdb::E_OK);
+}
+
+/**
  * @tc.name: OnUpgradeTest
- * @tc.desc: Verify OperationLogRdbCallBack::OnUpgrade returns E_OK.
+ * @tc.desc: Verify OnUpgrade drops and recreates the slim 5-field table for the legacy db.
  * @tc.type: FUNC
  */
 HWTEST_F(OperationLogStoreTest, OnUpgradeTest, TestSize.Level1)
 {
     auto rdb = make_shared<RdbStoreMock>();
+    EXPECT_CALL(*rdb, ExecuteSql(_, _))
+        .WillOnce(Return(NativeRdb::E_OK))
+        .WillOnce(Return(NativeRdb::E_OK))
+        .WillOnce(Return(NativeRdb::E_OK));
     OperationLogRdbCallBack callback;
+    EXPECT_EQ(callback.OnUpgrade(*rdb, 1, 2), NativeRdb::E_OK);
+}
+
+/**
+ * @tc.name: OnUpgradeDropFailTest
+ * @tc.desc: Verify OnUpgrade returns E_ERROR when dropping the legacy table fails.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogStoreTest, OnUpgradeDropFailTest, TestSize.Level1)
+{
+    auto rdb = make_shared<RdbStoreMock>();
+    EXPECT_CALL(*rdb, ExecuteSql(_, _)).WillOnce(Return(NativeRdb::E_ERROR));
+    OperationLogRdbCallBack callback;
+    EXPECT_EQ(callback.OnUpgrade(*rdb, 1, 2), NativeRdb::E_ERROR);
+}
+
+/**
+ * @tc.name: OnUpgradeRecreateFailTest
+ * @tc.desc: Verify OnUpgrade returns E_ERROR when recreating the legacy table fails.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogStoreTest, OnUpgradeRecreateFailTest, TestSize.Level1)
+{
+    auto rdb = make_shared<RdbStoreMock>();
+    EXPECT_CALL(*rdb, ExecuteSql(_, _))
+        .WillOnce(Return(NativeRdb::E_OK))
+        .WillOnce(Return(NativeRdb::E_ERROR));
+    OperationLogRdbCallBack callback;
+    EXPECT_EQ(callback.OnUpgrade(*rdb, 1, 2), NativeRdb::E_ERROR);
+}
+
+/**
+ * @tc.name: OnUpgradeAnonTest
+ * @tc.desc: Verify OnUpgrade returns E_OK immediately for the anon db(no legacy data).
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogStoreTest, OnUpgradeAnonTest, TestSize.Level1)
+{
+    auto rdb = make_shared<RdbStoreMock>();
+    OperationLogRdbCallBack callback(true);
     EXPECT_EQ(callback.OnUpgrade(*rdb, 1, 2), NativeRdb::E_OK);
 }
 

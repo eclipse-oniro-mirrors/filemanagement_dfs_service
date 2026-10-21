@@ -21,6 +21,7 @@
 #include <gtest/gtest.h>
 
 #include "dfs_error.h"
+#include "operation_log_column.h"
 #include "operation_log_const.h"
 #include "operation_log_entry.h"
 #include "operation_log_handler.h"
@@ -60,7 +61,7 @@ public:
     void TearDown();
     shared_ptr<AssistantMock> insMock_ = nullptr;
     shared_ptr<RdbStoreMock> rdbStoreMock_ = nullptr;
-    shared_ptr<ResultSetMock> resultSetMock_ = nullptr;
+    shared_ptr<NiceMock<ResultSetMock>> resultSetMock_ = nullptr;
     shared_ptr<AbsSharedResultSetMock> absResultSetMock_ = nullptr;
 };
 
@@ -70,11 +71,13 @@ void OperationLogHandlerTest::SetUp(void)
     Assistant::ins = insMock_;
     insMock_->EnableMock();
     rdbStoreMock_ = make_shared<RdbStoreMock>();
-    resultSetMock_ = make_shared<ResultSetMock>();
+    resultSetMock_ = make_shared<NiceMock<ResultSetMock>>();
     absResultSetMock_ = make_shared<AbsSharedResultSetMock>();
     auto &store = OperationLogStore::GetInstance();
     store.rdbStore_ = nullptr;
     store.isInited_ = false;
+    store.anonRdbStore_ = nullptr;
+    store.anonIsInited_ = true;
     auto &handler = OperationLogHandler::GetInstance();
     handler.running_ = false;
     handler.isInited_ = false;
@@ -86,6 +89,8 @@ void OperationLogHandlerTest::TearDown(void)
     auto &store = OperationLogStore::GetInstance();
     store.rdbStore_ = nullptr;
     store.isInited_ = false;
+    store.anonRdbStore_ = nullptr;
+    store.anonIsInited_ = false;
     auto &handler = OperationLogHandler::GetInstance();
     handler.running_ = false;
     handler.isInited_ = false;
@@ -255,7 +260,7 @@ HWTEST_F(OperationLogHandlerTest, DoInsertNullStoreTest, TestSize.Level1)
     auto &handler = OperationLogHandler::GetInstance();
     OperationLogStore::GetInstance().rdbStore_ = nullptr;
     vector<OperationLogEntry> batch = { CreateEntry(1) };
-    EXPECT_EQ(handler.DoInsert(batch), E_RDB);
+    EXPECT_EQ(handler.DoInsertLegacy(batch), E_RDB);
 }
 
 /**
@@ -272,7 +277,7 @@ HWTEST_F(OperationLogHandlerTest, DoInsertQueryFailedTest, TestSize.Level1)
         QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), preCount))
         .WillOnce(Return(ByMove(nullptr)));
     vector<OperationLogEntry> batch = { CreateEntry(1) };
-    EXPECT_EQ(handler.DoInsert(batch), E_RDB);
+    EXPECT_EQ(handler.DoInsertLegacy(batch), E_RDB);
 }
 
 /**
@@ -304,7 +309,7 @@ HWTEST_F(OperationLogHandlerTest, DoInsertSuccessTest, TestSize.Level1)
     EXPECT_CALL(*resultSetMock_, GetRowCount(_)).WillOnce(DoAll(SetArgReferee<0>(5), Return(E_OK)));
     EXPECT_CALL(*rdbStoreMock_, Insert(_, _, _)).WillRepeatedly(Return(NativeRdb::E_OK));
     vector<OperationLogEntry> batch = { CreateEntry(1), CreateEntry(2) };
-    EXPECT_EQ(handler.DoInsert(batch), E_OK);
+    EXPECT_EQ(handler.DoInsertLegacy(batch), E_OK);
 
     handler.Stop();
 }
@@ -331,7 +336,7 @@ HWTEST_F(OperationLogHandlerTest, DoInsertTriggersCleanupTest, TestSize.Level1)
     EXPECT_CALL(*rdbStoreMock_, Delete(_, _)).WillOnce(Return(NativeRdb::E_OK));
     EXPECT_CALL(*rdbStoreMock_, Insert(_, _, _)).WillRepeatedly(Return(NativeRdb::E_OK));
     vector<OperationLogEntry> batch = { CreateEntry(1) };
-    EXPECT_EQ(handler.DoInsert(batch), E_OK);
+    EXPECT_EQ(handler.DoInsertLegacy(batch), E_OK);
 }
 
 /**
@@ -352,7 +357,7 @@ HWTEST_F(OperationLogHandlerTest, DoInsertCleanupFailedTest, TestSize.Level1)
         .WillOnce(DoAll(SetArgReferee<0>(OperationLogConst::MAX_RECORD_COUNT), Return(E_OK)));
     EXPECT_CALL(*rdbStoreMock_, Query(_, _)).WillOnce(Return(nullptr));
     vector<OperationLogEntry> batch = { CreateEntry(1) };
-    EXPECT_EQ(handler.DoInsert(batch), E_RDB);
+    EXPECT_EQ(handler.DoInsertLegacy(batch), E_RDB);
 }
 
 /**
@@ -500,6 +505,39 @@ HWTEST_F(OperationLogHandlerTest, WriteBatchSuccessTest, TestSize.Level1)
     EXPECT_EQ(handler.WriteBatch(batch), E_OK);
 
     handler.Stop();
+}
+
+/**
+ * @tc.name: WriteBatchThenAnonInsertTest
+ * @tc.desc: Verify WriteBatch writes to the legacy store first, then the anon store with the
+ *           anonymized path, and returns E_OK.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogHandlerTest, WriteBatchThenAnonInsertTest, TestSize.Level1)
+{
+    auto &handler = OperationLogHandler::GetInstance();
+    auto &store = OperationLogStore::GetInstance();
+    auto anonRdb = make_shared<RdbStoreMock>();
+    store.rdbStore_ = rdbStoreMock_;
+    store.anonRdbStore_ = anonRdb;
+
+    bool preCount = true;
+    EXPECT_CALL(*rdbStoreMock_,
+        QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), preCount))
+        .WillOnce(Return(ByMove(resultSetMock_)));
+    EXPECT_CALL(*resultSetMock_, GetRowCount(_)).WillOnce(DoAll(SetArgReferee<0>(5), Return(E_OK)));
+    EXPECT_CALL(*rdbStoreMock_, BeginTransaction()).WillOnce(Return(NativeRdb::E_OK));
+    EXPECT_CALL(*rdbStoreMock_, Insert(_, _, _)).WillOnce(Return(NativeRdb::E_OK));
+    EXPECT_CALL(*rdbStoreMock_, Commit()).WillOnce(Return(NativeRdb::E_OK));
+    EXPECT_CALL(*anonRdb,
+        QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), preCount))
+        .WillOnce(Return(ByMove(absResultSetMock_)));
+    EXPECT_CALL(*absResultSetMock_, GetRowCount(_)).WillOnce(DoAll(SetArgReferee<0>(0), Return(E_OK)));
+    EXPECT_CALL(*absResultSetMock_, Close()).WillOnce(Return(E_OK));
+    EXPECT_CALL(*anonRdb, Insert(_, _, _)).WillOnce(Return(NativeRdb::E_OK));
+
+    vector<OperationLogEntry> batch = { CreateEntry(1) };
+    EXPECT_EQ(handler.WriteBatch(batch), E_OK);
 }
 
 /**
@@ -872,6 +910,169 @@ HWTEST_F(OperationLogHandlerTest, CleanAllRecordsSuccessTest, TestSize.Level1)
         .WillOnce(DoAll(SetArgReferee<0>(5), Return(NativeRdb::E_OK)));
     int32_t result = handler.CleanAllRecords();
     EXPECT_EQ(result, E_OK);
+}
+
+/**
+ * @tc.name: DoInsertAnonWritesAnonymizedPathTest
+ * @tc.desc: Verify DoInsert with isAnon=true stores the anonymized file_path into the anon store.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogHandlerTest, DoInsertAnonWritesAnonymizedPathTest, TestSize.Level1)
+{
+    auto &handler = OperationLogHandler::GetInstance();
+    auto &store = OperationLogStore::GetInstance();
+    auto anonRdb = make_shared<RdbStoreMock>();
+    store.anonRdbStore_ = anonRdb;
+
+    bool preCount = true;
+    EXPECT_CALL(*anonRdb,
+        QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), preCount))
+        .WillOnce(Return(ByMove(resultSetMock_)));
+    EXPECT_CALL(*resultSetMock_, GetRowCount(_)).WillOnce(DoAll(SetArgReferee<0>(0), Return(E_OK)));
+
+    std::string capturedAnonPath;
+    EXPECT_CALL(*anonRdb, Insert(_, OperationLogColumn::ANON_TABLE_NAME, _))
+        .WillOnce(Invoke([&capturedAnonPath](int64_t &rowId, const std::string &table,
+                NativeRdb::ValuesBucket values) -> int {
+            NativeRdb::ValueObject obj;
+            values.GetObject(OperationLogColumn::FILE_PATH, obj);
+            obj.GetString(capturedAnonPath);
+            return NativeRdb::E_OK;
+        }));
+
+    vector<OperationLogEntry> batch = { CreateEntry(1) };
+    EXPECT_EQ(handler.DoInsertAnon(batch), E_OK);
+    EXPECT_EQ(capturedAnonPath, OperationLogHandler::GetAnonyStringLocal("/data/oplog/foo.txt"));
+    EXPECT_NE(capturedAnonPath, "/data/oplog/foo.txt");
+}
+
+/**
+ * @tc.name: DoInsertAnonFailureDegradeTest
+ * @tc.desc: Verify anon insert failure degrades and still returns E_OK.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogHandlerTest, DoInsertAnonFailureDegradeTest, TestSize.Level1)
+{
+    auto &handler = OperationLogHandler::GetInstance();
+    auto &store = OperationLogStore::GetInstance();
+    auto anonRdb = make_shared<RdbStoreMock>();
+    store.anonRdbStore_ = anonRdb;
+    bool preCount = true;
+    EXPECT_CALL(*anonRdb,
+        QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), preCount))
+        .WillOnce(Return(ByMove(resultSetMock_)));
+    EXPECT_CALL(*resultSetMock_, GetRowCount(_)).WillOnce(DoAll(SetArgReferee<0>(0), Return(E_OK)));
+    EXPECT_CALL(*anonRdb, Insert(_, _, _)).WillRepeatedly(Return(NativeRdb::E_ERROR));
+
+    vector<OperationLogEntry> batch = { CreateEntry(1) };
+    EXPECT_EQ(handler.DoInsertAnon(batch), E_OK);
+}
+
+/**
+ * @tc.name: DoInsertAnonCountQueryFailDegradeTest
+ * @tc.desc: Verify DoInsert with isAnon=true still inserts when the record count query fails.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogHandlerTest, DoInsertAnonCountQueryFailDegradeTest, TestSize.Level1)
+{
+    auto &handler = OperationLogHandler::GetInstance();
+    auto &store = OperationLogStore::GetInstance();
+    auto anonRdb = make_shared<RdbStoreMock>();
+    store.anonRdbStore_ = anonRdb;
+    bool preCount = true;
+    EXPECT_CALL(*anonRdb,
+        QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), preCount))
+        .WillOnce(Return(ByMove(std::shared_ptr<ResultSet>())));
+    EXPECT_CALL(*anonRdb, Insert(_, _, _)).WillOnce(Return(NativeRdb::E_OK));
+
+    vector<OperationLogEntry> batch = { CreateEntry(1) };
+    EXPECT_EQ(handler.DoInsertAnon(batch), E_OK);
+}
+
+/**
+ * @tc.name: DoInsertAnonCapacityCleanTest
+ * @tc.desc: Verify DoInsert with isAnon=true cleans the anon store when the record count reaches the cap.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogHandlerTest, DoInsertAnonCapacityCleanTest, TestSize.Level1)
+{
+    auto &handler = OperationLogHandler::GetInstance();
+    auto &store = OperationLogStore::GetInstance();
+    auto anonRdb = make_shared<RdbStoreMock>();
+    store.anonRdbStore_ = anonRdb;
+    bool preCount = true;
+    EXPECT_CALL(*anonRdb,
+        QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), preCount))
+        .WillOnce(Return(ByMove(resultSetMock_)));
+    EXPECT_CALL(*resultSetMock_, GetRowCount(_))
+        .WillOnce(DoAll(SetArgReferee<0>(OperationLogConst::MAX_RECORD_COUNT), Return(E_OK)));
+    EXPECT_CALL(*anonRdb, Query(_, _)).WillOnce(Return(absResultSetMock_));
+    EXPECT_CALL(*absResultSetMock_, GoToNextRow()).WillOnce(Return(E_OK)).WillRepeatedly(Return(-1));
+    EXPECT_CALL(*absResultSetMock_, GetLong(_, _)).WillOnce(DoAll(SetArgReferee<1>(1), Return(E_OK)));
+    EXPECT_CALL(*absResultSetMock_, Close()).WillOnce(Return(E_OK));
+    EXPECT_CALL(*anonRdb, Delete(_, _)).WillOnce(Return(NativeRdb::E_OK));
+    EXPECT_CALL(*anonRdb, Insert(_, _, _)).WillOnce(Return(NativeRdb::E_OK));
+
+    vector<OperationLogEntry> batch = { CreateEntry(1) };
+    EXPECT_EQ(handler.DoInsertAnon(batch), E_OK);
+}
+
+/**
+ * @tc.name: DoInsertAnonNullStoreDegradeTest
+ * @tc.desc: Verify DoInsert with isAnon=true still returns E_OK when the anon store is null.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogHandlerTest, DoInsertAnonNullStoreDegradeTest, TestSize.Level1)
+{
+    auto &handler = OperationLogHandler::GetInstance();
+    OperationLogStore::GetInstance().anonRdbStore_ = nullptr;
+
+    vector<OperationLogEntry> batch = { CreateEntry(1) };
+    EXPECT_EQ(handler.DoInsertAnon(batch), E_OK);
+}
+
+/**
+ * @tc.name: CleanAllRecordsAlsoCleansAnonStoreTest
+ * @tc.desc: Verify CleanAllRecords also clears the anon store.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogHandlerTest, CleanAllRecordsAlsoCleansAnonStoreTest, TestSize.Level1)
+{
+    auto &handler = OperationLogHandler::GetInstance();
+    auto &store = OperationLogStore::GetInstance();
+    auto anonRdb = make_shared<RdbStoreMock>();
+    store.rdbStore_ = rdbStoreMock_;
+    store.anonRdbStore_ = anonRdb;
+
+    EXPECT_CALL(*rdbStoreMock_,
+        Delete(_, Property(&AbsRdbPredicates::GetTableName, OperationLogColumn::TABLE_NAME)))
+        .WillOnce(Return(NativeRdb::E_OK));
+    EXPECT_CALL(*anonRdb,
+        Delete(_, Property(&AbsRdbPredicates::GetTableName, OperationLogColumn::ANON_TABLE_NAME)))
+        .WillOnce(Return(NativeRdb::E_OK));
+    EXPECT_EQ(handler.CleanAllRecords(), E_OK);
+}
+
+/**
+ * @tc.name: CleanOldRecordsAlsoCleansAnonStoreTest
+ * @tc.desc: Verify CleanOldRecords also cleans expired records in the anon store.
+ * @tc.type: FUNC
+ */
+HWTEST_F(OperationLogHandlerTest, CleanOldRecordsAlsoCleansAnonStoreTest, TestSize.Level1)
+{
+    auto &handler = OperationLogHandler::GetInstance();
+    auto &store = OperationLogStore::GetInstance();
+    auto anonRdb = make_shared<RdbStoreMock>();
+    store.rdbStore_ = rdbStoreMock_;
+    store.anonRdbStore_ = anonRdb;
+
+    EXPECT_CALL(*rdbStoreMock_,
+        Delete(_, Property(&AbsRdbPredicates::GetTableName, OperationLogColumn::TABLE_NAME)))
+        .WillOnce(Return(NativeRdb::E_OK));
+    EXPECT_CALL(*anonRdb,
+        Delete(_, Property(&AbsRdbPredicates::GetTableName, OperationLogColumn::ANON_TABLE_NAME)))
+        .WillOnce(Return(NativeRdb::E_OK));
+    EXPECT_EQ(handler.CleanOldRecords(), E_OK);
 }
 
 /**

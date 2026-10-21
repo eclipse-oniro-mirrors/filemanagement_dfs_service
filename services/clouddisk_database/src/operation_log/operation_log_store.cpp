@@ -42,24 +42,28 @@ OperationLogStore& OperationLogStore::GetInstance()
     return instance;
 }
 
-int32_t OperationLogStore::Init(int32_t userId)
+int32_t OperationLogStore::Init(int32_t userId, bool isAnon)
 {
     lock_guard<mutex> lock(mutex_);
-    if (isInited_) {
+    bool& isInited = isAnon ? anonIsInited_ : isInited_;
+    if (isInited) {
         return E_OK;
     }
     userId_ = userId;
-    int32_t ret = RdbInit(userId);
+    int32_t ret = RdbInit(userId, isAnon);
     if (ret != E_OK) {
-        LOGE("OperationLogStore Init failed, ret=%{public}d", ret);
+        LOGE("OperationLogStore Init failed, isAnon=%{public}d, ret=%{public}d", isAnon, ret);
         return ret;
     }
-    isInited_ = true;
+    isInited = true;
     return E_OK;
 }
 
-int32_t OperationLogStore::RdbInit(int32_t userId)
+int32_t OperationLogStore::RdbInit(int32_t userId, bool isAnon)
 {
+    const std::string& databaseName = isAnon ? OperationLogConst::ANON_DATABASE_NAME :
+        OperationLogConst::DATABASE_NAME;
+    auto& config = isAnon ? anonConfig_ : config_;
     string databaseDir = OperationLogConst::DATABASE_ROOT_DIR + to_string(userId) +
         OperationLogConst::DATABASE_RELATIVE_DIR;
     int32_t ret = CheckAndCreateDir(databaseDir);
@@ -68,23 +72,23 @@ int32_t OperationLogStore::RdbInit(int32_t userId)
         return ret;
     }
 
-    string databasePath = RdbSqlUtils::GetDefaultDatabasePath(databaseDir,
-        OperationLogConst::DATABASE_NAME, ret);
+    string databasePath = RdbSqlUtils::GetDefaultDatabasePath(databaseDir, databaseName, ret);
     if (ret != NativeRdb::E_OK) {
         LOGE("create default database path failed, errCode = %{public}d", ret);
         return E_PATH;
     }
 
-    config_.SetName(OperationLogConst::DATABASE_NAME);
-    config_.SetPath(databasePath);
-    config_.SetReadConSize(OperationLogConst::CONNECT_SIZE);
-    config_.SetWalLimitSize(OperationLogConst::RDB_WAL_LIMIT_SIZE);
+    config.SetName(databaseName);
+    config.SetPath(databasePath);
+    config.SetReadConSize(OperationLogConst::CONNECT_SIZE);
+    config.SetWalLimitSize(OperationLogConst::RDB_WAL_LIMIT_SIZE);
 
-    if (!TryOpenRdbStore(databaseDir, databasePath, ret)) {
-        LOGE("open operation log rdb store failed, errCode = %{public}d", ret);
+    if (!TryOpenRdbStore(databaseDir, databasePath, ret, isAnon)) {
+        LOGE("open operation log rdb store failed, isAnon = %{public}d, errCode = %{public}d", isAnon, ret);
         return ret;
     }
-    LOGI("OperationLogStore RdbInit success, path = %{public}s", GetAnonyString(databasePath).c_str());
+    LOGI("OperationLogStore RdbInit success, isAnon = %{public}d, path = %{public}s",
+        isAnon, GetAnonyString(databasePath).c_str());
     return E_OK;
 }
 
@@ -114,11 +118,14 @@ int32_t OperationLogStore::CheckAndCreateDir(const string& dirPath)
     return E_OK;
 }
 
-bool OperationLogStore::TryOpenRdbStore(const string& customDir, const string& databasePath, int32_t& errCode)
+bool OperationLogStore::TryOpenRdbStore(const string& customDir, const string& databasePath, int32_t& errCode,
+    bool isAnon)
 {
-    OperationLogRdbCallBack callBack;
-    rdbStore_ = RdbHelper::GetRdbStore(config_, OperationLogConst::DATABASE_VERSION, callBack, errCode);
-    if (rdbStore_ != nullptr) {
+    auto& rdbStore = isAnon ? anonRdbStore_ : rdbStore_;
+    auto& config = isAnon ? anonConfig_ : config_;
+    OperationLogRdbCallBack callBack(isAnon);
+    rdbStore = RdbHelper::GetRdbStore(config, OperationLogConst::DATABASE_VERSION, callBack, errCode);
+    if (rdbStore != nullptr) {
         return true;
     }
     LOGE("get rdb store failed, errCode = %{public}d", errCode);
@@ -129,11 +136,11 @@ bool OperationLogStore::TryOpenRdbStore(const string& customDir, const string& d
             dirStat.st_gid == static_cast<gid_t>(OID_DFS)) {
             if (chmod(customDir.c_str(), OperationLogConst::DIR_MODE) == 0) {
                 LOGE("recreate operation log db dir failed");
-                rdbStore_ = RdbHelper::GetRdbStore(config_, OperationLogConst::DATABASE_VERSION, callBack, errCode);
+                rdbStore = RdbHelper::GetRdbStore(config, OperationLogConst::DATABASE_VERSION, callBack, errCode);
             }
         }
     }
-    return rdbStore_ != nullptr;
+    return rdbStore != nullptr;
 }
 
 shared_ptr<RdbStore> OperationLogStore::GetRaw()
@@ -142,36 +149,65 @@ shared_ptr<RdbStore> OperationLogStore::GetRaw()
     return rdbStore_;
 }
 
+shared_ptr<RdbStore> OperationLogStore::GetAnonRaw()
+{
+    lock_guard<mutex> lock(mutex_);
+    return anonRdbStore_;
+}
+
 void OperationLogStore::Stop()
 {
     lock_guard<mutex> lock(mutex_);
-    if (rdbStore_ == nullptr) {
-        return;
-    }
     rdbStore_ = nullptr;
+    anonRdbStore_ = nullptr;
     isInited_ = false;
+    anonIsInited_ = false;
 }
+
+OperationLogRdbCallBack::OperationLogRdbCallBack(bool isAnon) : isAnon_(isAnon) {}
 
 int32_t OperationLogRdbCallBack::OnCreate(RdbStore& store)
 {
-    int32_t ret = store.ExecuteSql(OperationLogColumn::CREATE_TABLE_SQL);
+    const string& tableSql = isAnon_ ? OperationLogColumn::CREATE_ANON_TABLE_SQL :
+        OperationLogColumn::CREATE_TABLE_SQL;
+    const string& indexSql = isAnon_ ? OperationLogColumn::CREATE_ANON_INDEX_SQL :
+        OperationLogColumn::CREATE_INDEX_SQL;
+    int32_t ret = store.ExecuteSql(tableSql);
     if (ret != NativeRdb::E_OK) {
-        LOGE("create operation log table failed, ret = %{public}d", ret);
+        LOGE("create %s operation log table failed, ret = %{public}d", isAnon_ ? "anon" : "legacy", ret);
         return NativeRdb::E_ERROR;
     }
 
-    ret = store.ExecuteSql(OperationLogColumn::CREATE_INDEX_SQL);
+    ret = store.ExecuteSql(indexSql);
     if (ret != NativeRdb::E_OK) {
-        LOGE("create operation log index failed, ret = %{public}d", ret);
+        LOGE("create %s operation log index failed, ret = %{public}d", isAnon_ ? "anon" : "legacy", ret);
         return NativeRdb::E_ERROR;
     }
-    LOGI("create operation log table success");
+    LOGI("create %s operation log table success", isAnon_ ? "anon" : "legacy");
     return NativeRdb::E_OK;
 }
 
 int32_t OperationLogRdbCallBack::OnUpgrade(RdbStore& store, int32_t oldVersion, int32_t newVersion)
 {
     LOGI("operation log db upgrade, oldVersion = %{public}d, newVersion = %{public}d", oldVersion, newVersion);
+    if (isAnon_) {
+        return NativeRdb::E_OK;
+    }
+    int32_t ret = store.ExecuteSql("DROP TABLE IF EXISTS " + OperationLogColumn::TABLE_NAME);
+    if (ret != NativeRdb::E_OK) {
+        LOGE("drop operation log table failed, ret = %{public}d", ret);
+        return NativeRdb::E_ERROR;
+    }
+    ret = store.ExecuteSql(OperationLogColumn::CREATE_TABLE_SQL);
+    if (ret != NativeRdb::E_OK) {
+        LOGE("recreate operation log table failed, ret = %{public}d", ret);
+        return NativeRdb::E_ERROR;
+    }
+    ret = store.ExecuteSql(OperationLogColumn::CREATE_INDEX_SQL);
+    if (ret != NativeRdb::E_OK) {
+        LOGE("recreate operation log index failed, ret = %{public}d", ret);
+        return NativeRdb::E_ERROR;
+    }
     return NativeRdb::E_OK;
 }
 

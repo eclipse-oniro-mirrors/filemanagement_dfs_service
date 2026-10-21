@@ -25,6 +25,7 @@
 #include <thread>
 #include <vector>
 
+#include "operation_log_column.h"
 #include "operation_log_entry.h"
 #include "operation_log_queue.h"
 #include "rdb_store.h"
@@ -58,10 +59,14 @@ private:
 
     void WriteThreadLoop();
     int32_t WriteBatch(const std::vector<OperationLogEntry> &batch);
-    int32_t DoInsert(const std::vector<OperationLogEntry> &batch);
+    int32_t DoInsertAnon(const std::vector<OperationLogEntry> &batch);
+    int32_t DoInsertLegacy(const std::vector<OperationLogEntry> &batch);
+    int32_t CleanAnonRecords(int64_t cutoffTime);
     bool IsRecoverableError(int32_t errCode);
-    int32_t CheckAndCleanRecords();
-    int32_t GetRecordCount(int32_t &count);
+    int32_t CheckAndCleanRecords(const std::shared_ptr<NativeRdb::RdbStore> &rdbStore = nullptr,
+        const std::string &tableName = OperationLogColumn::TABLE_NAME);
+    int32_t GetRecordCount(int32_t &count, const std::shared_ptr<NativeRdb::RdbStore> &rdbStore = nullptr,
+        const std::string &tableName = OperationLogColumn::TABLE_NAME);
     void AppendStatRecord(std::string &operationInfo, const std::string &dirPath,
         const std::string &fileName, int64_t opTime, const std::string &processName, int32_t fileCount);
     int32_t ReportFileStatsToInfo(std::shared_ptr<NativeRdb::RdbStore> rdbStore,

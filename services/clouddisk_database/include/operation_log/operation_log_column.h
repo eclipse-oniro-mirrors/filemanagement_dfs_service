@@ -35,9 +35,12 @@ public:
     static const std::string PROCESS_PID;
     static const std::string PROCESS_UID;
     static const std::string CLOUD_ID;
+    static const std::string ANON_TABLE_NAME;
 
     static const std::string CREATE_TABLE_SQL;
     static const std::string CREATE_INDEX_SQL;
+    static const std::string CREATE_ANON_TABLE_SQL;
+    static const std::string CREATE_ANON_INDEX_SQL;
 };
 
 } // namespace CloudDisk
