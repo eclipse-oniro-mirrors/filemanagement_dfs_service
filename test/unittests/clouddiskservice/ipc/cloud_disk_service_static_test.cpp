@@ -4511,4 +4511,38 @@ HWTEST_F(CloudDiskServiceStaticTest, PlaceholderServiceMutationOutstandingTask_0
     EXPECT_EQ(service.UpdatePlaceholderInner(PLACEHOLDER_TEST_SYNC_FOLDER, "file.txt", {}, {}), E_HYDRATE_IN_PROGRESS);
 }
 #endif
+
+/**
+ * @tc.name: ValidatePlaceholderForUpdate_StateNone_001
+ * @tc.desc: Verify ValidatePlaceholderForUpdate rejects a file whose persisted state is not a placeholder.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, ValidatePlaceholderForUpdate_StateNone_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ValidatePlaceholderForUpdate_StateNone_001 start";
+    int32_t fd = 11;
+    EXPECT_CALL(*insMock_, fgetxattr(fd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+        .WillOnce(Invoke([](int, const char *, void *value, size_t size) {
+            *static_cast<uint8_t *>(value) = MakeFileSyncState(PLACEHOLDER_STATE_NONE, 0);
+            return static_cast<ssize_t>(size);
+        }));
+
+    EXPECT_EQ(ValidatePlaceholderForUpdate(fd, PLACEHOLDER_TEST_PATH), E_NOT_A_PLACEHOLDER);
+    GTEST_LOG_(INFO) << "ValidatePlaceholderForUpdate_StateNone_001 end";
+}
+
+/**
+ * @tc.name: ConvertErrnoToCloudDiskError_E2BIG_001
+ * @tc.desc: Verify ConvertErrnoToCloudDiskError maps E2BIG to E_INVALID_ARG.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, ConvertErrnoToCloudDiskError_E2BIG_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ConvertErrnoToCloudDiskError_E2BIG_001 start";
+    EXPECT_EQ(ConvertErrnoToCloudDiskError(E2BIG), E_INVALID_ARG);
+    GTEST_LOG_(INFO) << "ConvertErrnoToCloudDiskError_E2BIG_001 end";
+}
+
 } // namespace OHOS::FileManagement::CloudDiskService::Test

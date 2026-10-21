@@ -158,6 +158,8 @@ void CloudDiskSyncFolder::RemovePlaceholderFilesSingle(const string &path)
     if (ret != E_OK) {
         LOGE("get placeholder state failed for path:%{public}s, errno:%{public}d",
              GetAnonyStringStrictly(realPath).c_str(), ret);
+    } else if (placeholderState == PLACEHOLDER_STATE_FULLY_HYDRATED) {
+        LOGI("keep fully hydrated placeholder, path:%{public}s", GetAnonyStringStrictly(realPath).c_str());
     } else if (IsPlaceholderState(placeholderState)) {
         if (unlink(realPath) < 0) {
             LOGE("unlink failed for path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(realPath).c_str(),
@@ -197,6 +199,8 @@ void CloudDiskSyncFolder::RemovePlaceholderFilesBatch(const string &path)
         }
     }
     closedir(dir);
+    removexattr(path.c_str(), CLOUD_DISK_PLACEHOLDER_COUNT_XATTR);
+    removexattr(path.c_str(), CLOUD_DISK_FILE_SYNC_STATE_XATTR);
 }
 
 /* Verify the path specified by inputPath, replace its prefix oldPrefix with the new prefix newPrefix. */

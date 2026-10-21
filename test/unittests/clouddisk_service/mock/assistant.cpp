@@ -347,6 +347,27 @@ int fsetxattr(int fd, const char* name, const void* value, size_t size, int flag
     return realFsetxattr(fd, name, value, size, flags);
 }
 
+ssize_t fgetxattr(int fd, const char* name, void* value, size_t size)
+{
+    if (AssistantMock::IsMockable()) {
+        return Assistant::ins->fgetxattr(fd, name, value, size);
+    }
+
+    static ssize_t (*realFgetxattr)(int, const char*, void*, size_t) = []() {
+        auto func = (ssize_t (*)(int, const char*, void*, size_t))dlsym(RTLD_NEXT, "fgetxattr");
+        if (!func) {
+            GTEST_LOG_(ERROR) << "Failed to resolve real fgetxattr: " << dlerror();
+        }
+        return func;
+    }();
+
+    if (!realFgetxattr) {
+        return -1;
+    }
+
+    return realFgetxattr(fd, name, value, size);
+}
+
 int close(int fd)
 {
     if (AssistantMock::IsMockable()) {

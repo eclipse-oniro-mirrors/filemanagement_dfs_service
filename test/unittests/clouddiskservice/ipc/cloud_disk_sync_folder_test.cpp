@@ -1647,6 +1647,88 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest012, TestSize.L
     }
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest012 end";
 }
+
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest_FullyHydrated_001
+ * @tc.desc: Verify the RemovePlaceholderFilesBatch function keeps FULLY_HYDRATED placeholder files
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest_FullyHydrated_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_FullyHydrated_001 start";
+    try {
+        std::system("mkdir -p /data/test_tdd_placeholder");
+        std::system("touch /data/test_tdd_placeholder/fully_file.txt");
+
+        struct stat st = {};
+        st.st_mode = S_IFREG;
+        EXPECT_CALL(*syncFolderMock, lstat(_, _))
+            .WillOnce(DoAll(SetArgPointee<1>(st), Return(0)));
+
+        const char *realOutputPath = "/data/test_tdd_placeholder/fully_file.txt";
+        EXPECT_CALL(*syncFolderMock, realpath(_, _))
+            .WillOnce(DoAll(
+                SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
+                Return(const_cast<char*>(realOutputPath))
+            ));
+
+        EXPECT_CALL(*syncFolderMock, getxattr(_, _, _, _))
+            .WillOnce(SetByteXattr(MakeFileSyncState(PLACEHOLDER_STATE_FULLY_HYDRATED, 0)));
+        EXPECT_CALL(*syncFolderMock, unlink(_)).Times(0);
+        EXPECT_CALL(*insMock, removexattr(_, _)).WillRepeatedly(Return(0));
+
+        string path = "/data/test_tdd_placeholder";
+        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
+
+        std::system("rm -rf /data/test_tdd_placeholder");
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_FullyHydrated_001 failed";
+    }
+    GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_FullyHydrated_001 end";
+}
+
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest_FullyHydrated_NoUnlink_002
+ * @tc.desc: Verify the RemovePlaceholderFilesBatch function does not unlink FULLY_HYDRATED files
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest_FullyHydrated_NoUnlink_002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_FullyHydrated_NoUnlink_002 start";
+    try {
+        std::system("mkdir -p /data/test_tdd_placeholder");
+        std::system("touch /data/test_tdd_placeholder/fully_file.txt");
+
+        struct stat st = {};
+        st.st_mode = S_IFREG;
+        EXPECT_CALL(*syncFolderMock, lstat(_, _))
+            .WillOnce(DoAll(SetArgPointee<1>(st), Return(0)));
+
+        const char *realOutputPath = "/data/test_tdd_placeholder/fully_file.txt";
+        EXPECT_CALL(*syncFolderMock, realpath(_, _))
+            .WillOnce(DoAll(
+                SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
+                Return(const_cast<char*>(realOutputPath))
+            ));
+
+        EXPECT_CALL(*syncFolderMock, getxattr(_, _, _, _))
+            .WillOnce(SetByteXattr(MakeFileSyncState(PLACEHOLDER_STATE_FULLY_HYDRATED, 0)));
+        EXPECT_CALL(*syncFolderMock, unlink(_)).Times(0);
+        EXPECT_CALL(*insMock, removexattr(_, _)).WillRepeatedly(Return(0));
+
+        string path = "/data/test_tdd_placeholder";
+        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
+
+        std::system("rm -rf /data/test_tdd_placeholder");
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_FullyHydrated_NoUnlink_002 failed";
+    }
+    GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_FullyHydrated_NoUnlink_002 end";
+}
 } // namespace Test
 } // namespace FileManagement::CloudDiskService
 } // namespace OHOS

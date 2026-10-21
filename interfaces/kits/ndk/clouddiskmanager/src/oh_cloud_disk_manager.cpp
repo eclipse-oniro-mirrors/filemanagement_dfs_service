@@ -78,7 +78,7 @@ OH_CloudDisk_DataBuf ToPublicDataBuf(const CloudDiskDataBuf &dataBuf)
 }
 
 #ifdef SUPPORT_CLOUD_DISK_SERVICE
-constexpr size_t PLACEHOLDER_CUSTOM_INFO_MAX_SIZE = 4096;
+constexpr size_t PLACEHOLDER_CUSTOM_INFO_MAX_SIZE = 1024;
 
 bool ConvertPlaceholderCustomInfo(const OH_CloudDisk_PlaceholderCustomInfo *customInfo,
     PlaceholderCustomInfo &innerCustomInfo)
