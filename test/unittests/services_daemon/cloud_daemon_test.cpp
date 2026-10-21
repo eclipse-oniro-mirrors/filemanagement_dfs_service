@@ -144,10 +144,9 @@ HWTEST_F(CloudDaemonTest, OnStartTest2, TestSize.Level1)
         }
         cloudDaemon_->OnStart();
         EXPECT_TRUE(true);
-    } catch (const std::exception &e) {
-        GTEST_LOG_(INFO) << "OnStart2 exception: " << e.what();
     } catch (...) {
-        GTEST_LOG_(INFO) << "OnStart2 unknown exception";
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "OnStart2  ERROR";
     }
     GTEST_LOG_(INFO) << "OnStart2 End";
 }
