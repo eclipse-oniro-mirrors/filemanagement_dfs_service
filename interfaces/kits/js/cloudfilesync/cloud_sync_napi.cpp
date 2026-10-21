@@ -499,13 +499,11 @@ static bool GetSyncMode(napi_env env, napi_value value, SyncMode &type)
         LOGE("Failed to parse sync type");
         return false;
     }
-    if (mode != static_cast<int32_t>(SyncMode::NORMAL) &&
-        mode != static_cast<int32_t>(SyncMode::FORCE) &&
-        mode != static_cast<int32_t>(SyncMode::FORCE_THM)) {
+    if (mode != SYNC_TYPE_FORCE_THM) {
         LOGE("Unsupported sync type");
         return false;
     }
-    type = static_cast<SyncMode>(static_cast<int32_t>(mode));
+    type = SyncMode::FORCE_THM;
     return true;
 }
 
@@ -624,14 +622,13 @@ napi_value CloudSyncNapi::StartWithType(napi_env env, napi_callback_info info)
         return nullptr;
     }
     napi_value typeArg = funcArg[hasCallback ? NARG_POS::SECOND : NARG_POS::FIRST];
-    SyncMode type = SyncMode::NORMAL;
+    SyncMode type = SyncMode::FORCE_THM;
     if (!GetSyncMode(env, typeArg, type)) {
         NError(E_PARAMS).ThrowErr(env);
         return nullptr;
     }
 
     LOGI("StartWithType hasCallback: %{public}d, type: %{public}d", hasCallback, type);
-    MetricsCount("CoreFileKit.cloudSync.Dyn.GallerySync.startWithType");
     string bundleName = GetBundleName(env, funcArg);
     if (hasCallback) {
         return StartWithTypeByCallback(env, funcArg[NARG_POS::FIRST], type, bundleName);

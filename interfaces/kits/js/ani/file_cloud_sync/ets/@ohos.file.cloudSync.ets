@@ -41,9 +41,7 @@ export default namespace cloudSync {
     };
 
     export enum SyncType {
-        NORMAL = 0,
-        FORCE = 1,
-        FORCE_THM = 2,
+        FORCE_THM = 0,
     };
 
     export interface SyncProgress {
