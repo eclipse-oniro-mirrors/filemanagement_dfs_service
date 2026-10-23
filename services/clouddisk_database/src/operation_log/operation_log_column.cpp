@@ -30,9 +30,19 @@ const std::string OperationLogColumn::PROCESS_NAME = "process_name";
 const std::string OperationLogColumn::PROCESS_PID = "process_pid";
 const std::string OperationLogColumn::PROCESS_UID = "process_uid";
 const std::string OperationLogColumn::CLOUD_ID = "cloud_id";
+const std::string OperationLogColumn::ANON_TABLE_NAME = "anonOperationLog";
 
 const std::string OperationLogColumn::CREATE_TABLE_SQL = "CREATE TABLE IF NOT EXISTS " +
     TABLE_NAME + " (" +
+    ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+    CLOUD_ID + " TEXT, " +
+    OP_TIME + " BIGINT NOT NULL, " +
+    FILE_PATH + " TEXT, " +
+    PROCESS_NAME + " TEXT)";
+const std::string OperationLogColumn::CREATE_INDEX_SQL = "CREATE INDEX IF NOT EXISTS idx_op_time ON " +
+    TABLE_NAME + " (" + OP_TIME + ")";
+const std::string OperationLogColumn::CREATE_ANON_TABLE_SQL = "CREATE TABLE IF NOT EXISTS " +
+    ANON_TABLE_NAME + " (" +
     ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
     CLOUD_ID + " TEXT, " +
     OP_TIME + " BIGINT NOT NULL, " +
@@ -43,8 +53,8 @@ const std::string OperationLogColumn::CREATE_TABLE_SQL = "CREATE TABLE IF NOT EX
     PROCESS_NAME + " TEXT, " +
     PROCESS_PID + " BIGINT, " +
     PROCESS_UID + " BIGINT)";
-const std::string OperationLogColumn::CREATE_INDEX_SQL = "CREATE INDEX IF NOT EXISTS idx_op_time ON " +
-    TABLE_NAME + " (" + OP_TIME + ")";
+const std::string OperationLogColumn::CREATE_ANON_INDEX_SQL = "CREATE INDEX IF NOT EXISTS idx_op_time ON " +
+    ANON_TABLE_NAME + " (" + OP_TIME + ")";
 } // namespace CloudDisk
 } // namespace FileManagement
 } // namespace OHOS

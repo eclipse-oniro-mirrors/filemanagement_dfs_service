@@ -63,6 +63,11 @@ int32_t OperationLogHandler::Init(int32_t userId)
         return ret;
     }
 
+    int32_t anonRet = OperationLogStore::GetInstance().Init(userId, true);
+    if (anonRet != E_OK) {
+        LOGW("anon operation log rdb init failed, ret = %{public}d, anon db degraded", anonRet);
+    }
+
     isInited_ = true;
     return E_OK;
 }
@@ -158,10 +163,11 @@ int32_t OperationLogHandler::RecordDelete(int64_t opTime, const string& filePath
 
 int32_t OperationLogHandler::WriteBatch(const vector<OperationLogEntry>& batch)
 {
+    int32_t ret = NativeRdb::E_ERROR;
     for (int32_t retry = 0; retry < OperationLogConst::MAX_RETRIES; ++retry) {
-        int32_t ret = DoInsert(batch);
+        ret = DoInsertLegacy(batch);
         if (ret == E_OK) {
-            return E_OK;
+            break;
         }
 
         if (IsRecoverableError(ret)) {
@@ -172,11 +178,58 @@ int32_t OperationLogHandler::WriteBatch(const vector<OperationLogEntry>& batch)
         LOGE("write operation log batch for unrecoverable error failed, ret = %{public}d", ret);
         return ret;
     }
+    if (ret != E_OK) {
+        return NativeRdb::E_ERROR;
+    }
 
-    return NativeRdb::E_ERROR;
+    DoInsertAnon(batch);
+    return E_OK;
 }
 
-int32_t OperationLogHandler::DoInsert(const vector<OperationLogEntry>& batch)
+int32_t OperationLogHandler::DoInsertAnon(const vector<OperationLogEntry>& batch)
+{
+    auto anonStore = OperationLogStore::GetInstance().GetAnonRaw();
+    if (anonStore == nullptr) {
+        LOGW("anon operation log rdb store is null, skip anon write");
+        return E_OK;
+    }
+    int32_t recordCount = 0;
+    int32_t ret = GetRecordCount(recordCount, anonStore, OperationLogColumn::ANON_TABLE_NAME);
+    if (ret != E_OK) {
+        LOGE("get anon operation log count failed, ret = %{public}d", ret);
+    } else if (recordCount >= OperationLogConst::MAX_RECORD_COUNT) {
+        ret = CheckAndCleanRecords(anonStore, OperationLogColumn::ANON_TABLE_NAME);
+        if (ret != E_OK) {
+            LOGE("clean anon operation log records failed, ret = %{public}d", ret);
+        }
+    }
+    int32_t failedCount = 0;
+    for (const auto& entry : batch) {
+        NativeRdb::ValuesBucket values;
+        values.PutLong(OperationLogColumn::OP_TIME, entry.opTime);
+        values.PutInt(OperationLogColumn::OP_TYPE, entry.opType);
+        values.PutString(OperationLogColumn::FILE_PATH, GetAnonyStringLocal(entry.filePath));
+        values.PutLong(OperationLogColumn::FILE_INODE, entry.fileInode);
+        values.PutLong(OperationLogColumn::FILE_UID, entry.fileUid);
+        values.PutString(OperationLogColumn::PROCESS_NAME, entry.processName);
+        values.PutLong(OperationLogColumn::PROCESS_PID, entry.processPid);
+        values.PutLong(OperationLogColumn::PROCESS_UID, entry.processUid);
+        values.PutString(OperationLogColumn::CLOUD_ID, entry.cloudId);
+        int64_t rowId;
+        int32_t insertRet = anonStore->Insert(rowId, OperationLogColumn::ANON_TABLE_NAME, values);
+        if (insertRet != NativeRdb::E_OK) {
+            failedCount++;
+            LOGE("insert anon operation log failed, ret = %{public}d", insertRet);
+        }
+    }
+    if (failedCount > 0) {
+        LOGW("anon operation log write degraded, failed = %{public}d, total = %{public}zu",
+            failedCount, batch.size());
+    }
+    return E_OK;
+}
+
+int32_t OperationLogHandler::DoInsertLegacy(const vector<OperationLogEntry>& batch)
 {
     auto rdbStore = OperationLogStore::GetInstance().GetRaw();
     if (rdbStore == nullptr) {
@@ -203,13 +256,8 @@ int32_t OperationLogHandler::DoInsert(const vector<OperationLogEntry>& batch)
     for (const auto& entry : batch) {
         NativeRdb::ValuesBucket values;
         values.PutLong(OperationLogColumn::OP_TIME, entry.opTime);
-        values.PutInt(OperationLogColumn::OP_TYPE, entry.opType);
         values.PutString(OperationLogColumn::FILE_PATH, entry.filePath);
-        values.PutLong(OperationLogColumn::FILE_INODE, entry.fileInode);
-        values.PutLong(OperationLogColumn::FILE_UID, entry.fileUid);
         values.PutString(OperationLogColumn::PROCESS_NAME, entry.processName);
-        values.PutLong(OperationLogColumn::PROCESS_PID, entry.processPid);
-        values.PutLong(OperationLogColumn::PROCESS_UID, entry.processUid);
         values.PutString(OperationLogColumn::CLOUD_ID, entry.cloudId);
         int64_t rowId;
         ret = rdbStore->Insert(rowId, OperationLogColumn::TABLE_NAME, values);
@@ -229,41 +277,50 @@ int32_t OperationLogHandler::DoInsert(const vector<OperationLogEntry>& batch)
     return E_OK;
 }
 
-int32_t OperationLogHandler::GetRecordCount(int32_t& count)
+int32_t OperationLogHandler::GetRecordCount(int32_t& count, const std::shared_ptr<NativeRdb::RdbStore> &rdbStore,
+    const std::string &tableName)
 {
-    auto rdbStore = OperationLogStore::GetInstance().GetRaw();
-    if (rdbStore == nullptr) {
+    std::shared_ptr<NativeRdb::RdbStore> store = rdbStore;
+    if (store == nullptr) {
+        store = OperationLogStore::GetInstance().GetRaw();
+    }
+    if (store == nullptr) {
         LOGE("operation log rdb store is null");
         return E_RDB;
     }
-    NativeRdb::AbsRdbPredicates predicates(OperationLogColumn::TABLE_NAME);
-    auto resultSet = rdbStore->QueryByStep(predicates, {});
+    NativeRdb::AbsRdbPredicates predicates(tableName);
+    auto resultSet = store->QueryByStep(predicates, {});
     if (resultSet == nullptr) {
-        LOGE("query operation log count failed");
+        LOGE("query operation log count failed, table = %{public}s", tableName.c_str());
         return E_RDB;
     }
     int32_t ret = resultSet->GetRowCount(count);
+    resultSet->Close();
     if (ret != E_OK || count < 0) {
-        LOGE("get operation log count failed, ret = %{public}d", ret);
+        LOGE("get operation log count failed, table = %{public}s, ret = %{public}d", tableName.c_str(), ret);
         return E_RDB;
     }
 
     return E_OK;
 }
 
-int32_t OperationLogHandler::CheckAndCleanRecords()
+int32_t OperationLogHandler::CheckAndCleanRecords(const std::shared_ptr<NativeRdb::RdbStore> &rdbStore,
+    const std::string &tableName)
 {
-    auto rdbStore = OperationLogStore::GetInstance().GetRaw();
-    if (rdbStore == nullptr) {
+    std::shared_ptr<NativeRdb::RdbStore> store = rdbStore;
+    if (store == nullptr) {
+        store = OperationLogStore::GetInstance().GetRaw();
+    }
+    if (store == nullptr) {
         LOGE("operation log rdb store is null");
         return E_RDB;
     }
     constexpr int64_t DELETE_BATCH_SIZE = 10000;
-    NativeRdb::AbsRdbPredicates queryPredicates(OperationLogColumn::TABLE_NAME);
+    NativeRdb::AbsRdbPredicates queryPredicates(tableName);
     queryPredicates.OrderByAsc(OperationLogColumn::ID)->Limit(DELETE_BATCH_SIZE);
-    auto resultSet = rdbStore->Query(queryPredicates, { OperationLogColumn::ID });
+    auto resultSet = store->Query(queryPredicates, { OperationLogColumn::ID });
     if (resultSet == nullptr) {
-        LOGE("query operation log ids failed");
+        LOGE("query operation log ids failed, table = %{public}s", tableName.c_str());
         return E_RDB;
     }
 
@@ -282,11 +339,11 @@ int32_t OperationLogHandler::CheckAndCleanRecords()
         LOGE("CheckAndCleanRecords ids is null");
         return E_RDB;
     }
-    NativeRdb::AbsRdbPredicates deletePredicates(OperationLogColumn::TABLE_NAME);
+    NativeRdb::AbsRdbPredicates deletePredicates(tableName);
     deletePredicates.In(OperationLogColumn::ID, ids);
 
     int32_t deletedRows = 0;
-    int32_t ret = rdbStore->Delete(deletedRows, deletePredicates);
+    int32_t ret = store->Delete(deletedRows, deletePredicates);
     if (ret != NativeRdb::E_OK) {
         LOGE("clean operation log records failed");
         return ret;
@@ -318,7 +375,30 @@ int32_t OperationLogHandler::CleanOldRecords()
         LOGE("clean old records failed, ret = %{public}d", ret);
         return ret;
     }
+
+    CleanAnonRecords(cutoffTime);
+
     LOGI("clean old records done, deletedRows = %{public}d", deletedRows);
+    return E_OK;
+}
+
+int32_t OperationLogHandler::CleanAnonRecords(int64_t cutoffTime)
+{
+    auto anonStore = OperationLogStore::GetInstance().GetAnonRaw();
+    if (anonStore == nullptr) {
+        return E_OK;
+    }
+    NativeRdb::AbsRdbPredicates anonPredicates(OperationLogColumn::ANON_TABLE_NAME);
+    if (cutoffTime > 0) {
+        anonPredicates.LessThan(OperationLogColumn::OP_TIME, cutoffTime);
+    }
+    int32_t anonDeletedRows = 0;
+    int32_t anonRet = anonStore->Delete(anonDeletedRows, anonPredicates);
+    if (anonRet != NativeRdb::E_OK) {
+        LOGE("clean anon operation log records failed, ret = %{public}d", anonRet);
+        return E_OK;
+    }
+    LOGI("clean anon operation log records done, deletedRows = %{public}d", anonDeletedRows);
     return E_OK;
 }
 
@@ -338,6 +418,9 @@ int32_t OperationLogHandler::CleanAllRecords()
         LOGE("clean all operation log records failed, ret = %{public}d", ret);
         return ret;
     }
+
+    CleanAnonRecords(0);
+
     LOGI("CleanAllRecords done, deletedRows = %{public}d", deletedRows);
     return E_OK;
 }
@@ -405,7 +488,6 @@ std::map<std::string, int32_t> OperationLogHandler::QueryDirFileCounts(
             rowCount++;
         }
         resultSet->Close();
-
         if (rowCount < BATCH_SIZE) {
             break;
         }
