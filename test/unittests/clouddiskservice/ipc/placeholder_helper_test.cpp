@@ -187,8 +187,6 @@ HWTEST_F(PlaceholderHelperTest, PlaceholderStatePredicateTest001, TestSize.Level
     EXPECT_TRUE(IsPlaceholderState(PLACEHOLDER_STATE_UNHYDRATED));
     EXPECT_TRUE(IsPlaceholderState(PLACEHOLDER_STATE_PARTIALLY_HYDRATED));
     EXPECT_TRUE(IsPlaceholderState(PLACEHOLDER_STATE_FULLY_HYDRATED));
-
-
 }
 
 /**

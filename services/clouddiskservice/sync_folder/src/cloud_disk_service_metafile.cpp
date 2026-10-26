@@ -621,6 +621,62 @@ static int32_t CheckRenameNewArgs(int fd, const MetaBase &base)
     return E_OK;
 }
 
+static int32_t OverwriteDentry(int fd,
+                               DcacheLookupCtx &ctx,
+                               CloudDiskServiceDentry *de,
+                               const MetaBase &base,
+                               const std::string &recordId,
+                               uint8_t &overwrittenState,
+                               unsigned long &bidx,
+                               uint32_t &bitPos)
+{
+    LOGI("dentry already exists, update in place");
+    overwrittenState = GetDentryPlaceholderState(*de);
+    de->revalidate = VALIDATE;
+    de->atime = base.atime;
+    de->mtime = base.mtime;
+    de->size = base.size;
+    de->mode = base.mode;
+    SetDentryPlaceholderState(*de, base.placeholder);
+    auto ret = WriteRecordId(de, recordId);
+    if (ret != E_OK) {
+        return ret;
+    }
+    off_t ipos = GetDentryGroupPos(ctx.bidx);
+    int size = FileUtils::WriteFile(fd, ctx.page.get(), ipos, DENTRYGROUP_SIZE);
+    if (size != DENTRYGROUP_SIZE) {
+        LOGE("write failed, size = %d", size);
+        return EIO;
+    }
+    bidx = ctx.bidx;
+    bitPos = ctx.bitPos;
+    return E_OK;
+}
+
+int32_t CloudDiskServiceMetaFile::InsertDentry(const MetaBase &base,
+                                                const std::string &recordId,
+                                                unsigned long &bidx,
+                                                uint32_t &bitPos)
+{
+    CloudDiskServiceDentryGroup dentryBlk = {0};
+    uint32_t namehash = 0;
+    auto ret = GetCreateInfo(base, bitPos, namehash, bidx, dentryBlk);
+    if (ret) {
+        return ret;
+    }
+    off_t pos = GetDentryGroupPos(bidx);
+    if (!CreateDentry(dentryBlk, base, namehash, bitPos, recordId)) {
+        LOGI("CreateDentry fail, stop write.");
+        return EINVAL;
+    }
+    int size = FileUtils::WriteFile(fd_, &dentryBlk, pos, DENTRYGROUP_SIZE);
+    if (size != DENTRYGROUP_SIZE) {
+        LOGD("WriteFile failed, size %d != %d", size, DENTRYGROUP_SIZE);
+        return EINVAL;
+    }
+    return E_OK;
+}
+
 int32_t CloudDiskServiceMetaFile::DoRenameNew(const MetaBase &base,
                                               std::string &recordId,
                                               unsigned long &bidx,
@@ -638,48 +694,9 @@ int32_t CloudDiskServiceMetaFile::DoRenameNew(const MetaBase &base,
     InitDcacheLookupCtx(&ctx, base, CloudDisk::CloudFileUtils::DentryHash(base.name), fd_);
     CloudDiskServiceDentry *de = FindDentry(&ctx);
     if (de != nullptr) {
-        // A valid dentry with the same name was recorded by a concurrent flow (e.g. CREATE
-        // event or warmup). Overwrite it with the original recordId and attributes of the
-        // renamed file instead of failing with EEXIST, otherwise the rename change is lost.
-        LOGI("dentry already exists, update in place");
-        overwrittenState = GetDentryPlaceholderState(*de);
-        de->revalidate = VALIDATE;
-        de->atime = base.atime;
-        de->mtime = base.mtime;
-        de->size = base.size;
-        de->mode = base.mode;
-        SetDentryPlaceholderState(*de, base.placeholder);
-        auto ret = WriteRecordId(de, recordId);
-        if (ret != E_OK) {
-            return ret;
-        }
-        off_t ipos = GetDentryGroupPos(ctx.bidx);
-        int size = FileUtils::WriteFile(fd_, ctx.page.get(), ipos, DENTRYGROUP_SIZE);
-        if (size != DENTRYGROUP_SIZE) {
-            LOGE("write failed, size = %{public}d", size);
-            return EIO;
-        }
-        bidx = ctx.bidx;
-        bitPos = ctx.bitPos;
-        return E_OK;
+        return OverwriteDentry(fd_, ctx, de, base, recordId, overwrittenState, bidx, bitPos);
     }
-    CloudDiskServiceDentryGroup dentryBlk = {0};
-    uint32_t namehash = 0;
-    ret = GetCreateInfo(base, bitPos, namehash, bidx, dentryBlk);
-    if (ret) {
-        return ret;
-    }
-    off_t pos = GetDentryGroupPos(bidx);
-    if (!CreateDentry(dentryBlk, base, namehash, bitPos, recordId)) {
-        LOGI("CreateDentry fail, stop write.");
-        return EINVAL;
-    }
-    int size = FileUtils::WriteFile(fd_, &dentryBlk, pos, DENTRYGROUP_SIZE);
-    if (size != DENTRYGROUP_SIZE) {
-        LOGD("WriteFile failed, size %{public}d != %{public}d", size, DENTRYGROUP_SIZE);
-        return EINVAL;
-    }
-    return E_OK;
+    return InsertDentry(base, recordId, bidx, bitPos);
 }
 
 int32_t CloudDiskServiceMetaFile::DoRename(MetaBase &metaBase,

@@ -145,6 +145,10 @@ private:
                           unsigned long &bidx,
                           struct CloudDiskServiceDentryGroup &dentryBlk);
     int32_t HandleFileByFd(unsigned long &endBlock, uint32_t level);
+    int32_t InsertDentry(const MetaBase &base,
+                         const std::string &recordId,
+                         unsigned long &bidx,
+                         uint32_t &bitPos);
     std::mutex mtx_{};
     UniqueFd fd_{};
     std::string cacheFile_{};

@@ -122,7 +122,7 @@ void RestoreHydrationTimestamps(const std::shared_ptr<PlaceholderTaskRecord> &ta
     struct timespec times[2] = {task->savedAtime, task->savedMtime};
     if (futimens(task->outputFd.Get(), times) < 0) {
         LOGW("Restore hydration timestamps failed, path:%{private}s, errno:%{public}d", task->hmdfsPath.c_str(),
-             errno);
+            errno);
     }
 }
 
@@ -862,10 +862,10 @@ int32_t PlaceholderTaskManager::ExecuteFetchDataLocked(const std::shared_ptr<Pla
 {
     if (IsInvalidFetchDataRequest(task, request)) {
         LOGE("Invalid Execute data bounds, offset:%{public}" PRIu64 ", size:%{public}" PRIu64
-             ", totalSize:%{public}" PRIu64 ", isComplete:%{public}d, cachedSize:%{public}" PRIu64
-             ", taskTotalSize:%{public}" PRIu64,
-             request.offset, static_cast<uint64_t>(request.size), request.totalSize,
-             static_cast<int>(request.isComplete), task->cachedSize, task->totalSize);
+            ", totalSize:%{public}" PRIu64 ", isComplete:%{public}d, cachedSize:%{public}" PRIu64
+            ", taskTotalSize:%{public}" PRIu64,
+            request.offset, static_cast<uint64_t>(request.size), request.totalSize,
+            static_cast<int>(request.isComplete), task->cachedSize, task->totalSize);
         return E_INVALID_ARG;
     }
     if (task->outputFd < 0) {
@@ -922,7 +922,7 @@ int32_t PlaceholderTaskManager::CommitFetchDataLocked(const std::shared_ptr<Plac
         // hydrated so the next access re-hydrates the missing ranges; the callback result stays
         // unchanged and the task completes normally.
         LOGE("Hydration completed with file holes, keep partial state, path:%{private}s",
-             task->hmdfsPath.c_str());
+            task->hmdfsPath.c_str());
         return EnsurePartialStateLocked(task);
     }
     int32_t ret = SetCompleteStateLocked(task);
