@@ -654,9 +654,9 @@ static int32_t OverwriteDentry(int fd,
 }
 
 int32_t CloudDiskServiceMetaFile::InsertDentry(const MetaBase &base,
-                                                const std::string &recordId,
-                                                unsigned long &bidx,
-                                                uint32_t &bitPos)
+                                               const std::string &recordId,
+                                               unsigned long &bidx,
+                                               uint32_t &bitPos)
 {
     CloudDiskServiceDentryGroup dentryBlk = {0};
     uint32_t namehash = 0;
