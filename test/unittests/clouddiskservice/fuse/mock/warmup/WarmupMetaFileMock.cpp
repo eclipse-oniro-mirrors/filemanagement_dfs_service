@@ -152,7 +152,7 @@ int32_t CloudDiskServiceMetaFile::DoRenameNew(const MetaBase &base,
                                               uint32_t &bitPos,
                                               uint8_t &overwrittenState)
 {
-    overwrittenState = PLACEHOLDER_STATE_NONE;
+    overwrittenState = 0;
     return DoRemove(base, recordId, bidx, bitPos);
 }
 
