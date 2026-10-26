@@ -16,6 +16,7 @@
 #include "placeholder_task_manager.h"
 
 #include <algorithm>
+#include <cinttypes>
 #include <cerrno>
 #include <climits>
 #include <fcntl.h>
@@ -113,6 +114,18 @@ bool ShouldKeepCancellationRecord(PlaceholderTaskCancelReason reason)
            reason != PlaceholderTaskCancelReason::USER_SWITCH && reason != PlaceholderTaskCancelReason::SERVICE_STOP;
 }
 
+void RestoreHydrationTimestamps(const std::shared_ptr<PlaceholderTaskRecord> &task)
+{
+    if (!task->timestampsSaved || task->outputFd < 0) {
+        return;
+    }
+    struct timespec times[2] = {task->savedAtime, task->savedMtime};
+    if (futimens(task->outputFd.Get(), times) < 0) {
+        LOGW("Restore hydration timestamps failed, path:%{private}s, errno:%{public}d", task->hmdfsPath.c_str(),
+             errno);
+    }
+}
+
 bool ShouldNotifyCancellation(PlaceholderTaskCancelReason reason)
 {
     return reason == PlaceholderTaskCancelReason::USER_REQUEST || reason == PlaceholderTaskCancelReason::TIMEOUT ||
@@ -131,9 +144,13 @@ bool IsInvalidFetchDataRequest(const std::shared_ptr<PlaceholderTaskRecord> &tas
         (!request.isComplete && request.size == 0) ||
         (request.isComplete && request.totalSize != 0 && request.size == 0) ||
         (request.totalSize == 0 && (request.offset != 0 || request.size != 0 || !request.isComplete));
-    const bool invalidTaskSize =
-        task->cachedSize > request.totalSize || (task->totalSizeInitialized && task->totalSize != request.totalSize);
-    return invalidDataBounds || invalidCompletion || invalidTaskSize;
+    const bool invalidTaskSize = task->cachedSize > request.totalSize ||
+                                 (task->totalSizeInitialized && task->totalSize != request.totalSize) ||
+                                 (!task->totalSizeInitialized && request.totalSize != task->totalSize);
+    // A completion claim must cover the whole logical size, otherwise tail bytes inside the
+    // last allocated block stay unwritten and are invisible to physical hole detection.
+    const bool incompleteDelivery = request.isComplete && (task->cachedSize + request.size < request.totalSize);
+    return invalidDataBounds || invalidCompletion || invalidTaskSize || incompleteDelivery;
 }
 
 using CanonicalPath = std::string;
@@ -252,6 +269,8 @@ int32_t OpenHydrationFile(const CanonicalPath &rootPath,
     metadata.deviceId = static_cast<uint64_t>(fileStat.st_dev);
     metadata.inodeId = static_cast<uint64_t>(fileStat.st_ino);
     metadata.logicalSize = static_cast<uint64_t>(fileStat.st_size);
+    metadata.savedAtime = fileStat.st_atim;
+    metadata.savedMtime = fileStat.st_mtim;
     fd = std::move(openedFd);
     return E_OK;
 }
@@ -654,6 +673,11 @@ void PlaceholderTaskManager::ActivateAndDispatch(const std::shared_ptr<Placehold
     }
     task->outputFd = std::move(outputFd);
     task->totalSize = metadata.logicalSize;
+    // Snapshot timestamps before any hydration write so they can be restored after every
+    // written chunk; hydration itself must not change the file's atime/mtime.
+    task->savedAtime = metadata.savedAtime;
+    task->savedMtime = metadata.savedMtime;
+    task->timestampsSaved = true;
     task->fetchDispatched = true;
     task->state = PlaceholderTaskState::IN_PROGRESS;
     RefreshDeadlineLocked(task);
@@ -837,7 +861,11 @@ int32_t PlaceholderTaskManager::ExecuteFetchDataLocked(const std::shared_ptr<Pla
                                                        const CallbackExecuteRequest &request)
 {
     if (IsInvalidFetchDataRequest(task, request)) {
-        LOGE("Invalid Execute data bounds");
+        LOGE("Invalid Execute data bounds, offset:%{public}" PRIu64 ", size:%{public}" PRIu64
+             ", totalSize:%{public}" PRIu64 ", isComplete:%{public}d, cachedSize:%{public}" PRIu64
+             ", taskTotalSize:%{public}" PRIu64,
+             request.offset, static_cast<uint64_t>(request.size), request.totalSize,
+             static_cast<int>(request.isComplete), task->cachedSize, task->totalSize);
         return E_INVALID_ARG;
     }
     if (task->outputFd < 0) {
@@ -852,6 +880,7 @@ int32_t PlaceholderTaskManager::ExecuteFetchDataLocked(const std::shared_ptr<Pla
     if (ret != E_OK) {
         return ret;
     }
+    RestoreHydrationTimestamps(task);
     ret = CommitFetchDataLocked(task, request);
     if (ret != E_OK) {
         return ret;
@@ -888,7 +917,19 @@ int32_t PlaceholderTaskManager::CommitFetchDataLocked(const std::shared_ptr<Plac
             return ret;
         }
     }
-    return SetCompleteStateLocked(task);
+    if (HasFileHoles(task->outputFd)) {
+        // The provider claimed completion but unwritten ranges remain. Keep the file partially
+        // hydrated so the next access re-hydrates the missing ranges; the callback result stays
+        // unchanged and the task completes normally.
+        LOGE("Hydration completed with file holes, keep partial state, path:%{private}s",
+             task->hmdfsPath.c_str());
+        return EnsurePartialStateLocked(task);
+    }
+    int32_t ret = SetCompleteStateLocked(task);
+    if (ret != E_OK) {
+        return ret;
+    }
+    return E_OK;
 }
 
 void PlaceholderTaskManager::CancelTaskRecordLocked(const std::shared_ptr<PlaceholderTaskRecord> &task,

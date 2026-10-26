@@ -82,6 +82,29 @@ void CloudDiskServiceMetafileTest::TearDown(void)
     Assistant::ins = nullptr;
     insMock = nullptr;
 }
+auto MakeFileContentReader(const std::map<off_t, std::vector<char>> &fileContent)
+{
+    return [&fileContent](int fd, off_t offset, size_t size, void *data) -> int64_t {
+        auto it = fileContent.find(offset);
+        if (it != fileContent.end() && it->second.size() >= size) {
+            std::copy(it->second.begin(), it->second.begin() + size, static_cast<char *>(data));
+        } else {
+            std::fill_n(static_cast<char *>(data), size, 0);
+        }
+        return DENTRYGROUP_SIZE;
+    };
+}
+
+auto MakeFileContentWriter(std::map<off_t, std::vector<char>> &fileContent)
+{
+    return [&fileContent](int fd, const void *data, off_t offset, size_t size) -> int64_t {
+        const auto *bytes = static_cast<const char *>(data);
+        std::vector<char> buf(bytes, bytes + size);
+        fileContent[offset] = std::move(buf);
+        return DENTRYGROUP_SIZE;
+    };
+}
+
 
 /**
  * @tc.name: DecodeDentryHeaderTest001
@@ -606,7 +629,9 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest001, TestSize.Level1)
         string recordId = "record_123";
         unsigned long bidx;
         uint32_t bitPos;
-        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos);
+        uint8_t overwrittenState = PLACEHOLDER_STATE_NONE;
+        (void)overwrittenState;
+        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos, overwrittenState);
         EXPECT_EQ(ret, EINVAL);
     } catch (...) {
         EXPECT_TRUE(false);
@@ -633,7 +658,9 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest002, TestSize.Level1)
         string recordId = "record_123";
         unsigned long bidx;
         uint32_t bitPos;
-        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos);
+        uint8_t overwrittenState = PLACEHOLDER_STATE_NONE;
+        (void)overwrittenState;
+        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos, overwrittenState);
         EXPECT_EQ(ret, ENAMETOOLONG);
     } catch (...) {
         EXPECT_TRUE(false);
@@ -659,9 +686,11 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest003, TestSize.Level1)
         string recordId = "record_123";
         unsigned long bidx;
         uint32_t bitPos;
+        uint8_t overwrittenState = PLACEHOLDER_STATE_NONE;
+        (void)overwrittenState;
         EXPECT_CALL(*insMock, ReadFile(_, _, _, _)).WillRepeatedly(Return(DENTRYGROUP_SIZE));
         EXPECT_CALL(*insMock, WriteFile(_, _, _, _)).WillOnce(Return(DENTRYGROUP_SIZE));
-        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos);
+        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos, overwrittenState);
         EXPECT_EQ(ret, E_OK);
     } catch (...) {
         EXPECT_TRUE(false);
@@ -687,9 +716,11 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest004, TestSize.Level1)
         string recordId = "record_123";
         unsigned long bidx;
         uint32_t bitPos;
+        uint8_t overwrittenState = PLACEHOLDER_STATE_NONE;
+        (void)overwrittenState;
         EXPECT_CALL(*insMock, ReadFile(_, _, _, _)).WillRepeatedly(Return(DENTRYGROUP_SIZE));
         EXPECT_CALL(*insMock, WriteFile(_, _, _, _)).WillOnce(Return(1));
-        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos);
+        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos, overwrittenState);
         EXPECT_EQ(ret, EINVAL);
     } catch (...) {
         EXPECT_TRUE(false);
@@ -715,14 +746,72 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest005, TestSize.Level1)
         string recordId = "record_123";
         unsigned long bidx;
         uint32_t bitPos;
+        uint8_t overwrittenState = PLACEHOLDER_STATE_NONE;
+        (void)overwrittenState;
         EXPECT_CALL(*insMock, ReadFile(_, _, _, _)).WillRepeatedly(Return(1));
-        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos);
+        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos, overwrittenState);
         EXPECT_EQ(ret, ENOENT);
     } catch (...) {
         EXPECT_TRUE(false);
         GTEST_LOG_(INFO) << "DoRenameNewTest005 ERROR";
     }
     GTEST_LOG_(INFO) << "DoRenameNewTest005 End";
+}
+
+/**
+ * @tc.name: DoRenameNewTest006
+ * @tc.desc: Verify DoRenameNew updates an existing valid dentry in place instead of returning EEXIST
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoRenameNewTest006 Start";
+    try {
+        std::map<off_t, std::vector<char>> fileContent;
+        auto readFileImpl = MakeFileContentReader(fileContent);
+        auto writeFileImpl = MakeFileContentWriter(fileContent);
+        CloudDiskServiceMetaFile mFile(100, 1, 123);
+        mFile.fd_.Reset(1);
+        MetaBase createBase;
+        createBase.name = "test_name";
+        createBase.recordId = "record_123";
+        createBase.atime = 1;
+        createBase.mtime = 1;
+        createBase.size = 1024;
+        createBase.mode = 0666;
+        unsigned long bidx;
+        uint32_t bitPos;
+        uint8_t overwrittenState = PLACEHOLDER_STATE_NONE;
+        (void)overwrittenState;
+        EXPECT_CALL(*insMock, ReadFile(_, _, _, _)).WillRepeatedly(testing::Invoke(readFileImpl));
+        EXPECT_CALL(*insMock, WriteFile(_, _, _, _)).WillRepeatedly(testing::Invoke(writeFileImpl));
+        auto ret = mFile.DoCreate(createBase, bidx, bitPos);
+        EXPECT_EQ(ret, E_OK);
+
+        MetaBase renameBase;
+        renameBase.name = "test_name";
+        renameBase.atime = 200;
+        renameBase.mtime = 300;
+        renameBase.size = 1025;
+        renameBase.mode = 0666;
+        string originalRecordId = "original_id_456";
+        ret = mFile.DoRenameNew(renameBase, originalRecordId, bidx, bitPos, overwrittenState);
+        EXPECT_EQ(ret, E_OK);
+
+        MetaBase lookupBase;
+        lookupBase.name = "test_name";
+        ret = mFile.DoLookupByName(lookupBase);
+        EXPECT_EQ(ret, E_OK);
+        EXPECT_EQ(lookupBase.recordId.substr(0, originalRecordId.length()), originalRecordId);
+        EXPECT_EQ(lookupBase.size, renameBase.size);
+        EXPECT_EQ(lookupBase.mtime, renameBase.mtime);
+        EXPECT_EQ(lookupBase.atime, renameBase.atime);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoRenameNewTest006 ERROR";
+    }
+    GTEST_LOG_(INFO) << "DoRenameNewTest006 End";
 }
 
 /**

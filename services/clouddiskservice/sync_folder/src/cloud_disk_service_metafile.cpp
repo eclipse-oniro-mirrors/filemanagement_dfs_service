@@ -259,6 +259,21 @@ static uint32_t RoomForFilename(const uint8_t bitmap[], size_t slots, uint32_t m
     return E_OK;
 }
 
+static int32_t WriteRecordId(CloudDiskServiceDentry *de, const std::string &recordId)
+{
+    auto ret = memset_s(de->recordId, RECORD_ID_LEN, 0, RECORD_ID_LEN);
+    if (ret != 0) {
+        LOGE("memset_s failed, ret = %{public}d", ret);
+        return EINVAL;
+    }
+    ret = memcpy_s(de->recordId, RECORD_ID_LEN, recordId.c_str(), recordId.length());
+    if (ret != 0) {
+        LOGE("memcpy_s failed, ret = %{public}d", ret);
+        return EINVAL;
+    }
+    return E_OK;
+}
+
 static bool CreateDentry(CloudDiskServiceDentryGroup &d,
                          const MetaBase &base,
                          uint32_t nameHash,
@@ -590,12 +605,9 @@ int32_t CloudDiskServiceMetaFile::DoRenameOld(const MetaBase &base,
     return E_OK;
 }
 
-int32_t CloudDiskServiceMetaFile::DoRenameNew(const MetaBase &base,
-                                              std::string &recordId,
-                                              unsigned long &bidx,
-                                              uint32_t &bitPos)
+static int32_t CheckRenameNewArgs(int fd, const MetaBase &base)
 {
-    if (fd_ < 0) {
+    if (fd < 0) {
         LOGE("bad metafile fd");
         return EINVAL;
     }
@@ -606,18 +618,54 @@ int32_t CloudDiskServiceMetaFile::DoRenameNew(const MetaBase &base,
         LOGE("name is too long");
         return ENAMETOOLONG;
     }
+    return E_OK;
+}
+
+int32_t CloudDiskServiceMetaFile::DoRenameNew(const MetaBase &base,
+                                              std::string &recordId,
+                                              unsigned long &bidx,
+                                              uint32_t &bitPos,
+                                              uint8_t &overwrittenState)
+{
+    overwrittenState = PLACEHOLDER_STATE_NONE;
+    int32_t ret = CheckRenameNewArgs(fd_, base);
+    if (ret != E_OK) {
+        return ret;
+    }
 
     std::unique_lock<std::mutex> lock(mtx_);
     DcacheLookupCtx ctx;
     InitDcacheLookupCtx(&ctx, base, CloudDisk::CloudFileUtils::DentryHash(base.name), fd_);
     CloudDiskServiceDentry *de = FindDentry(&ctx);
     if (de != nullptr) {
-        LOGE("this name dentry is exist");
-        return EEXIST;
+        // A valid dentry with the same name was recorded by a concurrent flow (e.g. CREATE
+        // event or warmup). Overwrite it with the original recordId and attributes of the
+        // renamed file instead of failing with EEXIST, otherwise the rename change is lost.
+        LOGI("dentry already exists, update in place");
+        overwrittenState = GetDentryPlaceholderState(*de);
+        de->revalidate = VALIDATE;
+        de->atime = base.atime;
+        de->mtime = base.mtime;
+        de->size = base.size;
+        de->mode = base.mode;
+        SetDentryPlaceholderState(*de, base.placeholder);
+        auto ret = WriteRecordId(de, recordId);
+        if (ret != E_OK) {
+            return ret;
+        }
+        off_t ipos = GetDentryGroupPos(ctx.bidx);
+        int size = FileUtils::WriteFile(fd_, ctx.page.get(), ipos, DENTRYGROUP_SIZE);
+        if (size != DENTRYGROUP_SIZE) {
+            LOGE("write failed, size = %{public}d", size);
+            return EIO;
+        }
+        bidx = ctx.bidx;
+        bitPos = ctx.bitPos;
+        return E_OK;
     }
     CloudDiskServiceDentryGroup dentryBlk = {0};
     uint32_t namehash = 0;
-    auto ret = GetCreateInfo(base, bitPos, namehash, bidx, dentryBlk);
+    ret = GetCreateInfo(base, bitPos, namehash, bidx, dentryBlk);
     if (ret) {
         return ret;
     }

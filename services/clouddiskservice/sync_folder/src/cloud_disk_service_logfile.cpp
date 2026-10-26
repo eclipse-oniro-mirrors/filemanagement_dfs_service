@@ -716,12 +716,18 @@ int32_t CloudDiskServiceLogFile::ProduceRenameNewLog(const std::shared_ptr<Cloud
     mBase.mtime = static_cast<uint64_t>(childStat.st_mtime);
     mBase.size = static_cast<uint64_t>(childStat.st_size);
     mBase.placeholder = renamePlaceholderState_;
-    auto ret = parentMetaFile->DoRenameNew(mBase, renameRecordId_, ctx.bidx, ctx.bitPos);
+    uint8_t overwrittenState = PLACEHOLDER_STATE_NONE;
+    auto ret = parentMetaFile->DoRenameNew(mBase, renameRecordId_, ctx.bidx, ctx.bitPos, overwrittenState);
     if (ret != 0) {
         LOGE("renamenew failed");
         return -1;
     }
     ctx.recordId = renameRecordId_;
+    if (IsPlaceholderState(overwrittenState)) {
+        // The overwritten dentry was itself a counted placeholder; offset its
+        // contribution before adding the new one.
+        (void)RefreshAncestorPlaceholderCount(syncFolderPath_, path + "/" + name, -1);
+    }
     if (IsPlaceholderState(renamePlaceholderState_)) {
         (void)RefreshAncestorPlaceholderCount(syncFolderPath_, path + "/" + name, 1);
     }

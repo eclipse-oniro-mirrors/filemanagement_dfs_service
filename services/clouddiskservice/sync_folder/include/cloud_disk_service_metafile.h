@@ -114,7 +114,11 @@ public:
     int32_t DoFlush(const MetaBase &base, std::string &recordId, unsigned long &bidx, uint32_t &bitPos);
     int32_t DoUpdate(const MetaBase &base, std::string &recordId, unsigned long &bidx, uint32_t &bitPos);
     int32_t DoRenameOld(const MetaBase &base, std::string &recordId, unsigned long &bidx, uint32_t &bitPos);
-    int32_t DoRenameNew(const MetaBase &base, std::string &recordId, unsigned long &bidx, uint32_t &bitPos);
+    int32_t DoRenameNew(const MetaBase &base,
+                        std::string &recordId,
+                        unsigned long &bidx,
+                        uint32_t &bitPos,
+                        uint8_t &overwrittenState);
     int32_t
         DoRename(MetaBase &metaBase, const std::string &newName, std::shared_ptr<CloudDiskServiceMetaFile> newMetaFile);
     int32_t DoLookupByName(MetaBase &base);

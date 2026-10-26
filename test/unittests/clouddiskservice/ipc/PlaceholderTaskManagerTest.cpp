@@ -815,6 +815,7 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_002, TestSize.Level1)
               E_OK);
     int32_t taskFd = ActivateTask(manager, reqKey, UniqueFd(dup(backingFd.Get())));
     ASSERT_GE(taskFd, 0);
+    manager.taskMap_.at(reqKey)->totalSize = 6;
 
     uint8_t stateByte = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 1);
     ExpectStateTransitions(taskFd, stateByte);
@@ -1060,6 +1061,7 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_013, TestSize.Level2)
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, MakeRequest(key, 0, {1}, 1, false)),
               E_INVALID_ARG);
     task->cachedSize = 0;
+    task->totalSize = 0;
     task->outputFd.Reset(-1);
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, MakeRequest(key)), E_TRY_AGAIN);
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, MakeRequest(key)), E_CANCELLED);
@@ -1081,6 +1083,7 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_128KiB_001, TestSize.Level1)
     auto task = manager.taskMap_.at(key);
     ActivateTask(manager, key);
     task->hasPartialState = true;
+    task->totalSize = MAX_EXECUTE_DATA_SIZE + 1;
     Assistant::mockPwriteApi = true;
     std::vector<uint8_t> data(MAX_EXECUTE_DATA_SIZE, 1);
     EXPECT_CALL(*mock_, Pwrite(task->outputFd.Get(), _, MAX_EXECUTE_DATA_SIZE, 0))
@@ -1131,6 +1134,7 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_005, TestSize.Level2)
     auto task = manager.taskMap_.at(key);
     ActivateTask(manager, key);
     task->hasPartialState = true;
+    task->totalSize = 3;
     Assistant::mockPwriteApi = true;
     auto request = MakeRequest(key, 0, {1, 2, 3}, 3, false);
     const std::vector<std::pair<int, int32_t>> errors = {
@@ -1181,6 +1185,7 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_006, TestSize.Level2)
                                         CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, std::move(fd), key),
               E_OK);
     int32_t taskFd = ActivateTask(manager, key);
+    manager.taskMap_.at(key)->totalSize = 1;
     Assistant::mockPwriteApi = true;
     EXPECT_CALL(*mock_, Pwrite(taskFd, _, 1, 0)).WillOnce(Return(1));
     EXPECT_CALL(*mock_, fgetxattr(taskFd, _, _, _)).WillOnce(Invoke([](int, const char *, void *, size_t) {
@@ -1212,6 +1217,7 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_008, TestSize.Level2)
                   E_OK);
         auto task = manager.taskMap_.at(key);
         ActivateTask(manager, key);
+        task->totalSize = 1;
         EXPECT_CALL(*mock_, Pwrite(task->outputFd.Get(), _, 1, 0)).WillOnce(Return(1));
         expectStateCalls(task);
         auto request = MakeRequest(key, 0, {1}, 1, complete);
@@ -1262,6 +1268,7 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_014, TestSize.Level2)
     ActivateTask(manager, key);
     Assistant::mockPwriteApi = true;
     task->hasPartialState = true;
+    task->totalSize = 1;
     EXPECT_CALL(*mock_, Pwrite(task->outputFd.Get(), _, 1, 0)).WillOnce(Return(1));
     EXPECT_CALL(*mock_, fgetxattr(task->outputFd.Get(), _, _, _))
         .Times(2)
@@ -1294,6 +1301,7 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_009, TestSize.Level2)
               E_OK);
     auto task = manager.taskMap_.at(key);
     ActivateTask(manager, key);
+    task->totalSize = 1;
     Assistant::mockPwriteApi = true;
     auto request = MakeRequest(key, 0, {1}, 1, false);
 
@@ -1337,6 +1345,7 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_007, TestSize.Level1)
     ActivateTask(manager, firstKey);
     ActivateTask(manager, secondKey);
     firstTask->hasPartialState = secondTask->hasPartialState = true;
+    firstTask->totalSize = secondTask->totalSize = 1;
     Assistant::mockPwriteApi = true;
     ExecuteWriteBarrier barrier;
     EXPECT_CALL(*mock_, Pwrite(firstTask->outputFd.Get(), _, 1, 0))
@@ -1394,6 +1403,7 @@ HWTEST_F(PlaceholderTaskManagerTest, ProgressMetadata_001, TestSize.Level2)
     EXPECT_EQ(task->cachedSize, 0u);
     ActivateTask(manager, key);
     task->hasPartialState = true;
+    task->totalSize = 5;
     Assistant::mockPwriteApi = true;
     EXPECT_CALL(*mock_, Pwrite(_, _, 2, 0)).WillOnce(Return(2));
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, MakeRequest(key, 0, {1, 2}, 5, false)), E_OK);
@@ -2050,6 +2060,7 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_011, TestSize.Level2)
     int32_t taskFd = ActivateTask(manager, key);
     ASSERT_GE(taskFd, 0);
     task->hasPartialState = true;
+    task->totalSize = 1;
     Assistant::mockPwriteApi = true;
     Assistant::mockFsyncApi = true;
     EXPECT_CALL(*mock_, Pwrite(taskFd, _, 1, 0)).WillOnce(Return(1));
@@ -2239,6 +2250,7 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_012, TestSize.Level1)
     auto task = manager.taskMap_.at(key);
     ActivateTask(manager, key);
     task->hasPartialState = true;
+    task->totalSize = 2;
     const auto expiredDeadline = std::chrono::steady_clock::now() - std::chrono::seconds(1);
     {
         std::lock_guard<std::mutex> lock(manager.mapMutex_);
@@ -2347,6 +2359,7 @@ HWTEST_F(PlaceholderTaskManagerTest, AccessorOwner_003, TestSize.Level2)
     PlaceholderTaskManager::RequestKey key;
     ASSERT_EQ(CreateOwnedTask(manager, 11, key), E_OK);
     int32_t fd = ActivateTask(manager, key);
+    manager.taskMap_.at(key)->totalSize = 1;
     Assistant::mockPwriteApi = true;
     auto request = MakeRequest(key, 0, {1}, 1, true);
     EXPECT_CALL(*mock_, Pwrite(fd, _, 1, 0)).WillOnce(Return(0));

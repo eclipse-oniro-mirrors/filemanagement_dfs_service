@@ -187,6 +187,8 @@ HWTEST_F(PlaceholderHelperTest, PlaceholderStatePredicateTest001, TestSize.Level
     EXPECT_TRUE(IsPlaceholderState(PLACEHOLDER_STATE_UNHYDRATED));
     EXPECT_TRUE(IsPlaceholderState(PLACEHOLDER_STATE_PARTIALLY_HYDRATED));
     EXPECT_TRUE(IsPlaceholderState(PLACEHOLDER_STATE_FULLY_HYDRATED));
+
+
 }
 
 /**
@@ -206,7 +208,7 @@ HWTEST_F(PlaceholderHelperTest, FileSyncStatePackingTest001, TestSize.Level1)
 
 /**
  * @tc.name: PlaceholderDeltaTest001
- * @tc.desc: Verify only normal-to-placeholder transitions change the aggregate count.
+ * @tc.desc: Verify only unhydrated/partial-hydrated states are counted in the aggregate count.
  * @tc.type: FUNC
  * @tc.require: NA
  */
@@ -460,7 +462,7 @@ HWTEST_F(PlaceholderHelperTest, SetFilePlaceholderStateFd_001, TestSize.Level2)
     EXPECT_CALL(*mock_, fsetxattr(TEST_FD, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
         .WillOnce(Invoke([SYNC_STATE](int, const char *, const void *value, size_t, int) {
             uint8_t stored = *static_cast<const uint8_t *>(value);
-            EXPECT_EQ(GetPlaceholderStateFromFileSyncState(stored), PLACEHOLDER_STATE_FULLY_HYDRATED);
+            EXPECT_EQ(GetPlaceholderStateFromFileSyncState(stored), PLACEHOLDER_STATE_NONE);
             EXPECT_EQ(GetSyncStateFromFileSyncState(stored), SYNC_STATE);
             return 0;
         }));
@@ -860,7 +862,7 @@ HWTEST_F(PlaceholderHelperTest, RecountPlaceholderStateDirectoryUpdateFailures_0
     EXPECT_CALL(*mock_, setxattr(StrEq(root), StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
         .WillOnce(Invoke([](const char *, const char *, const void *value, size_t, int) {
             EXPECT_EQ(GetPlaceholderStateFromFileSyncState(*static_cast<const uint8_t *>(value)),
-                      PLACEHOLDER_STATE_NONE);
+                      PLACEHOLDER_STATE_FULLY_HYDRATED);
             errno = ENOSPC;
             return -1;
         }));
