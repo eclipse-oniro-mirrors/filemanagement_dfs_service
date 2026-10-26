@@ -135,7 +135,8 @@ export default namespace cloudSync {
         RUNNING = 0,
         COMPLETED = 1,
         FAILED = 2,
-        STOPPED = 3
+        STOPPED = 3,
+        MISSING = 4
     };
 
     export enum DownloadErrorType {
