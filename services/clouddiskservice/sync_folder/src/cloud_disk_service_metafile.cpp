@@ -621,35 +621,43 @@ static int32_t CheckRenameNewArgs(int fd, const MetaBase &base)
     return E_OK;
 }
 
-static int32_t OverwriteDentry(int fd,
-                               DcacheLookupCtx &ctx,
-                               CloudDiskServiceDentry *de,
+struct DentryOverwriteCtx {
+    int fd;
+    DcacheLookupCtx *lookupCtx;
+    CloudDiskServiceDentry *dentry;
+};
+
+struct DentryOverwriteResult {
+    uint8_t overwrittenState = 0;
+    unsigned long bidx = 0;
+    uint32_t bitPos = 0;
+};
+
+static int32_t OverwriteDentry(DentryOverwriteCtx &doc,
                                const MetaBase &base,
                                const std::string &recordId,
-                               uint8_t &overwrittenState,
-                               unsigned long &bidx,
-                               uint32_t &bitPos)
+                               DentryOverwriteResult &result)
 {
     LOGI("dentry already exists, update in place");
-    overwrittenState = GetDentryPlaceholderState(*de);
-    de->revalidate = VALIDATE;
-    de->atime = base.atime;
-    de->mtime = base.mtime;
-    de->size = base.size;
-    de->mode = base.mode;
-    SetDentryPlaceholderState(*de, base.placeholder);
-    auto ret = WriteRecordId(de, recordId);
+    result.overwrittenState = GetDentryPlaceholderState(*doc.dentry);
+    doc.dentry->revalidate = VALIDATE;
+    doc.dentry->atime = base.atime;
+    doc.dentry->mtime = base.mtime;
+    doc.dentry->size = base.size;
+    doc.dentry->mode = base.mode;
+    SetDentryPlaceholderState(*doc.dentry, base.placeholder);
+    auto ret = WriteRecordId(doc.dentry, recordId);
     if (ret != E_OK) {
         return ret;
     }
-    off_t ipos = GetDentryGroupPos(ctx.bidx);
-    int size = FileUtils::WriteFile(fd, ctx.page.get(), ipos, DENTRYGROUP_SIZE);
+    off_t ipos = GetDentryGroupPos(doc.lookupCtx->bidx);
+    int size = FileUtils::WriteFile(doc.fd, doc.lookupCtx->page.get(), ipos, DENTRYGROUP_SIZE);
     if (size != DENTRYGROUP_SIZE) {
-        LOGE("write failed, size = %d", size);
+        LOGE("write failed, size = %{public}d", size);
         return EIO;
     }
-    bidx = ctx.bidx;
-    bitPos = ctx.bitPos;
+    result.bidx = doc.lookupCtx->bidx;
+    result.bitPos = doc.lookupCtx->bitPos;
     return E_OK;
 }
 
@@ -694,7 +702,16 @@ int32_t CloudDiskServiceMetaFile::DoRenameNew(const MetaBase &base,
     InitDcacheLookupCtx(&ctx, base, CloudDisk::CloudFileUtils::DentryHash(base.name), fd_);
     CloudDiskServiceDentry *de = FindDentry(&ctx);
     if (de != nullptr) {
-        return OverwriteDentry(fd_, ctx, de, base, recordId, overwrittenState, bidx, bitPos);
+        DentryOverwriteCtx doc = {fd_, &ctx, de};
+        DentryOverwriteResult result;
+        int32_t ret = OverwriteDentry(doc, base, recordId, result);
+        if (ret != E_OK) {
+            return ret;
+        }
+        overwrittenState = result.overwrittenState;
+        bidx = result.bidx;
+        bitPos = result.bitPos;
+        return E_OK;
     }
     return InsertDentry(base, recordId, bidx, bitPos);
 }
