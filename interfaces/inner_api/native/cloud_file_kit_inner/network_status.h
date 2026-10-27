@@ -46,6 +46,8 @@ public:
     static bool CheckWifiOrEthernet();
     static void SetCellularSignalStrength(int32_t status);
     static void SetWifiSignalStrength(int32_t status);
+    static int32_t GetCellularSignalStrengthLevel();
+    static int32_t GetWifiSignalStrengthLevel();
     static void SetCellularSignalStopStrength(int32_t status);
     static void SetCellularSignalStartStrength(int32_t status);
     static void SetWifiSignalStopStrength(int32_t status);

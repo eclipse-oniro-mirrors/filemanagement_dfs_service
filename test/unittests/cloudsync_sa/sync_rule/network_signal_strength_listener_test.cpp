@@ -16,8 +16,10 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "battery_status.h"
 #include "common_event_manager.h"
 #include "common_event_support.h"
+#include "dfs_error.h"
 #include "ffrt_inner.h"
 #include "network_signal_strength_listener.h"
 #include "network_status.h"
@@ -430,5 +432,151 @@ HWTEST_F(NetworkSignalStrengthListenerTest, OnReceiveEventTest012, TestSize.Leve
         GTEST_LOG_(INFO) << "OnReceiveEventTest012 failed";
     }
     GTEST_LOG_(INFO) << "OnReceiveEventTest012 end";
+}
+
+class MockDataSyncManagerSpy : public DataSyncManager {
+public:
+    int32_t TriggerRecoverySync(SyncTriggerType triggerType) override
+    {
+        recoverySyncCount_++;
+        return E_OK;
+    }
+    int32_t recoverySyncCount_ = 0;
+};
+
+/**
+ * @tc.name: OnReceiveEventCellularSame001
+ * @tc.desc: Verify the OnReceiveEvent function
+ * @tc.type: FUNC
+ * @tc.require: IB3SWZ
+ */
+HWTEST_F(NetworkSignalStrengthListenerTest, OnReceiveEventCellularSame001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "OnReceiveEventCellularSame001 start";
+    try {
+        Want want;
+        want.SetAction(EventFwk::CommonEventSupport::COMMON_EVENT_SIGNAL_INFO_CHANGED);
+        std::vector<std::string> contentStr;
+        std::string signalInfo = "signalLevel:3";
+        contentStr.push_back(signalInfo);
+        want.SetParam("signalInfos", contentStr);
+        EventFwk::CommonEventData eventData(want);
+        auto dataSyncManager = std::make_shared<MockDataSyncManagerSpy>();
+        auto networkSignalStrengthListener = std::make_shared<NetworkSignalStrengthListener>(dataSyncManager);
+        auto subscriber = std::make_shared<NetworkSignalStrengthSubscriber>(EventFwk::CommonEventSubscribeInfo(),
+            networkSignalStrengthListener);
+        NetworkStatus::SetNetConnStatus(NetworkStatus::NetConnStatus::CELLULAR_CONNECT);
+        NetworkStatus::SetCellularSignalStrength(3);
+        subscriber->OnReceiveEvent(eventData);
+        ffrt::wait();
+        EXPECT_EQ(NetworkStatus::GetCellularSignalStrengthLevel(), 3);
+        EXPECT_EQ(dataSyncManager->recoverySyncCount_, 0);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "OnReceiveEventCellularSame001 failed";
+    }
+    GTEST_LOG_(INFO) << "OnReceiveEventCellularSame001 end";
+}
+
+/**
+ * @tc.name: OnReceiveEventCellularDiff001
+ * @tc.desc: Verify the OnReceiveEvent function
+ * @tc.type: FUNC
+ * @tc.require: IB3SWZ
+ */
+HWTEST_F(NetworkSignalStrengthListenerTest, OnReceiveEventCellularDiff001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "OnReceiveEventCellularDiff001 start";
+    try {
+        Want want;
+        want.SetAction(EventFwk::CommonEventSupport::COMMON_EVENT_SIGNAL_INFO_CHANGED);
+        std::vector<std::string> contentStr;
+        std::string signalInfo = "signalLevel:5";
+        contentStr.push_back(signalInfo);
+        want.SetParam("signalInfos", contentStr);
+        EventFwk::CommonEventData eventData(want);
+        auto dataSyncManager = std::make_shared<MockDataSyncManagerSpy>();
+        auto networkSignalStrengthListener = std::make_shared<NetworkSignalStrengthListener>(dataSyncManager);
+        auto subscriber = std::make_shared<NetworkSignalStrengthSubscriber>(EventFwk::CommonEventSubscribeInfo(),
+            networkSignalStrengthListener);
+        NetworkStatus::SetNetConnStatus(NetworkStatus::NetConnStatus::CELLULAR_CONNECT);
+        NetworkStatus::SetCellularSignalStrength(3);
+        BatteryStatus::SetChargingStatus(true);
+        subscriber->OnReceiveEvent(eventData);
+        ffrt::wait();
+        BatteryStatus::SetChargingStatus(false);
+        EXPECT_EQ(NetworkStatus::GetCellularSignalStrengthLevel(), 5);
+        EXPECT_EQ(dataSyncManager->recoverySyncCount_, 1);
+    } catch (...) {
+        BatteryStatus::SetChargingStatus(false);
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "OnReceiveEventCellularDiff001 failed";
+    }
+    GTEST_LOG_(INFO) << "OnReceiveEventCellularDiff001 end";
+}
+
+/**
+ * @tc.name: OnReceiveEventWifiSame001
+ * @tc.desc: Verify the OnReceiveEvent function
+ * @tc.type: FUNC
+ * @tc.require: IB3SWZ
+ */
+HWTEST_F(NetworkSignalStrengthListenerTest, OnReceiveEventWifiSame001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "OnReceiveEventWifiSame001 start";
+    try {
+        Want want;
+        want.SetAction(EventFwk::CommonEventSupport::COMMON_EVENT_WIFI_RSSI_VALUE);
+        want.SetParam("wifiSignalLevel", 3);
+        EventFwk::CommonEventData eventData(want);
+        auto dataSyncManager = std::make_shared<MockDataSyncManagerSpy>();
+        auto networkSignalStrengthListener = std::make_shared<NetworkSignalStrengthListener>(dataSyncManager);
+        auto subscriber = std::make_shared<NetworkSignalStrengthSubscriber>(EventFwk::CommonEventSubscribeInfo(),
+            networkSignalStrengthListener);
+        NetworkStatus::SetNetConnStatus(NetworkStatus::NetConnStatus::WIFI_CONNECT);
+        NetworkStatus::SetWifiSignalStrength(3);
+        subscriber->OnReceiveEvent(eventData);
+        ffrt::wait();
+        EXPECT_EQ(NetworkStatus::GetWifiSignalStrengthLevel(), 3);
+        EXPECT_EQ(dataSyncManager->recoverySyncCount_, 0);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "OnReceiveEventWifiSame001 failed";
+    }
+    GTEST_LOG_(INFO) << "OnReceiveEventWifiSame001 end";
+}
+
+/**
+ * @tc.name: OnReceiveEventWifiDiff001
+ * @tc.desc: Verify the OnReceiveEvent function
+ * @tc.type: FUNC
+ * @tc.require: IB3SWZ
+ */
+HWTEST_F(NetworkSignalStrengthListenerTest, OnReceiveEventWifiDiff001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "OnReceiveEventWifiDiff001 start";
+    try {
+        Want want;
+        want.SetAction(EventFwk::CommonEventSupport::COMMON_EVENT_WIFI_RSSI_VALUE);
+        want.SetParam("wifiSignalLevel", 5);
+        EventFwk::CommonEventData eventData(want);
+        auto dataSyncManager = std::make_shared<MockDataSyncManagerSpy>();
+        auto networkSignalStrengthListener = std::make_shared<NetworkSignalStrengthListener>(dataSyncManager);
+        auto subscriber = std::make_shared<NetworkSignalStrengthSubscriber>(EventFwk::CommonEventSubscribeInfo(),
+            networkSignalStrengthListener);
+        NetworkStatus::SetNetConnStatus(NetworkStatus::NetConnStatus::WIFI_CONNECT);
+        NetworkStatus::SetWifiSignalStrength(3);
+        BatteryStatus::SetChargingStatus(true);
+        subscriber->OnReceiveEvent(eventData);
+        ffrt::wait();
+        BatteryStatus::SetChargingStatus(false);
+        EXPECT_EQ(NetworkStatus::GetWifiSignalStrengthLevel(), 5);
+        EXPECT_EQ(dataSyncManager->recoverySyncCount_, 1);
+    } catch (...) {
+        BatteryStatus::SetChargingStatus(false);
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "OnReceiveEventWifiDiff001 failed";
+    }
+    GTEST_LOG_(INFO) << "OnReceiveEventWifiDiff001 end";
 }
 }

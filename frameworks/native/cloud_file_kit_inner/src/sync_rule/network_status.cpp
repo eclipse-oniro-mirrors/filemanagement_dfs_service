@@ -55,7 +55,17 @@ void NetworkStatus::SetWifiSignalStrength(int32_t status)
 {
     wifiSignalStrength_.store(status);
 }
- 
+
+int32_t NetworkStatus::GetCellularSignalStrengthLevel()
+{
+    return cellularSignalStrength_.load();
+}
+
+int32_t NetworkStatus::GetWifiSignalStrengthLevel()
+{
+    return wifiSignalStrength_.load();
+}
+
 void NetworkStatus::SetCellularAllowSync(bool flag)
 {
     cellularAllowSync_.store(flag);
