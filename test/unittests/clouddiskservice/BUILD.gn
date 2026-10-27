@@ -970,8 +970,6 @@ ohos_unittest("cloud_disk_service_manager_impl_test") {
   subsystem_name = "filemanagement"
 }
 
-
-
 group("clouddisk_service_test") {
   testonly = true
 
@@ -999,7 +997,7 @@ group("clouddisk_service_test") {
     deps += [
       ":cloud_disk_service_static_test",
       ":cloud_disk_service_test",
-        ":service_account_status_listener_test",
+      ":service_account_status_listener_test",
       "fuse:clouddisk_fuse_test",
     ]
   }
