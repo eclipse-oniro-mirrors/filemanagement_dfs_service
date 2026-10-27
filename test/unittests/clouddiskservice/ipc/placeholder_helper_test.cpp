@@ -206,7 +206,7 @@ HWTEST_F(PlaceholderHelperTest, FileSyncStatePackingTest001, TestSize.Level1)
 
 /**
  * @tc.name: PlaceholderDeltaTest001
- * @tc.desc: Verify only unhydrated/partial-hydrated states are counted in the aggregate count.
+ * @tc.desc: Verify only normal-to-placeholder transitions change the aggregate count.
  * @tc.type: FUNC
  * @tc.require: NA
  */
