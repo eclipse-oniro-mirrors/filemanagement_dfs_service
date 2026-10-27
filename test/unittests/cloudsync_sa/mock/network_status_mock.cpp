@@ -81,7 +81,17 @@ void NetworkStatus::SetCellularSignalStrength(int32_t status)
 void NetworkStatus::SetWifiSignalStrength(int32_t status)
 {
 }
- 
+
+int32_t NetworkStatus::GetCellularSignalStrengthLevel()
+{
+    return 0;
+}
+
+int32_t NetworkStatus::GetWifiSignalStrengthLevel()
+{
+    return 0;
+}
+
 void NetworkStatus::SetCellularAllowSync(bool flag)
 {
 }

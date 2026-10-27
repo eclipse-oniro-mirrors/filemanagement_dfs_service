@@ -50,8 +50,9 @@ void NetworkSignalStrengthSubscriber::OnReceiveEvent(const EventFwk::CommonEvent
         }
         int32_t signalStrength = listener_->GetCellularSignalLevel(signalInfos[0]);
         LOGI("cellular data signalStrength = %{public}d", signalStrength);
-        if (signalStrength < SIGNAL_LEVEL_MIN || signalStrength > SIGNAL_LEVEL_MAX) {
-            LOGE("Invaild cellular signal level!!");
+        if (signalStrength < SIGNAL_LEVEL_MIN || signalStrength > SIGNAL_LEVEL_MAX ||
+            signalStrength == NetworkStatus::GetCellularSignalStrengthLevel()) {
+            LOGD("Invaild cellular signal level or not changed, signalStrength = %{public}d", signalStrength);
             return;
         }
         NetworkStatus::SetCellularSignalStrength(signalStrength);
@@ -66,8 +67,9 @@ void NetworkSignalStrengthSubscriber::OnReceiveEvent(const EventFwk::CommonEvent
         }
         int32_t signalStrength = eventData.GetWant().GetIntParam("wifiSignalLevel", 0);
         LOGI("wifi data signalStrength = %{public}d", signalStrength);
-        if (signalStrength < SIGNAL_LEVEL_MIN || signalStrength > SIGNAL_LEVEL_MAX) {
-            LOGE("Invaild wifi signal level!!");
+        if (signalStrength < SIGNAL_LEVEL_MIN || signalStrength > SIGNAL_LEVEL_MAX ||
+            signalStrength == NetworkStatus::GetWifiSignalStrengthLevel()) {
+            LOGE("Invaild wifi signal level or not changed, signalStrength = %{public}d", signalStrength);
             return;
         }
         NetworkStatus::SetWifiSignalStrength(signalStrength);
