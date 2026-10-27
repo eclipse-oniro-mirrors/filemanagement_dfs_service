@@ -330,19 +330,12 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationComplete_NoHoles_001, Test
     int32_t taskFd = ActivateTask(manager, key);
     ASSERT_GE(taskFd, 0);
     task->totalSize = 8192;
-    Assistant::mockPwriteApi = true;
     Assistant::mockFsyncApi = true;
 
     uint8_t stateByte = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
     ExpectStateTransitions(taskFd, stateByte);
     EXPECT_CALL(*mock_, Fsync(taskFd)).WillOnce(Return(0));
-    EXPECT_CALL(*mock_, fstat(taskFd, _))
-        .WillOnce(Invoke([](int, struct stat *st) {
-            st->st_size = 8192;
-            st->st_blocks = 16; // fully allocated
-            return 0;
-        }));
-    EXPECT_CALL(*mock_, Pwrite(taskFd, _, 8192, 0)).WillOnce(Return(8192));
+    // Real pwrite and real lseek(SEEK_HOLE) on actual file data
 
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
                               MakeRequest(key, 0, std::vector<uint8_t>(8192, 1), 8192, true)),
