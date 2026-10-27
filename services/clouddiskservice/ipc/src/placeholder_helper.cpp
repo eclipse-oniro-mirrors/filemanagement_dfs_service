@@ -545,16 +545,14 @@ bool HasFileHoles(int32_t fd)
     if (fstat(fd, &st) != 0 || st.st_size <= 0) {
         return false;
     }
-    if (static_cast<uint64_t>(st.st_blocks) * stBlocksUnitBytes >= static_cast<uint64_t>(st.st_size)) {
-        return false;
-    }
-    // st_blocks suggests holes; confirm with SEEK_HOLE because compressed or inline
-    // filesystems may under-report allocated blocks for fully written files.
+    // Use SEEK_HOLE as the primary check: st_blocks is inflated by xattr/metadata
+    // blocks on the placeholder file, which masks real data holes.
     off_t hole = lseek(fd, 0, SEEK_HOLE);
-    if (hole < 0) {
-        LOGW("SEEK_HOLE not supported, trusting st_blocks, errno:%{public}d", errno);
-        return true;
+    if (hole >= 0) {
+        return static_cast<uint64_t>(hole) < static_cast<uint64_t>(st.st_size);
     }
-    return static_cast<uint64_t>(hole) < static_cast<uint64_t>(st.st_size);
+    // SEEK_HOLE not supported; fall back to st_blocks (imperfect).
+    LOGW("SEEK_HOLE not supported, falling back to st_blocks, errno:%{public}d", errno);
+    return static_cast<uint64_t>(st.st_blocks) * stBlocksUnitBytes < static_cast<uint64_t>(st.st_size);
 }
 } // namespace OHOS::FileManagement::CloudDiskService
