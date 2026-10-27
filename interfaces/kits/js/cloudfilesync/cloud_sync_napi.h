@@ -31,6 +31,7 @@
 
 namespace OHOS::FileManagement::CloudSync {
 const int32_t ARGS_ONE = 1;
+const int32_t SYNC_TYPE_FORCE_THM = 0;
 
 struct BundleEntity {
     CallbackInfo callbackInfo;

@@ -50,10 +50,7 @@ static void InitState(napi_env env, napi_value exports)
 static void InitSyncType(napi_env env, napi_value exports)
 {
     napi_property_descriptor desc[] = {
-        DECLARE_NAPI_STATIC_PROPERTY("NORMAL", NVal::CreateInt32(env, static_cast<int32_t>(SyncMode::NORMAL)).val_),
-        DECLARE_NAPI_STATIC_PROPERTY("FORCE", NVal::CreateInt32(env, static_cast<int32_t>(SyncMode::FORCE)).val_),
-        DECLARE_NAPI_STATIC_PROPERTY("FORCE_THM", NVal::CreateInt32(
-            env, static_cast<int32_t>(SyncMode::FORCE_THM)).val_),
+        DECLARE_NAPI_STATIC_PROPERTY("FORCE_THM", NVal::CreateInt32(env, SYNC_TYPE_FORCE_THM).val_),
     };
     napi_value obj = nullptr;
     napi_create_object(env, &obj);

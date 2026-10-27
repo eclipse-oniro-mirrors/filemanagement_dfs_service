@@ -30,6 +30,7 @@ using namespace arkts::ani_signature;
 const string FILE_SCHEME = "file";
 const int32_t E_IPCSS = 13600001;
 const int32_t E_PERMISSION = 201;
+const int32_t SYNC_TYPE_FORCE_THM = 0;
 thread_local unique_ptr<ChangeListenerAni> g_listObj = nullptr;
 mutex CloudSyncAni::sOnOffMutex_;
 
@@ -168,8 +169,7 @@ void CloudSyncAni::CloudSyncStart(ani_env *env, ani_object object)
 void CloudSyncAni::CloudSyncStartWithType(ani_env *env, ani_object object, ani_enum_item type)
 {
     auto [success, typeValue] = ANIUtils::EnumToInt32(env, type);
-    if (!success || typeValue < static_cast<int32_t>(SyncMode::NORMAL) ||
-        typeValue > static_cast<int32_t>(SyncMode::FORCE_THM)) {
+    if (!success || typeValue != SYNC_TYPE_FORCE_THM) {
         LOGE("Invalid sync type");
         ErrorHandler::Throw(env, JsErrCode::E_PARAMS_);
         return;
@@ -181,7 +181,7 @@ void CloudSyncAni::CloudSyncStartWithType(ani_env *env, ani_object object, ani_e
         ErrorHandler::Throw(env, E_PERMISSION);
         return;
     }
-    auto data = cloudSync->DoStartWithType(static_cast<SyncMode>(typeValue));
+    auto data = cloudSync->DoStartWithType(SyncMode::FORCE_THM);
     if (!data.IsSuccess()) {
         const auto &err = data.GetError();
         LOGE("cloud sync do start with type failed, ret = %{public}d", err.GetErrNo());
