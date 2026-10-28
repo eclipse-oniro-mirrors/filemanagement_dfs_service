@@ -1,4 +1,4 @@
-/*
+CheckSyncFolderBundleName/*
  * Copyright (c) 2025 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1450,7 +1450,7 @@ static int32_t ResolvePlaceholderOwner(const std::string &syncFolder, Placeholde
     }
     ret = CheckSyncFolderBundleName(syncFolder, context.userId, context.bundleName, &context.syncFolderIndex);
     if (ret != E_OK) {
-        LOGE("CheckSyncFolderAccess failed, ret:%{public}d", ret);
+        LOGE("CheckSyncFolderBundleName failed, ret:%{public}d", ret);
         return ret;
     }
     return E_OK;
