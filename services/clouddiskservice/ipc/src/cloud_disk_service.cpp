@@ -1512,6 +1512,7 @@ static int32_t CheckPathNotDir(const std::string &hmdfsPath)
 
 static int32_t CheckDehydrateState(uint8_t state)
 {
+    LOGI("Dehydrate state checked, state:%{public}u", static_cast<uint32_t>(state));
     if (!IsValidPlaceholderState(state)) {
         return E_INVALID_PLACEHOLDER_STATE;
     }
@@ -1573,6 +1574,12 @@ static int32_t DehydrateOpenFile(int fd)
     if (fsync(fd) < 0) {
         LOGW("Fsync dehydrated placeholder failed, errno:%{public}d", errno);
     }
+    // Dehydration only rebuilds the sparse placeholder; restore the timestamps captured
+    // before truncation so the file's atime/mtime stay unchanged.
+    struct timespec times[2] = {fileStat.st_atim, fileStat.st_mtim};
+    if (futimens(fd, times) < 0) {
+        LOGW("Restore timestamps after dehydration failed, errno:%{public}d", errno);
+    }
     return E_OK;
 }
 
@@ -1605,14 +1612,12 @@ static int32_t DehydratePlaceholderFile(const PlaceholderStatePathContext &conte
         return ConvertPlaceholderStateErrnoToCloudDiskError(ret);
     }
     ret = CheckDehydrateState(state);
-    LOGI("Dehydrate state checked, state:%{public}u, ret:%{public}d", static_cast<uint32_t>(state), ret);
     if (ret != E_OK || state == PLACEHOLDER_STATE_UNHYDRATED) {
         LOGE("Dehydrate rejected by placeholder state, state:%{public}u, ret:%{public}d", state, ret);
         return ret;
     }
 
-    LOGI("Request provider dehydration authorization, bundleName:%{private}s, syncFolderIndex:%{private}u",
-         context.bundleName.c_str(), context.syncFolderIndex);
+    LOGI("Request dehydration authorization, bundleName:%{private}s", context.bundleName.c_str());
     ret = DispatchDehydrateAuthorization(context, relativePath);
     if (ret != E_OK) {
         LOGW("Dehydrate authorization failed, ret:%{public}d", ret);

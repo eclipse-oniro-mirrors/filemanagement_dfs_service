@@ -45,6 +45,7 @@ ohos_unittest("cloud_disk_service_static_test") {
     "ipc/cloud_disk_service_static_test.cpp",
     "ipc/placeholder_helper_test.cpp",
     "ipc/PlaceholderTaskManagerTest.cpp",
+    "ipc/PlaceholderHydrationCompletionTest.cpp",
   ]
 
   include_dirs = [
@@ -166,6 +167,7 @@ ohos_unittest("cloud_disk_service_callback_manager_test") {
   sources = [
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_common.cpp",
     "${distributedfile_path}/test/unittests/clouddiskservice/mock/cloud_disk_service_access_token_mock.cpp",
+    "${distributedfile_path}/test/unittests/clouddiskservice/mock/cloud_disk_service_metafile_mock.cpp",
     "${distributedfile_path}/test/unittests/clouddiskservice/mock/disk_monitor_mock.cpp",
     "${distributedfile_path}/utils/cloud_disk/src/cloud_file_utils.cpp",
     "${distributedfile_path}/utils/clouddiskservice/src/cloud_disk_service_utils.cpp",

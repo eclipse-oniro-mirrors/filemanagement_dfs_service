@@ -67,7 +67,8 @@ int32_t CloudDiskServiceMetaFile::DoRenameOld(const MetaBase &base,
 int32_t CloudDiskServiceMetaFile::DoRenameNew(const MetaBase &base,
                                               std::string &recordId,
                                               unsigned long &bidx,
-                                              uint32_t &bitPos)
+                                              uint32_t &bitPos,
+                                              uint8_t &overwrittenState)
 {
     if (recordId == "") {
         return E_OK;

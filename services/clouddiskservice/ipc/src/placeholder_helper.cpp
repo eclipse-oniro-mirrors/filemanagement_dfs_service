@@ -231,7 +231,8 @@ int32_t UpdateDirectoryCountAndState(const std::string &path, int32_t delta, boo
     if (ret != E_OK) {
         return ret;
     }
-    uint8_t newPlaceholderState = newHasPlaceholder ? PLACEHOLDER_STATE_HAS_PLACEHOLDER : PLACEHOLDER_STATE_NONE;
+    uint8_t newPlaceholderState =
+        newHasPlaceholder ? PLACEHOLDER_STATE_HAS_PLACEHOLDER : PLACEHOLDER_STATE_NONE;
     uint8_t newState = MakeFileSyncState(newPlaceholderState, GetSyncStateFromFileSyncState(oldState));
     return WriteFileSyncStateByteNoLock(path, newState);
 }
@@ -336,7 +337,7 @@ int32_t RecountNode(const std::string &syncRoot,
     isPlaceholder = count > 0;
     if (path != syncRoot) {
         (void)UpdateDentryPlaceholderState(userId, syncFolderIndex, path,
-                                           isPlaceholder ? PLACEHOLDER_STATE_HAS_PLACEHOLDER : PLACEHOLDER_STATE_NONE);
+            isPlaceholder ? PLACEHOLDER_STATE_HAS_PLACEHOLDER : PLACEHOLDER_STATE_NONE);
     }
     return E_OK;
 }
@@ -529,7 +530,29 @@ int32_t UpdateDentryPlaceholderState(int32_t userId,
 
     auto parentMetaFile =
         MetaFileMgr::GetInstance().GetCloudDiskServiceMetaFile(userId, syncFolderIndex, parentStat.st_ino);
+    if (parentMetaFile == nullptr) {
+        LOGE("get parent metafile failed, path:%{public}s", GetAnonyStringStrictly(path).c_str());
+        return ENOENT;
+    }
     MetaBase base(name);
     return parentMetaFile->DoUpdatePlaceholderState(base, placeholderState);
+}
+
+bool HasFileHoles(int32_t fd)
+{
+    constexpr uint64_t stBlocksUnitBytes = 512;
+    struct stat st = {};
+    if (fstat(fd, &st) != 0 || st.st_size <= 0) {
+        return false;
+    }
+    // Use SEEK_HOLE as the primary check: st_blocks is inflated by xattr/metadata
+    // blocks on the placeholder file, which masks real data holes.
+    off_t hole = lseek(fd, 0, SEEK_HOLE);
+    if (hole >= 0) {
+        return static_cast<uint64_t>(hole) < static_cast<uint64_t>(st.st_size);
+    }
+    // SEEK_HOLE not supported; fall back to st_blocks (imperfect).
+    LOGW("SEEK_HOLE not supported, falling back to st_blocks, errno:%{public}d", errno);
+    return static_cast<uint64_t>(st.st_blocks) * stBlocksUnitBytes < static_cast<uint64_t>(st.st_size);
 }
 } // namespace OHOS::FileManagement::CloudDiskService

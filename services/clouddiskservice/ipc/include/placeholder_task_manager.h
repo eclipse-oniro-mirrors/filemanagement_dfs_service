@@ -20,6 +20,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <ctime>
 #include <deque>
 #include <map>
 #include <memory>
@@ -80,6 +81,8 @@ struct HydrationFileMetadata {
     uint64_t deviceId = 0;
     uint64_t inodeId = 0;
     uint64_t logicalSize = 0;
+    struct timespec savedAtime {};
+    struct timespec savedMtime {};
 };
 
 int32_t OpenValidatedHydrationFile(const std::string &syncRoot,
@@ -112,6 +115,9 @@ struct PlaceholderTaskRecord {
     bool fetchDispatched = false;
     bool cancelCallbackAttempted = false;
     uint64_t createSeq = 0;
+    struct timespec savedAtime {};
+    struct timespec savedMtime {};
+    bool timestampsSaved = false;
     std::mutex mutex;
 };
 
