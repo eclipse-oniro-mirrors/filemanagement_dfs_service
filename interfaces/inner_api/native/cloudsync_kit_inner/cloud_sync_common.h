@@ -43,6 +43,7 @@ struct DownloadProgressObj : public Parcelable {
         COMPLETED = 1,
         FAILED = 2,
         STOPPED = 3,
+        MISSING = 4
     };
     enum DownloadErrorType : int32_t {
         NO_ERROR = 0,
