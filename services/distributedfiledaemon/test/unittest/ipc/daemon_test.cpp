@@ -2068,6 +2068,33 @@ HWTEST_F(DaemonTest, DaemonTest_ChooseCopyMode_002, TestSize.Level1)
 }
 
 /**
+ * @tc.name: DaemonTest_ChooseCopyMode_003
+ * @tc.desc: verify ChooseCopyMode selects CopyBaseOnRPC and counts SEND_FILE_CNT when
+ *           GetDfsVersionFromNetworkId fails.
+ * @tc.type: FUNC
+ * @tc.require:
+ */
+HWTEST_F(DaemonTest, DaemonTest_ChooseCopyMode_003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DaemonTest_ChooseCopyMode_003 begin";
+    ASSERT_NE(daemon_, nullptr);
+    HmdfsInfo hmdfsInfo;
+    std::string srcUri = "file://docs/storage/el2/distributedfiles/1.txt";
+    std::string dstUri = "file://media/storage/el2/distributedfiles/1.txt";
+    g_getPhysicalPath = E_OK;
+    g_physicalPath = "/mnt/hmdfs/100/account/device_view/local/data/com.example.app/docs/1.txt";
+    g_checkValidPath = true;
+    g_getDfsVersionFromNetworkId = ERR_DP_CAN_NOT_FIND;
+    EXPECT_CALL(*smc_, GetSystemAbilityManager()).WillRepeatedly(Return(nullptr));
+
+    int32_t ret = daemon_->ChooseCopyMode(srcUri, dstUri, "invalidDevice", nullptr, hmdfsInfo);
+    EXPECT_EQ(ret, E_SA_LOAD_FAILED);
+    EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.sendFileCount, static_cast<uint32_t>(1));
+    EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.hmdfsCopyCount, static_cast<uint32_t>(0));
+    GTEST_LOG_(INFO) << "DaemonTest_ChooseCopyMode_003 end";
+}
+
+/**
  * @tc.name: DaemonTest_DisconnectByRemote_001
  * @tc.desc: verify DisconnectByRemote with invalid networkId
  * @tc.type: FUNC
