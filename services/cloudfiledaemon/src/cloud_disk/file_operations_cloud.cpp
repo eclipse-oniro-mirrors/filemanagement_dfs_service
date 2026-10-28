@@ -1518,7 +1518,7 @@ void FileOperationsCloud::MkDir(fuse_req_t req, fuse_ino_t parent, const char *n
         return (void) fuse_reply_err(req, EINVAL);
     }
     string fileName = name;
-    bool noNeedUpload;
+    bool noNeedUpload = false;
     if ((fileName == ".cloudthumbnails" || fileName == CONFLICT_PATH) && parentInode->cloudId == ROOT_CLOUD_ID) {
         noNeedUpload = true;
     } else if (parentInode->cloudId != ROOT_CLOUD_ID) {
