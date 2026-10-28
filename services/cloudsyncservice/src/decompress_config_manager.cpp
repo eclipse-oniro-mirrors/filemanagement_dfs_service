@@ -130,7 +130,7 @@ bool DecompressConfigManager::GetCrossFsConfig()
         auto [isSuccess, crossFsConfig] = ParseCrossFsConfig(path);
         if (isSuccess) {
             newCrossFsConfig = crossFsConfig;
-            LOGI("Load crossFsConfig successfully from: %{public}s", alias.c_str());
+            LOGI("Load CrossFsConfig successfully from: %{public}s", alias.c_str());
             break;
         }
     }
