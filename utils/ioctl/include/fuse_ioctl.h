@@ -40,7 +40,7 @@ static const unsigned int HMDFS_DAEMON_IOC_MASK = 0x80;
 #define HMDFS_IOC_CLEAN_CACHE_DAEMON _IO(HMDFS_IOC, HMDFS_DAEMON_IOC_MASK + 0x01)
 #define HMDFS_IOC_SET_KEEP_CACHE _IOW(HMDFS_IOC, HMDFS_DAEMON_IOC_MASK + 0x02, int32_t)
 
-/* HMFS pdedup (pyysical dedup / no-decompress) ioctl interface */
+/* HMFS pdedup (physical dedup / no-decompress) ioctl interface */
 struct hmfs_pdedup_extent {
     uint64_t outer_off; /* offset in outer file */
     uint64_t inner_off; /* offset in inner file */
@@ -49,17 +49,17 @@ struct hmfs_pdedup_extent {
 
 #define HMFS_PDEDUP_NAME_MAX 256
 struct hmfs_pdedup_create_arg_common {
-    int32_t version;                 /* pdedup version*/
-    int32_t inner_fd;                /* fd of inner file*/
-    uint64_t file_size;              /* expected size of outer file*/
+    int32_t version;                 /* pdedup version */
+    int32_t inner_fd;                /* fd of inner file */
+    uint64_t file_size;              /* expected size of outer file */
     uint32_t nr_extents;             /* extents num */
-    int32_t mode;                    /* expected mode of outher file */
-    char name[HMFS_PDEDUP_NAME_MAX];  /* expected name of outer file */
+    int32_t mode;                    /* expected mode of outer file */
+    char name[HMFS_PDEDUP_NAME_MAX]; /* expected name of outer file */
 };
 
 struct hmfs_pdedup_create_arg_v1 {
     struct hmfs_pdedup_create_arg_common common;
-    struct hmfs_pdedup_extent extents[]; /* map extends */
+    struct hmfs_pdedup_extent extents[]; /* map extents */
 };
 
 #define HMFS_PDEDUP_CREATE_FLAG_BUILD_HASH 0x1
