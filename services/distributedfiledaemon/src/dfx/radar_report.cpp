@@ -39,7 +39,7 @@ constexpr const char *DFS_SERVICE_NAME = "ohos.storage.distributedfile.daemon";
 void RadarReportAdapter::InitRadar()
 {
     std::unique_lock<std::mutex> lock(onRadarReportLock_);
-    opStatistics_ = {0, 0, 0, 0, 0, 0};
+    opStatistics_ = {0, 0, 0, 0, 0, 0, 0, 0};
     callRadarStatisticReportThread_ = std::thread([this]() { StorageRadarThd(); });
     if (!callRadarStatisticReportThread_.joinable()) {
         return;
@@ -91,6 +91,12 @@ void RadarReportAdapter::SetUserStatistics(const RadarStatisticInfoType type)
             break;
         case RadarStatisticInfoType::FILE_ACCESS_FAIL_CNT:
             opStatistics_.fileAccessFailCount++;
+            break;
+        case RadarStatisticInfoType::HMDFS_COPY_CNT:
+            opStatistics_.hmdfsCopyCount++;
+            break;
+        case RadarStatisticInfoType::SEND_FILE_CNT:
+            opStatistics_.sendFileCount++;
             break;
         default:
             break;

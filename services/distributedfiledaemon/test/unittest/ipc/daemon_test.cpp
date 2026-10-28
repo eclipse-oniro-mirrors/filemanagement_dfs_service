@@ -43,6 +43,7 @@
 #include "iremote_object.h"
 #include "network/devsl_dispatcher.h"
 #include "network/softbus/softbus_session_listener.h"
+#include "radar_report.h"
 #include "remote_file_share.h"
 #include "sandbox_helper.h"
 #include "securec.h"
@@ -158,6 +159,11 @@ bool DfsuAccessTokenHelper::CheckCallerPermission(const std::string &permissionN
     } else {
         return g_checkCallerPermission;
     }
+}
+
+bool DfsuAccessTokenHelper::CheckUriPermission(const std::string &uriStr)
+{
+    return true;
 }
 } // namespace OHOS::FileManagement
 
@@ -359,6 +365,7 @@ void DaemonTest::SetUp(void)
     g_checkSrcPermission = true;
     g_getLocalAccountInfo = true;
     g_checkSinkPermission = true;
+    RadarReportAdapter::GetInstance().opStatistics_.clear();
 }
 
 void DaemonTest::TearDown(void)
@@ -1487,10 +1494,10 @@ HWTEST_F(DaemonTest, DaemonTest_PrepareSession_001, TestSize.Level1)
     file.close();
     EXPECT_EQ(daemon_->PrepareSession(srcUri, dstUri, NETWORKID_ONE, listener, hmdfsInfo), EINVAL);
 
-    // 测试用例 5: DFS 有效 URI，物理路径有效，stat 成功，DFS 版本为 1，文件大小 < 1GB, CopyBaseOnRPC
+    // 测试用例 5: DFS 有效 URI，物理路径有效，stat 成功，DFS 版本为 1，CopyBaseOnRPC
     EXPECT_EQ(daemon_->PrepareSession(srcUri, dstUri, NETWORKID_TWO, listener, hmdfsInfo), 22);
 
-    // 测试用例 6: DFS 有效 URI，物理路径有效，stat 成功，DFS 版本获取失败，文件大小 < 1GB, CopyBaseOnRPC
+    // 测试用例 6: DFS 有效 URI，物理路径有效，stat 成功，DFS 版本获取失败，CopyBaseOnRPC
     EXPECT_EQ(daemon_->PrepareSession(srcUri, dstUri, "invalidDevice", listener, hmdfsInfo), EINVAL);
 
     // 清理
@@ -2007,6 +2014,57 @@ HWTEST_F(DaemonTest, DaemonTest_InnerCopy_001, TestSize.Level1)
     destUri = "file://docs/storage/media/100/local/files/Docs/../A/dest1.txt?networkid=123456";
     EXPECT_EQ(daemon_->InnerCopy(srcUri, destUri, "", nullptr, hmdfsInfo), EINVAL);
     GTEST_LOG_(INFO) << "DaemonTest_InnerCopy_001 end";
+}
+
+/**
+ * @tc.name: DaemonTest_ChooseCopyMode_001
+ * @tc.desc: verify ChooseCopyMode selects InnerCopy and counts HMDFS_COPY_CNT when remote
+ *           dfs major version is not 0.
+ * @tc.type: FUNC
+ * @tc.require:
+ */
+HWTEST_F(DaemonTest, DaemonTest_ChooseCopyMode_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DaemonTest_ChooseCopyMode_001 begin";
+    ASSERT_NE(daemon_, nullptr);
+    HmdfsInfo hmdfsInfo;
+    std::string srcUri = "file://docs/storage/el2/distributedfiles/1.txt";
+    std::string dstUri = "file://media/storage/el2/distributedfiles/1.txt";
+    g_getPhysicalPath = E_OK;
+    g_physicalPath = "/mnt/hmdfs/100/account/device_view/local/data/com.example.app/docs/1.txt";
+    g_checkValidPath = true;
+
+    int32_t ret = daemon_->ChooseCopyMode(srcUri, dstUri, NETWORKID_TWO, nullptr, hmdfsInfo);
+    EXPECT_EQ(ret, EINVAL);
+    EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.hmdfsCopyCount, static_cast<uint32_t>(1));
+    EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.sendFileCount, static_cast<uint32_t>(0));
+    GTEST_LOG_(INFO) << "DaemonTest_ChooseCopyMode_001 end";
+}
+
+/**
+ * @tc.name: DaemonTest_ChooseCopyMode_002
+ * @tc.desc: verify ChooseCopyMode selects CopyBaseOnRPC and counts SEND_FILE_CNT when remote
+ *           dfs major version is 0.
+ * @tc.type: FUNC
+ * @tc.require:
+ */
+HWTEST_F(DaemonTest, DaemonTest_ChooseCopyMode_002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DaemonTest_ChooseCopyMode_002 begin";
+    ASSERT_NE(daemon_, nullptr);
+    HmdfsInfo hmdfsInfo;
+    std::string srcUri = "file://docs/storage/el2/distributedfiles/1.txt";
+    std::string dstUri = "file://media/storage/el2/distributedfiles/1.txt";
+    g_getPhysicalPath = E_OK;
+    g_physicalPath = "/mnt/hmdfs/100/account/device_view/local/data/com.example.app/docs/1.txt";
+    g_checkValidPath = true;
+    EXPECT_CALL(*smc_, GetSystemAbilityManager()).WillRepeatedly(Return(nullptr));
+
+    int32_t ret = daemon_->ChooseCopyMode(srcUri, dstUri, NETWORKID_ONE, nullptr, hmdfsInfo);
+    EXPECT_EQ(ret, E_SA_LOAD_FAILED);
+    EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.sendFileCount, static_cast<uint32_t>(1));
+    EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.hmdfsCopyCount, static_cast<uint32_t>(0));
+    GTEST_LOG_(INFO) << "DaemonTest_ChooseCopyMode_002 end";
 }
 
 /**

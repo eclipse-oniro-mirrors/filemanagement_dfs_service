@@ -200,7 +200,9 @@ void DfsRadar::ReportStatistics(const RadarStatisticInfo radarInfo)
         "GENERATE_DIS_URI_SUCC_CNT", radarInfo.generateUriSuccCount,
         "GENERATE_DIS_URI_FAIL_CNT", radarInfo.generateUriFailCount,
         "FILE_ACCESS_SUCC_CNT", radarInfo.fileAccessSuccCount,
-        "FILE_ACCESS_FAIL_CNT", radarInfo.fileAccessFailCount);
+        "FILE_ACCESS_FAIL_CNT", radarInfo.fileAccessFailCount,
+        "HMDFS_COPY_CNT", radarInfo.hmdfsCopyCount,
+        "SEND_FILE_CNT", radarInfo.sendFileCount);
     if (res != E_OK) {
         LOGE("DfsRadar Error, res :%{public}d", res);
     }
