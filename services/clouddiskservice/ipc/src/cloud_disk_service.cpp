@@ -1450,7 +1450,7 @@ static int32_t ResolvePlaceholderOwner(const std::string &syncFolder, Placeholde
     }
     ret = CheckSyncFolderBundleName(syncFolder, context.userId, context.bundleName, &context.syncFolderIndex);
     if (ret != E_OK) {
-        LOGE("CheckSyncFolderBundleName failed, ret:%{public}d", ret);
+        LOGE("CheckSyncFolderAccess failed, ret:%{public}d", ret);
         return ret;
     }
     return E_OK;
@@ -1808,7 +1808,7 @@ int32_t CloudDiskService::ConvertPlaceholderToFileInner(const std::string &syncF
     // 步骤1：权限校验
     ret = CheckSyncFolderBundleName(syncFolder, userId, bundleName);
     if (ret != E_OK) {
-        LOGE("CheckSyncFolderAccess failed, ret:%{public}d", ret);
+        LOGE("CheckSyncFolderBundleName failed, ret:%{public}d", ret);
         return ret;
     }
 
