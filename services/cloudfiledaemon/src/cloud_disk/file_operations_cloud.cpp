@@ -1518,6 +1518,7 @@ void FileOperationsCloud::MkDir(fuse_req_t req, fuse_ino_t parent, const char *n
         return (void) fuse_reply_err(req, EINVAL);
     }
     string fileName = name;
+    // 显式初始化为需要上传：根目录下新建非特殊目录时两个分支均不执行，若不初始化则为未定义行为
     bool noNeedUpload = false;
     if ((fileName == ".cloudthumbnails" || fileName == CONFLICT_PATH) && parentInode->cloudId == ROOT_CLOUD_ID) {
         noNeedUpload = true;
