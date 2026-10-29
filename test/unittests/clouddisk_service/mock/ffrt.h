@@ -76,7 +76,10 @@ struct task_attr {
     inline task_attr &timeout(int64_t) { return *this; }
 };
 struct task_handle {
-    inline operator void*() const { return nullptr; }
+    void* id = nullptr;
+    task_handle() = default;
+    explicit task_handle(void* p) : id(p) {}
+    inline operator void*() const { return id; }
 };
 struct dependence {
     dependence(const task_handle &) {}
@@ -85,8 +88,16 @@ class queue {
 public:
     explicit queue(const char *) {}
     void submit(std::function<void()> &&) {}
-    task_handle submit_h(std::function<void()> &&) { return {}; }
+    task_handle submit_h(std::function<void()> &&) { return task_handle{(void*)1}; }
+    task_handle submit_h(std::function<void()> &&task, task_attr)
+    {
+        if (task) {
+            task();
+        }
+        return task_handle{(void*)1};
+    }
     void wait(const task_handle &) {}
+    void cancel(task_handle&) {}
 };
 
 inline void submit(std::function<void()> &&task, task_attr attr = {})

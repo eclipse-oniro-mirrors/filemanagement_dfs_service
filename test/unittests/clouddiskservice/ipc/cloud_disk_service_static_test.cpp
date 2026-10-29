@@ -462,18 +462,12 @@ HWTEST_F(CloudDiskServiceStartupTest, OnStartInitFailedUnloadTest001, TestSize.L
 
 /**
  * @tc.name: InitEmptySyncFoldersTest001
- * @tc.desc: Successful initialization with no sync folders still requests SA unload
+ * @tc.desc: Successful initialization with no sync folders schedules a delayed SA unload
  * @tc.type: FUNC
  * @tc.require: NA
  */
 HWTEST_F(CloudDiskServiceStartupTest, InitEmptySyncFoldersTest001, TestSize.Level1)
 {
-    auto samgrClient = make_shared<SystemAbilityManagerClientMock>();
-    sptr<ISystemAbilityManagerMock> samgr = new ISystemAbilityManagerMock();
-    ISystemAbilityManagerClient::smc = samgrClient;
-    EXPECT_CALL(*samgrClient, GetSystemAbilityManager()).WillRepeatedly(Return(samgr));
-    EXPECT_CALL(*samgr, SubscribeSystemAbility(_, _)).WillRepeatedly(Return(ERR_OK));
-    EXPECT_CALL(*samgr, UnloadSystemAbility(TEST_CLOUD_DISK_SERVICE_SA_ID)).WillOnce(Return(ERR_OK));
     EXPECT_CALL(*dfsuAccessToken_, IsUserVerifyed(TEST_USER_ID)).WillOnce(Return(true));
     EXPECT_CALL(CloudDiskSyncFolderManagerMock::GetInstance(), GetAllSyncFoldersForSa(_)).WillOnce(Return(E_OK));
     SystemAbilityOnDemandReason reason;
@@ -481,6 +475,82 @@ HWTEST_F(CloudDiskServiceStartupTest, InitEmptySyncFoldersTest001, TestSize.Leve
     reason.SetValue(std::to_string(TEST_USER_ID));
     EXPECT_EQ(service_->Init(reason), E_OK);
     EXPECT_EQ(CloudDiskSyncFolder::GetInstance().GetSyncFolderSize(), 0);
+    EXPECT_NE(service_->unloadTaskHandle_, nullptr);
+}
+
+/**
+ * @tc.name: DelayUnloadSa_CallsRequestUnloadWhenNoSyncFolder001
+ * @tc.desc: DelayUnloadSa triggers RequestUnloadCloudDiskService when no sync folder exists
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStartupTest, DelayUnloadSa_CallsRequestUnloadWhenNoSyncFolder001, TestSize.Level1)
+{
+    EXPECT_EQ(CloudDiskSyncFolder::GetInstance().GetSyncFolderSize(), 0);
+    service_->DelayUnloadSa();
+    EXPECT_NE(service_->unloadTaskHandle_, nullptr);
+}
+
+/**
+ * @tc.name: DelayUnloadSa_SkipsUnloadWhenSyncFolderExists001
+ * @tc.desc: DelayUnloadSa skips RequestUnloadCloudDiskService when sync folder exists
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStartupTest, DelayUnloadSa_SkipsUnloadWhenSyncFolderExists001, TestSize.Level1)
+{
+    RegisterPlaceholderSyncFolder();
+    EXPECT_GT(CloudDiskSyncFolder::GetInstance().GetSyncFolderSize(), 0);
+
+    service_->DelayUnloadSa();
+    EXPECT_NE(service_->unloadTaskHandle_, nullptr);
+}
+
+/**
+ * @tc.name: DelayUnloadSa_CancelsPreviousBeforeSubmit001
+ * @tc.desc: DelayUnloadSa cancels previous pending task before submitting new one
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStartupTest, DelayUnloadSa_CancelsPreviousBeforeSubmit001, TestSize.Level1)
+{
+    RegisterPlaceholderSyncFolder();
+    service_->DelayUnloadSa();
+    EXPECT_NE(service_->unloadTaskHandle_, nullptr);
+    auto firstHandle = service_->unloadTaskHandle_;
+
+    service_->DelayUnloadSa();
+    EXPECT_NE(service_->unloadTaskHandle_, nullptr);
+    EXPECT_NE(service_->unloadTaskHandle_, firstHandle);
+}
+
+/**
+ * @tc.name: CancelPendingUnload_NoopWhenNoPendingTask001
+ * @tc.desc: CancelPendingUnload is a no-op when no pending task exists
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStartupTest, CancelPendingUnload_NoopWhenNoPendingTask001, TestSize.Level1)
+{
+    EXPECT_EQ(service_->unloadTaskHandle_, nullptr);
+    service_->CancelPendingUnload();
+    EXPECT_EQ(service_->unloadTaskHandle_, nullptr);
+}
+
+/**
+ * @tc.name: CancelPendingUnload_CancelsAndResets001
+ * @tc.desc: CancelPendingUnload cancels and resets the pending task handle
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStartupTest, CancelPendingUnload_CancelsAndResets001, TestSize.Level1)
+{
+    RegisterPlaceholderSyncFolder();
+    service_->DelayUnloadSa();
+    EXPECT_NE(service_->unloadTaskHandle_, nullptr);
+
+    service_->CancelPendingUnload();
+    EXPECT_EQ(service_->unloadTaskHandle_, nullptr);
 }
 
 /**
