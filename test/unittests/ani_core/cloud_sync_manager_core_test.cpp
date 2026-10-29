@@ -416,4 +416,359 @@ HWTEST_F(CloudSyncManagerCoreTest, DoGetDowngradeTaskStateTest006, TestSize.Leve
     }
     GTEST_LOG_(INFO) << "DoGetDowngradeTaskStateTest006 End";
 }
+
+/**
+ * @tc.name: DoTriggerCloudCheckTest001
+ * @tc.desc: Verify the CloudSyncManagerCore::DoTriggerCloudCheck function with success result
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoTriggerCloudCheckTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest001 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName = "com.ohos.photos";
+        auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+        EXPECT_CALL(cloudMock, TriggerCloudCheck(userId, bundleName)).WillOnce(Return(E_OK));
+        auto data = CloudSyncManagerCore::DoTriggerCloudCheck(userId, bundleName);
+        EXPECT_TRUE(data.IsSuccess());
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest001 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest001 End";
+}
+
+/**
+ * @tc.name: DoTriggerCloudCheckTest002
+ * @tc.desc: Verify the CloudSyncManagerCore::DoTriggerCloudCheck function with permission denied
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoTriggerCloudCheckTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest002 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName = "com.ohos.photos";
+        auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+        EXPECT_CALL(cloudMock, TriggerCloudCheck(_, _)).WillOnce(Return(OHOS::FileManagement::E_PERMISSION_DENIED));
+        auto data = CloudSyncManagerCore::DoTriggerCloudCheck(userId, bundleName);
+        EXPECT_FALSE(data.IsSuccess());
+        EXPECT_EQ(data.GetError().GetErrNo(), OHOS::FileManagement::E_PERMISSION);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest002 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest002 End";
+}
+
+/**
+ * @tc.name: DoTriggerCloudCheckTest003
+ * @tc.desc: Verify the CloudSyncManagerCore::DoTriggerCloudCheck function with generic failure
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoTriggerCloudCheckTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest003 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName = "com.ohos.photos";
+        auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+        EXPECT_CALL(cloudMock, TriggerCloudCheck(_, _)).WillOnce(Return(E_SA_LOAD_FAILED));
+        auto data = CloudSyncManagerCore::DoTriggerCloudCheck(userId, bundleName);
+        EXPECT_FALSE(data.IsSuccess());
+        EXPECT_EQ(data.GetError().GetErrNo(), OHOS::FileManagement::Convert2ErrNum(E_SA_LOAD_FAILED));
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest003 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest003 End";
+}
+
+/**
+ * @tc.name: DoTriggerCloudCheckTest004
+ * @tc.desc: Verify the CloudSyncManagerCore::DoTriggerCloudCheck function with system permission failure
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoTriggerCloudCheckTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest004 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName = "com.ohos.photos";
+        auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+        EXPECT_CALL(cloudMock, TriggerCloudCheck(_, _)).WillOnce(Return(OHOS::FileManagement::E_PERMISSION_SYSTEM));
+        auto data = CloudSyncManagerCore::DoTriggerCloudCheck(userId, bundleName);
+        EXPECT_FALSE(data.IsSuccess());
+        EXPECT_EQ(data.GetError().GetErrNo(), OHOS::FileManagement::E_PERMISSION_SYS);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest004 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest004 End";
+}
+
+/**
+ * @tc.name: DoTriggerCloudCheckTest005
+ * @tc.desc: Verify the CloudSyncManagerCore::DoTriggerCloudCheck function with invalid argument failure
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoTriggerCloudCheckTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest005 Start";
+    try {
+        int32_t userId = 99;
+        std::string bundleName = "com.ohos.photos";
+        auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+        EXPECT_CALL(cloudMock, TriggerCloudCheck(_, _)).WillOnce(Return(OHOS::FileManagement::E_INVAL_ARG));
+        auto data = CloudSyncManagerCore::DoTriggerCloudCheck(userId, bundleName);
+        EXPECT_FALSE(data.IsSuccess());
+        EXPECT_EQ(data.GetError().GetErrNo(), OHOS::FileManagement::E_PARAMS_);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest005 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoTriggerCloudCheckTest005 End";
+}
+/**
+ * @tc.name: DoRegisterCheckTriggerCallbackTest001
+ * @tc.desc: Verify register and unregister check trigger callback.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoRegisterCheckTriggerCallbackTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest001 Start";
+    try {
+        auto callback = std::make_shared<CloudCheckTriggerCallback>();
+        auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+        EXPECT_CALL(cloudMock, RegisterCheckTriggerCallback(_)).WillOnce(Return(E_OK));
+        auto data = CloudSyncManagerCore::DoRegisterCheckTriggerCallback(callback);
+        EXPECT_TRUE(data.IsSuccess());
+        EXPECT_CALL(cloudMock, UnRegisterCheckTriggerCallback(_)).WillOnce(Return(E_OK));
+        auto unregisterData = CloudSyncManagerCore::DoUnRegisterCheckTriggerCallback();
+        EXPECT_TRUE(unregisterData.IsSuccess());
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest001 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest001 End";
+}
+
+/**
+ * @tc.name: DoRegisterCheckTriggerCallbackTest002
+ * @tc.desc: Verify register check trigger callback rejects invalid arguments.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoRegisterCheckTriggerCallbackTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest002 Start";
+    try {
+        auto data = CloudSyncManagerCore::DoRegisterCheckTriggerCallback(nullptr);
+        EXPECT_FALSE(data.IsSuccess());
+        EXPECT_EQ(data.GetError().GetErrNo(), JsErrCode::E_INVALID_ARGUMENT);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest002 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest002 End";
+}
+
+/**
+ * @tc.name: DoRegisterCheckTriggerCallbackTest003
+ * @tc.desc: Verify check trigger callback can be registered again after a failed registration.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoRegisterCheckTriggerCallbackTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest003 Start";
+    try {
+        auto callback = std::make_shared<CloudCheckTriggerCallback>();
+        auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+        EXPECT_CALL(cloudMock, RegisterCheckTriggerCallback(_))
+            .WillOnce(Return(E_PERMISSION_DENIED))
+            .WillOnce(Return(E_OK));
+        auto data = CloudSyncManagerCore::DoRegisterCheckTriggerCallback(callback);
+        EXPECT_FALSE(data.IsSuccess());
+        data = CloudSyncManagerCore::DoRegisterCheckTriggerCallback(callback);
+        EXPECT_TRUE(data.IsSuccess());
+
+        EXPECT_CALL(cloudMock, UnRegisterCheckTriggerCallback(_)).WillOnce(Return(E_OK));
+        auto unregisterData = CloudSyncManagerCore::DoUnRegisterCheckTriggerCallback();
+        EXPECT_TRUE(unregisterData.IsSuccess());
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest003 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest003 End";
+}
+
+/**
+ * @tc.name: DoRegisterCheckTriggerCallbackTest004
+ * @tc.desc: Verify an already registered check trigger callback is not registered again.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoRegisterCheckTriggerCallbackTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest004 Start";
+    try {
+        auto callback = std::make_shared<CloudCheckTriggerCallback>();
+        auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+        EXPECT_CALL(cloudMock, RegisterCheckTriggerCallback(_)).WillOnce(Return(E_OK));
+        auto data = CloudSyncManagerCore::DoRegisterCheckTriggerCallback(callback);
+        EXPECT_TRUE(data.IsSuccess());
+        data = CloudSyncManagerCore::DoRegisterCheckTriggerCallback(
+            std::make_shared<CloudCheckTriggerCallback>());
+        EXPECT_TRUE(data.IsSuccess());
+
+        EXPECT_CALL(cloudMock, UnRegisterCheckTriggerCallback(_)).WillOnce(Return(E_OK));
+        auto unregisterData = CloudSyncManagerCore::DoUnRegisterCheckTriggerCallback();
+        EXPECT_TRUE(unregisterData.IsSuccess());
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest004 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest004 End";
+}
+
+/**
+ * @tc.name: DoRegisterCheckTriggerCallbackTest005
+ * @tc.desc: Verify registration failure is reported and a retry can succeed.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoRegisterCheckTriggerCallbackTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest005 Start";
+    try {
+        auto callback = std::make_shared<CloudCheckTriggerCallback>();
+        auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+        EXPECT_CALL(cloudMock, RegisterCheckTriggerCallback(_))
+            .WillOnce(Return(E_SA_LOAD_FAILED))
+            .WillOnce(Return(E_OK));
+        auto data = CloudSyncManagerCore::DoRegisterCheckTriggerCallback(callback);
+        EXPECT_FALSE(data.IsSuccess());
+        data = CloudSyncManagerCore::DoRegisterCheckTriggerCallback(callback);
+        EXPECT_TRUE(data.IsSuccess());
+
+        EXPECT_CALL(cloudMock, UnRegisterCheckTriggerCallback(_)).WillOnce(Return(E_OK));
+        auto unregisterData = CloudSyncManagerCore::DoUnRegisterCheckTriggerCallback();
+        EXPECT_TRUE(unregisterData.IsSuccess());
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest005 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoRegisterCheckTriggerCallbackTest005 End";
+}
+
+/**
+ * @tc.name: DoUnRegisterCheckTriggerCallbackTest006
+ * @tc.desc: Verify unregister returns success when no check trigger callback is registered.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoUnRegisterCheckTriggerCallbackTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoUnRegisterCheckTriggerCallbackTest006 Start";
+    try {
+        auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+        EXPECT_CALL(cloudMock, UnRegisterCheckTriggerCallback(_)).Times(0);
+        auto data = CloudSyncManagerCore::DoUnRegisterCheckTriggerCallback();
+        EXPECT_TRUE(data.IsSuccess());
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoUnRegisterCheckTriggerCallbackTest006 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoUnRegisterCheckTriggerCallbackTest006 End";
+}
+
+/**
+ * @tc.name: DoUnRegisterCheckTriggerCallbackTest007
+ * @tc.desc: Verify unregister failure is reported and a retry can succeed.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoUnRegisterCheckTriggerCallbackTest007, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoUnRegisterCheckTriggerCallbackTest007 Start";
+    try {
+        auto callback = std::make_shared<CloudCheckTriggerCallback>();
+        auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+        EXPECT_CALL(cloudMock, RegisterCheckTriggerCallback(_)).WillOnce(Return(E_OK));
+        auto data = CloudSyncManagerCore::DoRegisterCheckTriggerCallback(callback);
+        EXPECT_TRUE(data.IsSuccess());
+
+        EXPECT_CALL(cloudMock, UnRegisterCheckTriggerCallback(_))
+            .WillOnce(Return(E_SA_LOAD_FAILED))
+            .WillOnce(Return(E_OK));
+        auto unregisterData = CloudSyncManagerCore::DoUnRegisterCheckTriggerCallback();
+        EXPECT_FALSE(unregisterData.IsSuccess());
+        unregisterData = CloudSyncManagerCore::DoUnRegisterCheckTriggerCallback();
+        EXPECT_TRUE(unregisterData.IsSuccess());
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoUnRegisterCheckTriggerCallbackTest007 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoUnRegisterCheckTriggerCallbackTest007 End";
+}
+
+/**
+ * @tc.name: DoUnRegisterCheckTriggerCallbackTest008
+ * @tc.desc: Verify unregister releases a registered non-null callback.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoUnRegisterCheckTriggerCallbackTest008, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoUnRegisterCheckTriggerCallbackTest008 Start";
+    try {
+        class TestCheckTriggerCallback : public CloudCheckTriggerCallback {
+        public:
+            void DeleteReference() override
+            {
+                deleted_ = true;
+            }
+            bool deleted_ = false;
+        };
+
+        auto callback = std::make_shared<TestCheckTriggerCallback>();
+        auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+        EXPECT_CALL(cloudMock, RegisterCheckTriggerCallback(_)).WillOnce(Return(E_OK));
+        auto data = CloudSyncManagerCore::DoRegisterCheckTriggerCallback(callback);
+        EXPECT_TRUE(data.IsSuccess());
+
+        EXPECT_CALL(cloudMock, UnRegisterCheckTriggerCallback(_)).WillOnce(Return(E_OK));
+        auto unregisterData = CloudSyncManagerCore::DoUnRegisterCheckTriggerCallback();
+        EXPECT_TRUE(unregisterData.IsSuccess());
+        EXPECT_TRUE(callback->deleted_);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoUnRegisterCheckTriggerCallbackTest008 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoUnRegisterCheckTriggerCallbackTest008 End";
+}
+
+/**
+ * @tc.name: DoUnRegisterCheckTriggerCallbackTest009
+ * @tc.desc: Verify unregister handles a saved callback info with a null callback.
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudSyncManagerCoreTest, DoUnRegisterCheckTriggerCallbackTest009, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoUnRegisterCheckTriggerCallbackTest009 Start";
+    try {
+        auto callback = std::make_shared<CloudCheckTriggerCallback>();
+        auto &cloudMock = CloudSyncManagerImplMock::GetInstance();
+        EXPECT_CALL(cloudMock, RegisterCheckTriggerCallback(_))
+            .WillOnce(Invoke([](const CheckTriggerCallbackInfo &callbackInfo) {
+                const_cast<CheckTriggerCallbackInfo &>(callbackInfo).callback = nullptr;
+                return E_OK;
+            }));
+        auto data = CloudSyncManagerCore::DoRegisterCheckTriggerCallback(callback);
+        EXPECT_TRUE(data.IsSuccess());
+
+        EXPECT_CALL(cloudMock, UnRegisterCheckTriggerCallback(_)).WillOnce(Return(E_OK));
+        auto unregisterData = CloudSyncManagerCore::DoUnRegisterCheckTriggerCallback();
+        EXPECT_TRUE(unregisterData.IsSuccess());
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoUnRegisterCheckTriggerCallbackTest009 FAILED";
+    }
+    GTEST_LOG_(INFO) << "DoUnRegisterCheckTriggerCallbackTest009 End";
+}
 } // namespace OHOS::FileManagement::CloudDisk::Test

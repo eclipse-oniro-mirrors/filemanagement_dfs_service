@@ -22,6 +22,7 @@
 
 #include "cloud_sync_common.h"
 #include "data_sync_const.h"
+#include "i_check_trigger_callback.h"
 #include "i_cloud_download_callback.h"
 #include "i_cloud_optimize_callback.h"
 #include "i_cloud_sync_callback.h"
@@ -34,6 +35,7 @@ public:
     using BundleNameUserInfo = CloudSync::BundleNameUserInfo;
     using SyncMode = CloudSync::SyncMode;
     using SyncTriggerType = CloudSync::SyncTriggerType;
+    using CheckTriggerReason = CloudSync::CheckTriggerReason;
     DataSyncManager() = default;
     virtual ~DataSyncManager() = default;
 
@@ -41,7 +43,8 @@ public:
                                      const int32_t userId,
                                      SyncMode type,
                                      SyncTriggerType triggerType,
-                                     std::string prepareTraceId = "");
+                                     std::string prepareTraceId = "",
+                                     const std::string &triggerBundleName = "");
     virtual int32_t TriggerStopSync(const std::string &bundleName, const int32_t userId,
                                     bool forceFlag, SyncTriggerType triggerType);
     virtual int32_t StopSyncSynced(const std::string &bundleName, const int32_t userId,
@@ -57,6 +60,13 @@ public:
     virtual void UnRegisterCloudSyncCallback(const std::string &bundleName,
                                              const BundleNameUserInfo &bundleNameUserInfo,
                                              const std::string &callbackId);
+    virtual void RegisterCheckTriggerCallback(const std::string &bundleName,
+                                              const BundleNameUserInfo &bundleNameUserInfo,
+                                              const std::string &callbackId,
+                                              const sptr<CloudSync::ICheckTriggerCallback> &callback);
+    virtual void UnRegisterCheckTriggerCallback(const std::string &bundleName,
+                                                const BundleNameUserInfo &bundleNameUserInfo,
+                                                const std::string &callbackId);
     virtual int32_t IsSkipSync(const std::string &bundleName, const int32_t userId, bool forceFlag);
     virtual int32_t StartFileCache(const BundleNameUserInfo &bundleNameUserInfo,
                                    const std::vector<std::string> &uriVec,
@@ -142,8 +152,8 @@ public:
     virtual int32_t GetDefaultWeakNetConfig();
 
     // periodic clean task
-    void PeriodicCleanLock();
-    void PeriodicCleanUnlock();
+    virtual void PeriodicCleanLock();
+    virtual void PeriodicCleanUnlock();
 
     virtual int32_t GetDowngradeDownloadTaskState(const std::vector<std::string> &bundleNames,
         const int32_t &userId,

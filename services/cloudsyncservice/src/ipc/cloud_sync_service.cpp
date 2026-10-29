@@ -26,6 +26,7 @@
 #include "cloud_status.h"
 #include "cloud_sync_start_event.h"
 #include "cloud_sync_common.h"
+#include "cloud_sync_constants.h"
 #include "clouddisk_rdb_utils.h"
 #include "cycle_task/cycle_task_runner.h"
 #include "data_sync_const.h"
@@ -477,6 +478,61 @@ int32_t CloudSyncService::RemovedClean(const string &bundleName, int32_t userId)
     return E_OK;
 }
 
+int32_t CloudSyncService::HandleTriggerCloudCheck(int32_t userId, const string &bundleName,
+    const string &triggerBundleName)
+{
+    LOGI("Begin HandleTriggerCloudCheck");
+    if (bundleName.empty()) {
+        LOGE("caller bundle name is empty");
+        return E_INVAL_ARG;
+    }
+    PeriodicCheckTask periodicCheckTask(dataSyncManager_);
+    int32_t ret = periodicCheckTask.TriggerCheck(userId, bundleName, triggerBundleName);
+    if (ret != E_OK) {
+        LOGE("trigger cloud check failed, ret: %{public}d", ret);
+        return ret;
+    }
+    LOGI("End HandleTriggerCloudCheck");
+    return E_OK;
+}
+
+int32_t CloudSyncService::TriggerCloudCheck(int32_t userId, const string &bundleName)
+{
+    LOGI("Begin TriggerCloudCheck");
+    RETURN_ON_ERR(CheckPermissions(PERM_CLOUD_SYNC_MANAGER, true));
+
+    if (userId < MIN_USER_ID) {
+        LOGE("Trigger cloud check user id is invalid");
+        return E_INVAL_ARG;
+    }
+    if (bundleName.empty() || bundleName.size() > MAX_BUNDLE_NAME_LEN) {
+        LOGE("Trigger cloud check bundle name is invalid");
+        return E_INVAL_ARG;
+    }
+
+    string triggerBundleName;
+    if (DfsuAccessTokenHelper::GetCallerBundleName(triggerBundleName)) {
+        LOGE("get caller bundle name failed");
+        return E_INVAL_ARG;
+    }
+
+    auto callerUserId = DfsuAccessTokenHelper::GetUserId();
+    if (callerUserId == 0) {
+        callerUserId = TEST_MAIN_USR_ID;
+    }
+    if (callerUserId != userId) {
+        LOGE("caller user id mismatch");
+        return E_PERMISSION_DENIED;
+    }
+
+    if (dataSyncManager_ == nullptr) {
+        LOGE("data sync manager is null");
+        return E_SA_LOAD_FAILED;
+    }
+
+    return HandleTriggerCloudCheck(userId, bundleName, triggerBundleName);
+}
+
 int32_t CloudSyncService::UnRegisterCallbackInner(const string &callbackId, const string &bundleName)
 {
     LOGI("Begin UnRegisterCallbackInner");
@@ -574,6 +630,29 @@ int32_t CloudSyncService::UnRegisterFileSyncCallbackInner(const string &callback
     return E_OK;
 }
 
+int32_t CloudSyncService::UnRegisterCheckTriggerCallbackInner(const string &callbackId, const string &bundleName)
+{
+    LOGI("Begin UnRegisterCheckTriggerCallbackInner");
+    RETURN_ON_ERR(CheckPermissions(PERM_CLOUD_SYNC_MANAGER, true));
+
+    string targetBundleName = bundleName;
+    string callerBundleName = "";
+    int32_t ret = GetTargetBundleName(targetBundleName, callerBundleName);
+    if (ret != E_OK) {
+        LOGE("get bundle name failed: %{public}d", ret);
+        return ret;
+    }
+
+    BundleNameUserInfo bundleNameUserInfo;
+    ret = GetBundleNameUserInfo(bundleNameUserInfo);
+    if (ret != E_OK) {
+        return ret;
+    }
+    dataSyncManager_->UnRegisterCheckTriggerCallback(targetBundleName, bundleNameUserInfo, callbackId);
+    LOGI("End UnRegisterCheckTriggerCallbackInner");
+    return E_OK;
+}
+
 int32_t CloudSyncService::RegisterCallbackInner(const sptr<IRemoteObject> &remoteObject,
                                                 const string &callbackId,
                                                 const string &bundleName)
@@ -631,6 +710,37 @@ int32_t CloudSyncService::RegisterFileSyncCallbackInner(const sptr<IRemoteObject
     auto callback = iface_cast<ICloudSyncCallback>(remoteObject);
     dataSyncManager_->RegisterCloudSyncCallback(targetBundleName, bundleNameUserInfo, callbackId, callback);
     LOGI("End RegisterFileSyncCallbackInner");
+    return E_OK;
+}
+
+int32_t CloudSyncService::RegisterCheckTriggerCallbackInner(const sptr<IRemoteObject> &remoteObject,
+                                                            const string &callbackId,
+                                                            const string &bundleName)
+{
+    LOGI("Begin RegisterCheckTriggerCallbackInner");
+    RETURN_ON_ERR(CheckPermissions(PERM_CLOUD_SYNC_MANAGER, true));
+
+    if (remoteObject == nullptr) {
+        LOGE("remoteObject is nullptr");
+        return E_INVAL_ARG;
+    }
+
+    string targetBundleName = bundleName;
+    string callerBundleName = "";
+    int32_t ret = GetTargetBundleName(targetBundleName, callerBundleName);
+    if (ret != E_OK) {
+        LOGE("get bundle name failed: %{public}d", ret);
+        return ret;
+    }
+
+    BundleNameUserInfo bundleNameUserInfo;
+    ret = GetBundleNameUserInfo(bundleNameUserInfo);
+    if (ret != E_OK) {
+        return ret;
+    }
+    auto callback = iface_cast<ICheckTriggerCallback>(remoteObject);
+    dataSyncManager_->RegisterCheckTriggerCallback(targetBundleName, bundleNameUserInfo, callbackId, callback);
+    LOGI("End RegisterCheckTriggerCallbackInner");
     return E_OK;
 }
 

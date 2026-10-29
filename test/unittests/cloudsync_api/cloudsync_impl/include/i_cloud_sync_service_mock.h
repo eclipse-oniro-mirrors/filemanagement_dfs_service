@@ -33,9 +33,13 @@ public:
     MOCK_METHOD2(UnRegisterCallbackInner, int32_t(const std::string &callbackId, const std::string &bundleName));
     MOCK_METHOD2(UnRegisterFileSyncCallbackInner, int32_t(const std::string &callbackId,
         const std::string &bundleName));
+    MOCK_METHOD2(UnRegisterCheckTriggerCallbackInner, int32_t(const std::string &callbackId,
+        const std::string &bundleName));
     MOCK_METHOD3(RegisterCallbackInner, int32_t(const sptr<IRemoteObject> &remoteObject,
         const std::string &callbackId, const std::string &bundleName));
     MOCK_METHOD3(RegisterFileSyncCallbackInner, int32_t(const sptr<IRemoteObject> &remoteObject,
+        const std::string &callbackId, const std::string &bundleName));
+    MOCK_METHOD3(RegisterCheckTriggerCallbackInner, int32_t(const sptr<IRemoteObject> &remoteObject,
         const std::string &callbackId, const std::string &bundleName));
     MOCK_METHOD2(StartSyncInner, int32_t(int32_t type, const std::string &bundleName));
     MOCK_METHOD2(StartFileSyncInner, int32_t(bool forceFlag, const std::string &bundleName));
@@ -136,6 +140,7 @@ public:
     MOCK_METHOD1(GetDecompressUnsupportedList, int32_t(std::vector<std::string> &unsupportedList));
     MOCK_METHOD1(GetDecompressSystemFeature, int32_t(bool &systemFeature));
     MOCK_METHOD1(GetDecompressCrossFsConfig, int32_t(bool &crossFsConfig));
+    MOCK_METHOD2(TriggerCloudCheck, int32_t(int32_t userId, const std::string &bundleName));
  private:
     int32_t StartFileCacheWriteParcel(MessageParcel &data,
                                       const std::vector<std::string> &uriVec,

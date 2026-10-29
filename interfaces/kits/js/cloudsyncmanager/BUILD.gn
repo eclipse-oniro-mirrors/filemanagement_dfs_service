@@ -30,6 +30,7 @@ ohos_shared_library("cloudsyncmanager") {
   shlib_type = "napi"
   branch_protector_ret = "pac_ret"
   configs = [ ":optimize-size" ]
+  include_dirs = [ "${utils_path}/inner_api" ]
   sanitize = {
     integer_overflow = true
     ubsan = true
@@ -40,6 +41,8 @@ ohos_shared_library("cloudsyncmanager") {
     debug = false
   }
   sources = [
+    "check_trigger_callback_napi.cpp",
+    "check_trigger_info_napi.cpp",
     "cloud_sync_manager_n_exporter.cpp",
     "cloud_sync_manager_napi.cpp",
     "downgrade_download_napi.cpp",

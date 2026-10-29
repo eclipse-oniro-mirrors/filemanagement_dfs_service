@@ -15,8 +15,11 @@
 
 #include "cloud_sync_manager_core.h"
 
+#include <mutex>
 #include <sys/types.h>
 
+#include "check_trigger_callback_info.h"
+#include "cloud_file_utils.h"
 #include "cloud_sync_manager.h"
 #include "dfs_error.h"
 #include "utils_log.h"
@@ -25,6 +28,8 @@ namespace OHOS::FileManagement::CloudSync {
 using namespace std;
 namespace {
     static constexpr int32_t BUNDLES_MAX_SIZE = 20;
+    std::mutex g_checkTriggerCallbackMutex;
+    CheckTriggerCallbackInfo g_checkTriggerCallbackInfo;
     }
 
 FsResult<void> CloudSyncManagerCore::DoChangeAppCloudSwitch(
@@ -139,5 +144,66 @@ FsResult<std::vector<DowngradeProgress>> CloudSyncManagerCore::DoGetDowngradeTas
     }
 
     return FsResult<std::vector<DowngradeProgress>>::Success(downgradeProgressList);
+}
+
+FsResult<void> CloudSyncManagerCore::DoTriggerCloudCheck(int32_t userId, const std::string &bundleName)
+{
+    LOGI("TriggerCloudCheck entrance");
+    int32_t result = CloudSyncManager::GetInstance().TriggerCloudCheck(userId, bundleName);
+    if (result != E_OK) {
+        LOGE("TriggerCloudCheck failed. ret = %{public}d", result);
+        return FsResult<void>::Error(Convert2ErrNum(result));
+    }
+
+    return FsResult<void>::Success();
+}
+
+FsResult<void> CloudSyncManagerCore::DoRegisterCheckTriggerCallback(
+    const std::shared_ptr<CloudCheckTriggerCallback> &callback)
+{
+    LOGI("RegisterCheckTriggerCallback entrance");
+    if (callback == nullptr) {
+        LOGE("callback is invalid");
+        return FsResult<void>::Error(JsErrCode::E_INVALID_ARGUMENT);
+    }
+
+    std::lock_guard<std::mutex> lock(g_checkTriggerCallbackMutex);
+    if (g_checkTriggerCallbackInfo.callback != nullptr) {
+        LOGI("check trigger callback already exist");
+        return FsResult<void>::Success();
+    }
+
+    CheckTriggerCallbackInfo callbackInfo;
+    callbackInfo.callbackId = CloudDisk::CloudFileUtils::GenerateUuid();
+    callbackInfo.callback = callback;
+    int32_t result = CloudSyncManager::GetInstance().RegisterCheckTriggerCallback(callbackInfo);
+    if (result != E_OK) {
+        LOGE("RegisterCheckTriggerCallback failed. ret = %{public}d", result);
+        g_checkTriggerCallbackInfo = CheckTriggerCallbackInfo();
+        return FsResult<void>::Error(Convert2ErrNum(result));
+    }
+    g_checkTriggerCallbackInfo = callbackInfo;
+    return FsResult<void>::Success();
+}
+
+FsResult<void> CloudSyncManagerCore::DoUnRegisterCheckTriggerCallback()
+{
+    LOGI("UnRegisterCheckTriggerCallback entrance");
+    std::lock_guard<std::mutex> lock(g_checkTriggerCallbackMutex);
+    if (g_checkTriggerCallbackInfo.callbackId.empty()) {
+        LOGI("check trigger callback not exist");
+        return FsResult<void>::Success();
+    }
+
+    int32_t result = CloudSyncManager::GetInstance().UnRegisterCheckTriggerCallback(g_checkTriggerCallbackInfo);
+    if (result != E_OK) {
+        LOGE("UnRegisterCheckTriggerCallback failed. ret = %{public}d", result);
+        return FsResult<void>::Error(Convert2ErrNum(result));
+    }
+    if (g_checkTriggerCallbackInfo.callback != nullptr) {
+        g_checkTriggerCallbackInfo.callback->DeleteReference();
+    }
+    g_checkTriggerCallbackInfo = CheckTriggerCallbackInfo();
+    return FsResult<void>::Success();
 }
 } // namespace OHOS::FileManagement::CloudSync

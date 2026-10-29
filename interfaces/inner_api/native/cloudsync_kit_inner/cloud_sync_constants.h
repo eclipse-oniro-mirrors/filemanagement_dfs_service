@@ -16,13 +16,21 @@
 #ifndef OHOS_FILEMGMT_CLOUD_SYNC_CONSTANTS_H
 #define OHOS_FILEMGMT_CLOUD_SYNC_CONSTANTS_H
 
+#include <cstddef>
 #include <unordered_map>
 
 namespace OHOS::FileManagement::CloudSync {
+constexpr size_t MAX_BUNDLE_NAME_LEN = 1024;
+
 enum class SyncType : int32_t {
     UPLOAD = 0,
     DOWNLOAD,
     ALL,
+};
+
+enum class CheckTriggerReason : int32_t {
+    PERIODIC = 0,
+    MANUAL = 1,
 };
 
 enum class SyncPromptState : int32_t {

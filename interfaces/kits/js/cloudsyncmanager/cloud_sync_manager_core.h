@@ -16,6 +16,9 @@
 #ifndef OHOS_FILEMGMT_CLOUD_SYNC_MANAGER_CORE_H
 #define OHOS_FILEMGMT_CLOUD_SYNC_MANAGER_CORE_H
 
+#include <memory>
+
+#include "cloud_check_trigger_callback.h"
 #include "cloud_sync_common.h"
 #include "filemgmt_libfs.h"
 
@@ -36,6 +39,10 @@ public:
         const std::vector<std::string> &bundleNames);
     static FsResult<std::vector<DowngradeProgress>> DoGetDowngradeTaskState(
         const std::vector<std::string> &bundleNames);
+    static FsResult<void> DoTriggerCloudCheck(int32_t userId, const std::string &bundleName);
+    static FsResult<void> DoRegisterCheckTriggerCallback(
+        const std::shared_ptr<CloudCheckTriggerCallback> &callback);
+    static FsResult<void> DoUnRegisterCheckTriggerCallback();
 };
 } // namespace OHOS::FileManagement::CloudSync
 #endif // OHOS_FILEMGMT_CLOUD_SYNC_MANAGER_CORE_H

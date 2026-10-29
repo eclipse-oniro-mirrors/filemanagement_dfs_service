@@ -240,6 +240,7 @@ const std::unordered_map<int32_t, int32_t> errCodeTable {
     { E_RDB, E_IPCSS },
     { E_DEAD_REPLY, E_IPCSS },
     { E_TASK_RUNNING, E_OTHER_TASK_RUNNING},
+    { E_PENDING, E_OTHER_TASK_RUNNING},
     { E_SA_LOAD_FAILED, E_IPCSS },
     { E_SYSTEM_LOAD_OVER, E_IPCSS },
     { E_SERVICE_INNER_ERROR, E_INNER_FAILED },

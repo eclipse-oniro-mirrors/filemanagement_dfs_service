@@ -20,6 +20,8 @@
 
 #include "nocopyable.h"
 
+#include "check_trigger_callback_client.h"
+#include "check_trigger_callback_client_manager.h"
 #include "cloud_optimize_callback_client.h"
 #include "cloud_sync_callback_info.h"
 #include "cloud_sync_callback_client.h"
@@ -36,8 +38,10 @@ public:
 
     int32_t RegisterCallback(const CallbackInfo &callbackInfo) override;
     int32_t RegisterFileSyncCallback(const CallbackInfo &callbackInfo) override;
+    int32_t RegisterCheckTriggerCallback(const CheckTriggerCallbackInfo &callbackInfo) override;
     int32_t UnRegisterCallback(const CallbackInfo &callbackInfo) override;
     int32_t UnRegisterFileSyncCallback(const CallbackInfo &callbackInfo) override;
+    int32_t UnRegisterCheckTriggerCallback(const CheckTriggerCallbackInfo &callbackInfo) override;
     int32_t StartSync(const std::string &bundleName = "") override;
     int32_t StartSync(SyncMode type, const std::string &bundleName = "") override;
     int32_t StartFileSync(const std::string &bundleName = "") override;
@@ -117,6 +121,7 @@ public:
     int32_t GetDecompressUnsupportedList(std::vector<std::string> &unsupportedList) override;
     int32_t GetDecompressSystemFeature(bool &systemFeature) override;
     int32_t GetDecompressCrossFsConfig(bool &crossFsConfig) override;
+    int32_t TriggerCloudCheck(const int32_t userId, const std::string &bundleName) override;
     class SystemAbilityStatusChange : public SystemAbilityStatusChangeStub {
     public:
         void OnAddSystemAbility(int32_t systemAbilityId, const std::string &deviceId);

@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
+#include "check_trigger_callback_stub.h"
 #include "cloud_sync_callback_stub.h"
 #include "cloud_sync_constants.h"
 #include "service_callback_mock.h"
@@ -34,6 +35,12 @@ using namespace OHOS::Storage::DistributedFile;
 class MockCallback final : public CloudSyncCallbackStub {
 public:
     MOCK_METHOD2(OnSyncStateChanged, void(CloudSyncState state, ErrorType error));
+};
+
+class MockCheckTriggerCallback final : public CheckTriggerCallbackStub {
+public:
+    MOCK_METHOD3(OnCheckTriggered, void(CheckTriggerReason reason, const std::string &bundleName,
+        const std::string &triggerBundleName));
 };
 
 class CloudSyncCallbackStubTest : public testing::Test {
@@ -256,6 +263,280 @@ HWTEST_F(CloudSyncCallbackStubTest, HandleOnSyncStateChangedTest007, TestSize.Le
         GTEST_LOG_(INFO) << " HandleOnSyncStateChangedTest007 ERROR";
     }
     GTEST_LOG_(INFO) << "HandleOnSyncStateChangedTest007 End";
+}
+/**
+ * @tc.name: HandleOnCheckTriggeredTest001
+ * @tc.desc: Verify HandleOnCheckTriggered fails when reason read fails.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncCallbackStubTest, HandleOnCheckTriggeredTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest001 Start";
+    try {
+        MockCheckTriggerCallback callback;
+        MessageParcel data;
+        MessageParcel reply;
+        EXPECT_CALL(*messageParcelMock_, ReadInt32(_)).WillOnce(Return(false));
+        int ret = callback.HandleOnCheckTriggered(data, reply);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest001 ERROR";
+    }
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest001 End";
+}
+
+/**
+ * @tc.name: HandleOnCheckTriggeredTest002
+ * @tc.desc: Verify HandleOnCheckTriggered rejects an invalid reason.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncCallbackStubTest, HandleOnCheckTriggeredTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest002 Start";
+    try {
+        MockCheckTriggerCallback callback;
+        MessageParcel data;
+        MessageParcel reply;
+        EXPECT_CALL(*messageParcelMock_, ReadInt32(_))
+            .WillOnce(DoAll(SetArgReferee<0>(-1), Return(true)));
+        int ret = callback.HandleOnCheckTriggered(data, reply);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest002 ERROR";
+    }
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest002 End";
+}
+
+/**
+ * @tc.name: HandleOnCheckTriggeredTest003
+ * @tc.desc: Verify HandleOnCheckTriggered forwards a manual trigger callback.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncCallbackStubTest, HandleOnCheckTriggeredTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest003 Start";
+    try {
+        MockCheckTriggerCallback callback;
+        MessageParcel data;
+        MessageParcel reply;
+        EXPECT_CALL(*messageParcelMock_, ReadInt32(_))
+            .WillOnce(DoAll(SetArgReferee<0>(1), Return(true)));
+        EXPECT_CALL(*messageParcelMock_, ReadString(_))
+            .WillOnce(DoAll(SetArgReferee<0>("com.ohos.cloud"), Return(true)))
+            .WillOnce(DoAll(SetArgReferee<0>("com.ohos.trigger"), Return(true)));
+        EXPECT_CALL(callback,
+            OnCheckTriggered(CheckTriggerReason::MANUAL, "com.ohos.cloud", "com.ohos.trigger"))
+            .WillOnce(Return());
+        int ret = callback.HandleOnCheckTriggered(data, reply);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest003 ERROR";
+    }
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest003 End";
+}
+
+/**
+ * @tc.name: HandleOnCheckTriggeredTest004
+ * @tc.desc: Verify HandleOnCheckTriggered forwards valid reason and trigger source bundleName.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncCallbackStubTest, HandleOnCheckTriggeredTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest004 Start";
+    try {
+        MockCheckTriggerCallback callback;
+        MessageParcel data;
+        MessageParcel reply;
+        EXPECT_CALL(*messageParcelMock_, ReadInt32(_))
+            .WillOnce(DoAll(SetArgReferee<0>(0), Return(true)));
+        EXPECT_CALL(*messageParcelMock_, ReadString(_))
+            .WillOnce(DoAll(SetArgReferee<0>("com.ohos.cloud"), Return(true)))
+            .WillOnce(DoAll(SetArgReferee<0>("com.ohos.trigger"), Return(true)));
+        EXPECT_CALL(callback,
+            OnCheckTriggered(CheckTriggerReason::PERIODIC, "com.ohos.cloud", "com.ohos.trigger"))
+            .WillOnce(Return());
+        int ret = callback.HandleOnCheckTriggered(data, reply);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest004 ERROR";
+    }
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest004 End";
+}
+
+/**
+ * @tc.name: HandleOnCheckTriggeredTest005
+ * @tc.desc: Verify HandleOnCheckTriggered rejects an empty bundleName.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncCallbackStubTest, HandleOnCheckTriggeredTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest005 Start";
+    try {
+        MockCheckTriggerCallback callback;
+        MessageParcel data;
+        MessageParcel reply;
+        EXPECT_CALL(*messageParcelMock_, ReadInt32(_))
+            .WillOnce(DoAll(SetArgReferee<0>(0), Return(true)));
+        EXPECT_CALL(*messageParcelMock_, ReadString(_))
+            .WillOnce(DoAll(SetArgReferee<0>(""), Return(true)));
+        int ret = callback.HandleOnCheckTriggered(data, reply);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest005 ERROR";
+    }
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest005 End";
+}
+
+/**
+ * @tc.name: HandleOnCheckTriggeredTest006
+ * @tc.desc: Verify HandleOnCheckTriggered rejects reason greater than MANUAL.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncCallbackStubTest, HandleOnCheckTriggeredTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest006 Start";
+    try {
+        MockCheckTriggerCallback callback;
+        MessageParcel data;
+        MessageParcel reply;
+        EXPECT_CALL(*messageParcelMock_, ReadInt32(_))
+            .WillOnce(DoAll(SetArgReferee<0>(2), Return(true)));
+        int ret = callback.HandleOnCheckTriggered(data, reply);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest006 ERROR";
+    }
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest006 End";
+}
+
+/**
+ * @tc.name: HandleOnCheckTriggeredTest007
+ * @tc.desc: Verify HandleOnCheckTriggered fails when bundleName read fails.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncCallbackStubTest, HandleOnCheckTriggeredTest007, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest007 Start";
+    try {
+        MockCheckTriggerCallback callback;
+        MessageParcel data;
+        MessageParcel reply;
+        EXPECT_CALL(*messageParcelMock_, ReadInt32(_))
+            .WillOnce(DoAll(SetArgReferee<0>(0), Return(true)));
+        EXPECT_CALL(*messageParcelMock_, ReadString(_)).WillOnce(Return(false));
+        int ret = callback.HandleOnCheckTriggered(data, reply);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest007 ERROR";
+    }
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest007 End";
+}
+
+/**
+ * @tc.name: HandleOnCheckTriggeredTest008
+ * @tc.desc: Verify HandleOnCheckTriggered fails when triggerBundleName read fails.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncCallbackStubTest, HandleOnCheckTriggeredTest008, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest008 Start";
+    try {
+        MockCheckTriggerCallback callback;
+        MessageParcel data;
+        MessageParcel reply;
+        EXPECT_CALL(*messageParcelMock_, ReadInt32(_))
+            .WillOnce(DoAll(SetArgReferee<0>(0), Return(true)));
+        EXPECT_CALL(*messageParcelMock_, ReadString(_))
+            .WillOnce(DoAll(SetArgReferee<0>("com.ohos.cloud"), Return(true)))
+            .WillOnce(Return(false));
+        int ret = callback.HandleOnCheckTriggered(data, reply);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest008 ERROR";
+    }
+    GTEST_LOG_(INFO) << "HandleOnCheckTriggeredTest008 End";
+}
+
+/**
+ * @tc.name: OnRemoteRequestTest001
+ * @tc.desc: Verify CheckTriggerCallbackStub handles invalid tokens, unknown transactions and null handlers.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncCallbackStubTest, OnRemoteRequestTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "OnRemoteRequestTest001 Start";
+    try {
+        MockCheckTriggerCallback callback;
+        MessageParcel data;
+        MessageParcel reply;
+        MessageOption option;
+        EXPECT_CALL(*messageParcelMock_, ReadInterfaceToken()).WillOnce(Return(u"invalid"));
+        EXPECT_EQ(callback.OnRemoteRequest(CheckTriggerCallbackStub::SERVICE_CMD_ON_CHECK_TRIGGERED,
+            data, reply, option), E_SERVICE_DESCRIPTOR_IS_EMPTY);
+
+        Mock::VerifyAndClearExpectations(messageParcelMock_.get());
+        EXPECT_CALL(*messageParcelMock_, ReadInterfaceToken()).WillOnce(Return(callback.GetDescriptor()));
+        EXPECT_NE(callback.OnRemoteRequest(99, data, reply, option), E_OK);
+
+        Mock::VerifyAndClearExpectations(messageParcelMock_.get());
+        callback.opToInterfaceMap_[CheckTriggerCallbackStub::SERVICE_CMD_ON_CHECK_TRIGGERED] = nullptr;
+        EXPECT_CALL(*messageParcelMock_, ReadInterfaceToken()).WillOnce(Return(callback.GetDescriptor()));
+        EXPECT_NE(callback.OnRemoteRequest(CheckTriggerCallbackStub::SERVICE_CMD_ON_CHECK_TRIGGERED,
+            data, reply, option), E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "OnRemoteRequestTest001 ERROR";
+    }
+    GTEST_LOG_(INFO) << "OnRemoteRequestTest001 End";
+}
+
+/**
+ * @tc.name: OnRemoteRequestTest002
+ * @tc.desc: Verify CheckTriggerCallbackStub dispatches a valid request.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncCallbackStubTest, OnRemoteRequestTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "OnRemoteRequestTest002 Start";
+    try {
+        MockCheckTriggerCallback callback;
+        MessageParcel data;
+        MessageParcel reply;
+        MessageOption option;
+        EXPECT_CALL(*messageParcelMock_, ReadInterfaceToken()).WillOnce(Return(callback.GetDescriptor()));
+        EXPECT_CALL(*messageParcelMock_, ReadInt32(_))
+            .WillOnce(DoAll(SetArgReferee<0>(0), Return(true)));
+        EXPECT_CALL(*messageParcelMock_, ReadString(_))
+            .WillOnce(DoAll(SetArgReferee<0>("com.ohos.cloud"), Return(true)))
+            .WillOnce(DoAll(SetArgReferee<0>("com.ohos.trigger"), Return(true)));
+        EXPECT_CALL(callback,
+            OnCheckTriggered(CheckTriggerReason::PERIODIC, "com.ohos.cloud", "com.ohos.trigger"))
+            .WillOnce(Return());
+        EXPECT_EQ(callback.OnRemoteRequest(CheckTriggerCallbackStub::SERVICE_CMD_ON_CHECK_TRIGGERED,
+            data, reply, option), E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "OnRemoteRequestTest002 ERROR";
+    }
+    GTEST_LOG_(INFO) << "OnRemoteRequestTest002 End";
 }
 } // namespace Test
 } // namespace FileManagement::CloudSync {

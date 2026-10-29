@@ -18,6 +18,7 @@
 
 #include "battery_status.h"
 #include "clouddisk_rdbstore_mock.h"
+#include "data_sync_manager_mock.h"
 #include "dfs_error.h"
 #include "operation_log_store.h"
 #include "periodic_check_task.h"
@@ -346,6 +347,164 @@ HWTEST_F(PeriodicCheckTaskTest, RunTaskForBundleTest010, TestSize.Level1)
         GTEST_LOG_(ERROR) << "RunTaskForBundleTest010 FAILED";
     }
     GTEST_LOG_(INFO) << "RunTaskForBundleTest010 End";
+}
+
+/**
+ * @tc.name: TriggerCheckTest001
+ * @tc.desc: TriggerCheck succeeds for the manual trigger request
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PeriodicCheckTaskTest, TriggerCheckTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCheckTest001 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName = "com.ohos.test201";
+
+        int32_t ret = periodicCheckTask_->TriggerCheck(userId, bundleName);
+        EXPECT_EQ(ret, E_OK);
+        EXPECT_EQ(periodicCheckTask_->taskName_, "periodic_check_task");
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(ERROR) << "TriggerCheckTest001 FAILED";
+    }
+    GTEST_LOG_(INFO) << "TriggerCheckTest001 End";
+}
+
+/**
+ * @tc.name: TriggerCheckTest002
+ * @tc.desc: TriggerCheck does not check the periodic trigger conditions before triggering sync, the conditions
+ *           are evaluated by the sync engine internally
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PeriodicCheckTaskTest, TriggerCheckTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCheckTest002 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName = "com.ohos.test202";
+        std::string triggerBundleName = "com.ohos.cloud";
+
+        auto dataSyncManagerMock = std::make_shared<CloudFile::MockDataSyncManager>();
+        auto task = std::make_shared<PeriodicCheckTask>(dataSyncManagerMock);
+
+        SystemLoadStatus::Setload(PowerMgr::ThermalLevel::EMERGENCY);
+
+        EXPECT_CALL(*dataSyncManagerMock, TriggerStartSync(bundleName, userId,
+            SyncMode::NORMAL,
+            SyncTriggerType::MANUAL_TRIGGER, "", triggerBundleName)).WillOnce(Return(E_OK));
+        EXPECT_CALL(*dataSyncManagerMock, UpdateCachedFileSize(bundleName, userId)).WillOnce(Return(E_OK));
+
+        int32_t ret = task->TriggerCheck(userId, bundleName, triggerBundleName);
+        SystemLoadStatus::Setload(PowerMgr::ThermalLevel::COOL);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(ERROR) << "TriggerCheckTest002 FAILED";
+    }
+    GTEST_LOG_(INFO) << "TriggerCheckTest002 End";
+}
+
+/**
+ * @tc.name: TriggerCheckTest003
+ * @tc.desc: TriggerCheck invokes TriggerStartSync with MANUAL_TRIGGER and UpdateCachedFileSize
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PeriodicCheckTaskTest, TriggerCheckTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCheckTest003 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName = "com.ohos.test205";
+        std::string triggerBundleName = "com.ohos.cloud";
+
+        auto dataSyncManagerMock = std::make_shared<CloudFile::MockDataSyncManager>();
+        auto task = std::make_shared<PeriodicCheckTask>(dataSyncManagerMock);
+
+        EXPECT_CALL(*dataSyncManagerMock, TriggerStartSync(bundleName, userId,
+            SyncMode::NORMAL,
+            SyncTriggerType::MANUAL_TRIGGER, "", triggerBundleName)).WillOnce(Return(E_OK));
+        EXPECT_CALL(*dataSyncManagerMock, UpdateCachedFileSize(bundleName, userId)).WillOnce(Return(E_OK));
+
+        int32_t ret = task->TriggerCheck(userId, bundleName, triggerBundleName);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(ERROR) << "TriggerCheckTest003 FAILED";
+    }
+    GTEST_LOG_(INFO) << "TriggerCheckTest003 End";
+}
+
+/**
+ * @tc.name: TriggerCheckTest004
+ * @tc.desc: TriggerCheck returns the failure code and skips UpdateCachedFileSize when TriggerStartSync fails
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PeriodicCheckTaskTest, TriggerCheckTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCheckTest004 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName = "com.ohos.test204";
+        std::string triggerBundleName = "com.ohos.cloud";
+
+        auto dataSyncManagerMock = std::make_shared<CloudFile::MockDataSyncManager>();
+        auto task = std::make_shared<PeriodicCheckTask>(dataSyncManagerMock);
+
+        EXPECT_CALL(*dataSyncManagerMock, TriggerStartSync(bundleName, userId,
+            SyncMode::NORMAL,
+            SyncTriggerType::MANUAL_TRIGGER, "", triggerBundleName)).WillOnce(Return(E_SERVICE_INNER_ERROR));
+        EXPECT_CALL(*dataSyncManagerMock, UpdateCachedFileSize(_, _)).Times(0);
+
+        int32_t ret = task->TriggerCheck(userId, bundleName, triggerBundleName);
+        EXPECT_EQ(ret, E_SERVICE_INNER_ERROR);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(ERROR) << "TriggerCheckTest004 FAILED";
+    }
+    GTEST_LOG_(INFO) << "TriggerCheckTest004 End";
+}
+
+/**
+ * @tc.name: TriggerCheckTest005
+ * @tc.desc: The periodic entry RunTaskForBundle uses TASK_TRIGGER while the manual entry TriggerCheck
+ *           uses MANUAL_TRIGGER
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PeriodicCheckTaskTest, TriggerCheckTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCheckTest005 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName = "com.ohos.test208";
+        std::string triggerBundleName = "com.ohos.cloud";
+
+        auto dataSyncManagerMock = std::make_shared<CloudFile::MockDataSyncManager>();
+        auto task = std::make_shared<PeriodicCheckTask>(dataSyncManagerMock);
+
+        EXPECT_CALL(*screenStatusMock_, IsScreenOn()).WillRepeatedly(Return(false));
+
+        EXPECT_CALL(*dataSyncManagerMock, TriggerStartSync(bundleName, userId,
+            SyncMode::NORMAL,
+            SyncTriggerType::TASK_TRIGGER, "", "")).WillOnce(Return(E_OK));
+        EXPECT_CALL(*dataSyncManagerMock, UpdateCachedFileSize(bundleName, userId)).WillOnce(Return(E_OK));
+        EXPECT_EQ(task->RunTaskForBundle(userId, bundleName), E_OK);
+
+        EXPECT_CALL(*dataSyncManagerMock, TriggerStartSync(bundleName, userId,
+            SyncMode::NORMAL,
+            SyncTriggerType::MANUAL_TRIGGER, "", triggerBundleName)).WillOnce(Return(E_OK));
+        EXPECT_CALL(*dataSyncManagerMock, UpdateCachedFileSize(bundleName, userId)).WillOnce(Return(E_OK));
+        EXPECT_EQ(task->TriggerCheck(userId, bundleName, triggerBundleName), E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(ERROR) << "TriggerCheckTest005 FAILED";
+    }
+    GTEST_LOG_(INFO) << "TriggerCheckTest005 End";
 }
 
 } // namespace OHOS::FileManagement::CloudSync::Test

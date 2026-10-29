@@ -24,15 +24,8 @@ using namespace OHOS;
 using namespace OHOS::FileManagement::CloudSync;
 using namespace arkts::ani_signature;
 
-static ani_status BindContextOnCloudSyncManager(ani_env *env)
+static ani_status BindCloudSyncManagerMethods(ani_env *env, ani_class cls)
 {
-    Type clsName = Builder::BuildClass("@ohos.file.cloudSyncManager.cloudSyncManager.StaticFunction");
-    ani_class cls;
-    ani_status ret = env->FindClass(clsName.Descriptor().c_str(), &cls);
-    if (ret != ANI_OK) {
-        LOGE("find class failed. ret = %{public}d", ret);
-        return ret;
-    }
     std::string ssbSign = Builder::BuildSignatureDescriptor(
         {Builder::BuildClass("std.core.String"), Builder::BuildClass("std.core.String"), Builder::BuildBoolean()});
     std::string ssSign = Builder::BuildSignatureDescriptor(
@@ -46,6 +39,10 @@ static ani_status BindContextOnCloudSyncManager(ani_env *env)
     std::string getLoListSign = Builder::BuildSignatureDescriptor({
         Builder::BuildClass("std.core.Array")},
         Builder::BuildClass("std.core.Array"));
+    std::string intStrSign = Builder::BuildSignatureDescriptor(
+        {Builder::BuildInt(), Builder::BuildClass("std.core.String")}, Builder::BuildInt());
+    std::string fSign = Builder::BuildSignatureDescriptor({Builder::BuildFunctionalObject(1, false)});
+    std::string vSign = Builder::BuildSignatureDescriptor({});
     std::array methods = {
         ani_native_function { "changeAppCloudSwitchInner", ssbSign.c_str(),
             reinterpret_cast<void *>(CloudSyncManagerAni::ChangeAppCloudSwitch) },
@@ -62,15 +59,31 @@ static ani_status BindContextOnCloudSyncManager(ani_env *env)
             reinterpret_cast<void *>(CloudSyncManagerAni::GetBundlesLocalFilePresentStatus) },
         ani_native_function { "getDowngradeTaskStateInner", getLoListSign.c_str(),
             reinterpret_cast<void *>(CloudSyncManagerAni::GetDowngradeDownloadTaskState) },
+        ani_native_function { "triggerCloudCheckInner", intStrSign.c_str(),
+            reinterpret_cast<void *>(CloudSyncManagerAni::TriggerCloudCheck) },
+        ani_native_function { "onCheckTriggerInner", fSign.c_str(),
+            reinterpret_cast<void *>(CloudSyncManagerAni::OnCheckTrigger) },
+        ani_native_function { "offCheckTriggerInner", vSign.c_str(),
+            reinterpret_cast<void *>(CloudSyncManagerAni::OffCheckTrigger) },
     };
-
-    ret = env->Class_BindStaticNativeMethods(cls, methods.data(), methods.size());
+    ani_status ret = env->Class_BindStaticNativeMethods(cls, methods.data(), methods.size());
     if (ret != ANI_OK) {
         LOGE("bind static native method failed. ret = %{public}d", ret);
         return ret;
     };
-
     return ANI_OK;
+}
+
+static ani_status BindContextOnCloudSyncManager(ani_env *env)
+{
+    Type clsName = Builder::BuildClass("@ohos.file.cloudSyncManager.cloudSyncManager.StaticFunction");
+    ani_class cls;
+    ani_status ret = env->FindClass(clsName.Descriptor().c_str(), &cls);
+    if (ret != ANI_OK) {
+        LOGE("find class failed. ret = %{public}d", ret);
+        return ret;
+    }
+    return BindCloudSyncManagerMethods(env, cls);
 }
 
 static ani_status BindContextOnDowngradeDownload(ani_env *env)

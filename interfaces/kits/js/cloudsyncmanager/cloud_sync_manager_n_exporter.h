@@ -27,5 +27,8 @@ napi_value EnableCloud(napi_env env, napi_callback_info info);
 napi_value DisableCloud(napi_env env, napi_callback_info info);
 napi_value GetBundlesLocalFilePresentStatus(napi_env env, napi_callback_info info);
 napi_value GetDowngradeDownloadTaskState(napi_env env, napi_callback_info info);
+napi_value TriggerCloudCheck(napi_env env, napi_callback_info info);
+napi_value OnCheckTrigger(napi_env env, napi_callback_info info);
+napi_value OffCheckTrigger(napi_env env, napi_callback_info info);
 } // namespace OHOS::FileManagement::CloudSync
 #endif // OHOS_FILEMGMT_CLOUD_SYNC_MANAGER_NAPI_H

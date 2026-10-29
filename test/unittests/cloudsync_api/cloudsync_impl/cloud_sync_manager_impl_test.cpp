@@ -1249,6 +1249,38 @@ HWTEST_F(CloudSyncManagerImplTest, SetDeathRecipientTest003, TestSize.Level1)
     GTEST_LOG_(INFO) << "SetDeathRecipientTest003 End";
 }
 
+/**
+ * @tc.name: SetDeathRecipientTest004
+ * @tc.desc: Verify the death recipient notifies registered check trigger callbacks.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, SetDeathRecipientTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "SetDeathRecipientTest004 Start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "check_trigger_death_test";
+        callbackInfo.bundleName = "com.ohos.photos";
+        callbackInfo.callback = make_shared<CloudCheckTriggerCallback>();
+        CheckTriggerCallbackClientManager::GetInstance().AddCallback(callbackInfo);
+
+        auto &manager = CloudSyncManagerImpl::GetInstance();
+        manager.isFirstCall_.clear();
+        manager.SetDeathRecipient(serviceProxy_);
+        ASSERT_NE(manager.deathRecipient_, nullptr);
+        wptr<IRemoteObject> remoteObject = serviceProxy_;
+        manager.deathRecipient_->OnRemoteDied(remoteObject);
+
+        CheckTriggerCallbackClientManager::GetInstance().RemoveCallback(callbackInfo);
+        manager.deathRecipient_ = nullptr;
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "SetDeathRecipientTest004 FAILED";
+    }
+    GTEST_LOG_(INFO) << "SetDeathRecipientTest004 End";
+}
+
 HWTEST_F(CloudSyncManagerImplTest, BatchCleanFileTest2, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "BatchCleanFileTest2 Start";
@@ -1403,6 +1435,69 @@ HWTEST_F(CloudSyncManagerImplTest, ResetProxyCallbackTest004, TestSize.Level1)
         GTEST_LOG_(INFO) << " ResetProxyCallbackTest004 FAILED";
     }
     GTEST_LOG_(INFO) << "ResetProxyCallbackTest004 End";
+}
+
+/*
+ * @tc.name: ResetProxyCallbackTest005
+ * @tc.desc: Verify ResetProxyCallback re-registers check trigger callbacks successfully.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, ResetProxyCallbackTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ResetProxyCallbackTest005 Start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "check_trigger_reset_001";
+        callbackInfo.bundleName = "com.ohos.photos";
+        callbackInfo.callback = make_shared<CloudCheckTriggerCallback>();
+        CloudSyncCallbackClientManager::GetInstance().callbackList_.clear();
+        CloudUploadCallbackClientManager::GetInstance().callbackList_.clear();
+        CheckTriggerCallbackClientManager::GetInstance().callbackList_.clear();
+        CheckTriggerCallbackClientManager::GetInstance().AddCallback(callbackInfo);
+
+        EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(serviceProxy_));
+        EXPECT_CALL(*serviceProxy_, RegisterCheckTriggerCallbackInner(_, _, _)).WillOnce(Return(E_OK));
+        auto res = CloudSyncManagerImpl::GetInstance().ResetProxyCallback(0);
+        EXPECT_EQ(res, true);
+        CheckTriggerCallbackClientManager::GetInstance().RemoveCallback(callbackInfo);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "ResetProxyCallbackTest005 FAILED";
+    }
+    GTEST_LOG_(INFO) << "ResetProxyCallbackTest005 End";
+}
+
+/*
+ * @tc.name: ResetProxyCallbackTest006
+ * @tc.desc: Verify ResetProxyCallback handles check trigger callback registration failure.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, ResetProxyCallbackTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ResetProxyCallbackTest006 Start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "check_trigger_reset_002";
+        callbackInfo.bundleName = "com.ohos.photos";
+        callbackInfo.callback = make_shared<CloudCheckTriggerCallback>();
+        CloudSyncCallbackClientManager::GetInstance().callbackList_.clear();
+        CloudUploadCallbackClientManager::GetInstance().callbackList_.clear();
+        CheckTriggerCallbackClientManager::GetInstance().callbackList_.clear();
+        CheckTriggerCallbackClientManager::GetInstance().AddCallback(callbackInfo);
+
+        EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(serviceProxy_));
+        EXPECT_CALL(*serviceProxy_, RegisterCheckTriggerCallbackInner(_, _, _))
+            .WillOnce(Return(E_PERMISSION_DENIED));
+        auto res = CloudSyncManagerImpl::GetInstance().ResetProxyCallback(0);
+        EXPECT_EQ(res, true);
+        CheckTriggerCallbackClientManager::GetInstance().RemoveCallback(callbackInfo);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "ResetProxyCallbackTest006 FAILED";
+    }
+    GTEST_LOG_(INFO) << "ResetProxyCallbackTest006 End";
 }
 
 /*
@@ -1614,6 +1709,61 @@ HWTEST_F(CloudSyncManagerImplTest, SubscribeListener003, TestSize.Level1)
         GTEST_LOG_(INFO) << " SubscribeListener003 FAILED";
     }
     GTEST_LOG_(INFO) << "SubscribeListener003 End";
+}
+
+/*
+ * @tc.name: SubscribeListener004
+ * @tc.desc: Verify SubscribeListener subscribes when only check trigger callbacks exist.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, SubscribeListener004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "SubscribeListener004 Start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "check_trigger_subscribe_001";
+        callbackInfo.bundleName = "com.ohos.photos";
+        callbackInfo.callback = make_shared<CloudCheckTriggerCallback>();
+        CloudSyncCallbackClientManager::GetInstance().callbackList_.clear();
+        CheckTriggerCallbackClientManager::GetInstance().callbackList_.clear();
+        CheckTriggerCallbackClientManager::GetInstance().AddCallback(callbackInfo);
+        CloudSyncManagerImpl::GetInstance().listener_ = nullptr;
+        EXPECT_CALL(*saMgrClient_, GetSystemAbilityManager()).WillOnce(Return(saMgr_));
+        EXPECT_CALL(*saMgr_, SubscribeSystemAbility(_, _)).WillOnce(Return(0));
+        CloudSyncManagerImpl::GetInstance().SubscribeListener();
+        EXPECT_NE(CloudSyncManagerImpl::GetInstance().listener_, nullptr);
+        CheckTriggerCallbackClientManager::GetInstance().RemoveCallback(callbackInfo);
+        CloudSyncManagerImpl::GetInstance().listener_ = nullptr;
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "SubscribeListener004 FAILED";
+    }
+    GTEST_LOG_(INFO) << "SubscribeListener004 End";
+}
+
+/*
+ * @tc.name: SubscribeListener005
+ * @tc.desc: Verify SubscribeListener does not subscribe when both callback lists are empty.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, SubscribeListener005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "SubscribeListener005 Start";
+    try {
+        CloudSyncCallbackClientManager::GetInstance().callbackList_.clear();
+        CheckTriggerCallbackClientManager::GetInstance().callbackList_.clear();
+        CloudSyncManagerImpl::GetInstance().listener_ = nullptr;
+        EXPECT_CALL(*saMgrClient_, GetSystemAbilityManager()).WillOnce(Return(saMgr_));
+        EXPECT_CALL(*saMgr_, SubscribeSystemAbility(_, _)).Times(0);
+        CloudSyncManagerImpl::GetInstance().SubscribeListener();
+        EXPECT_EQ(CloudSyncManagerImpl::GetInstance().listener_, nullptr);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "SubscribeListener005 FAILED";
+    }
+    GTEST_LOG_(INFO) << "SubscribeListener005 End";
 }
 
 /*
@@ -3802,6 +3952,415 @@ HWTEST_F(CloudSyncManagerImplTest, GetDowngradeDownloadTaskErrTest003, TestSize.
         GTEST_LOG_(INFO) << "GetDowngradeDownloadTaskErrTest003 FAILED";
     }
     GTEST_LOG_(INFO) << "GetDowngradeDownloadTaskErrTest003 End";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest001
+ * @tc.desc: Verify the TriggerCloudCheck function with valid userId.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, TriggerCloudCheckTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest001 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(serviceProxy_));
+        EXPECT_CALL(*serviceProxy_, AsObject()).WillRepeatedly(Return(nullptr));
+        EXPECT_CALL(*serviceProxy_, TriggerCloudCheck(userId, bundleName)).WillOnce(Return(E_OK));
+        int32_t res = CloudSyncManagerImpl::GetInstance().TriggerCloudCheck(userId, bundleName);
+        EXPECT_EQ(res, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest001 FAILED";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest001 End";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest002
+ * @tc.desc: Verify the TriggerCloudCheck function with invalid userId.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, TriggerCloudCheckTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest002 Start";
+    try {
+        int32_t userId = 99;
+        std::string bundleName = "com.ohos.photos";
+        int32_t res = CloudSyncManagerImpl::GetInstance().TriggerCloudCheck(userId, bundleName);
+        EXPECT_EQ(res, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest002 FAILED";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest002 End";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest003
+ * @tc.desc: Verify the TriggerCloudCheck function when proxy is null.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, TriggerCloudCheckTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest003 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(nullptr));
+        int32_t res = CloudSyncManagerImpl::GetInstance().TriggerCloudCheck(userId, bundleName);
+        EXPECT_EQ(res, E_SA_LOAD_FAILED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest003 FAILED";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest003 End";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest004
+ * @tc.desc: Verify the TriggerCloudCheck function rejects the negative userId before requesting the proxy.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, TriggerCloudCheckTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest004 Start";
+    try {
+        int32_t userId = -1;
+        std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*proxy_, GetInstance(_)).Times(0);
+        int32_t res = CloudSyncManagerImpl::GetInstance().TriggerCloudCheck(userId, bundleName);
+        EXPECT_EQ(res, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest004 FAILED";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest004 End";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest005
+ * @tc.desc: Verify the TriggerCloudCheck function forwards the userId and bundleName to the service proxy.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, TriggerCloudCheckTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest005 Start";
+    try {
+        int32_t userId = 200;
+        std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(serviceProxy_));
+        EXPECT_CALL(*serviceProxy_, AsObject()).WillRepeatedly(Return(nullptr));
+        EXPECT_CALL(*serviceProxy_, TriggerCloudCheck(userId, bundleName)).WillOnce(Return(E_OK));
+        int32_t res = CloudSyncManagerImpl::GetInstance().TriggerCloudCheck(userId, bundleName);
+        EXPECT_EQ(res, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest005 FAILED";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest005 End";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest006
+ * @tc.desc: Verify the TriggerCloudCheck function propagates the error code returned by the service proxy.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, TriggerCloudCheckTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest006 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(serviceProxy_));
+        EXPECT_CALL(*serviceProxy_, AsObject()).WillRepeatedly(Return(nullptr));
+        EXPECT_CALL(*serviceProxy_, TriggerCloudCheck(_, _)).WillOnce(Return(E_PERMISSION_DENIED));
+        int32_t res = CloudSyncManagerImpl::GetInstance().TriggerCloudCheck(userId, bundleName);
+        EXPECT_EQ(res, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest006 FAILED";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest006 End";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest008
+ * @tc.desc: Verify the TriggerCloudCheck function rejects an empty bundleName before requesting the proxy.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, TriggerCloudCheckTest008, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest008 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName = "";
+        EXPECT_CALL(*proxy_, GetInstance(_)).Times(0);
+        int32_t res = CloudSyncManagerImpl::GetInstance().TriggerCloudCheck(userId, bundleName);
+        EXPECT_EQ(res, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest008 FAILED";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest008 End";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest009
+ * @tc.desc: Verify the TriggerCloudCheck function rejects an overlong bundleName before requesting the proxy.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, TriggerCloudCheckTest009, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest009 Start";
+    try {
+        int32_t userId = 100;
+        std::string bundleName(MAX_BUNDLE_NAME_LEN + 1, 'a');
+        EXPECT_CALL(*proxy_, GetInstance(_)).Times(0);
+        int32_t res = CloudSyncManagerImpl::GetInstance().TriggerCloudCheck(userId, bundleName);
+        EXPECT_EQ(res, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest009 FAILED";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest009 End";
+}
+
+/**
+ * @tc.name: RegisterCheckTriggerCallbackTest001
+ * @tc.desc: Verify RegisterCheckTriggerCallback registers through the service proxy.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, RegisterCheckTriggerCallbackTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest001 Start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "check_trigger_callback_test_001";
+        callbackInfo.bundleName = "com.ohos.photos";
+        callbackInfo.callback = make_shared<CloudCheckTriggerCallback>();
+        EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(serviceProxy_));
+        EXPECT_CALL(*serviceProxy_, AsObject()).WillRepeatedly(Return(nullptr));
+        EXPECT_CALL(*serviceProxy_,
+            RegisterCheckTriggerCallbackInner(_, callbackInfo.callbackId, callbackInfo.bundleName))
+            .WillOnce(Return(E_OK));
+        int32_t res = CloudSyncManagerImpl::GetInstance().RegisterCheckTriggerCallback(callbackInfo);
+        EXPECT_EQ(res, E_OK);
+        CheckTriggerCallbackClientManager::GetInstance().RemoveCallback(callbackInfo);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest001 FAILED";
+    }
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest001 End";
+}
+
+/**
+ * @tc.name: RegisterCheckTriggerCallbackTest002
+ * @tc.desc: Verify RegisterCheckTriggerCallback rejects empty callbackId.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, RegisterCheckTriggerCallbackTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest002 Start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.bundleName = "com.ohos.photos";
+        callbackInfo.callback = make_shared<CloudCheckTriggerCallback>();
+        int32_t res = CloudSyncManagerImpl::GetInstance().RegisterCheckTriggerCallback(callbackInfo);
+        EXPECT_EQ(res, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest002 FAILED";
+    }
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest002 End";
+}
+
+/**
+ * @tc.name: RegisterCheckTriggerCallbackTest004
+ * @tc.desc: Verify RegisterCheckTriggerCallback rejects a null callback.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, RegisterCheckTriggerCallbackTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest004 Start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "check_trigger_callback_test_004";
+        callbackInfo.bundleName = "com.ohos.photos";
+        callbackInfo.callback = nullptr;
+        EXPECT_CALL(*proxy_, GetInstance(_)).Times(0);
+        int32_t res = CloudSyncManagerImpl::GetInstance().RegisterCheckTriggerCallback(callbackInfo);
+        EXPECT_EQ(res, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest004 FAILED";
+    }
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest004 End";
+}
+
+/**
+ * @tc.name: RegisterCheckTriggerCallbackTest005
+ * @tc.desc: Verify RegisterCheckTriggerCallback returns the service registration failure code.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, RegisterCheckTriggerCallbackTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest005 Start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "check_trigger_callback_test_005";
+        callbackInfo.bundleName = "com.ohos.photos";
+        callbackInfo.callback = make_shared<CloudCheckTriggerCallback>();
+        EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(serviceProxy_));
+        EXPECT_CALL(*serviceProxy_, AsObject()).WillRepeatedly(Return(nullptr));
+        EXPECT_CALL(*serviceProxy_,
+            RegisterCheckTriggerCallbackInner(_, callbackInfo.callbackId, callbackInfo.bundleName))
+            .WillOnce(Return(E_PERMISSION_DENIED));
+        int32_t res = CloudSyncManagerImpl::GetInstance().RegisterCheckTriggerCallback(callbackInfo);
+        EXPECT_EQ(res, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest005 FAILED";
+    }
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest005 End";
+}
+
+/**
+ * @tc.name: UnRegisterCheckTriggerCallbackTest001
+ * @tc.desc: Verify UnRegisterCheckTriggerCallback unregisters through the service proxy.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, UnRegisterCheckTriggerCallbackTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackTest001 Start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "check_trigger_callback_test_002";
+        callbackInfo.bundleName = "com.ohos.photos";
+        callbackInfo.callback = make_shared<CloudCheckTriggerCallback>();
+        CheckTriggerCallbackClientManager::GetInstance().AddCallback(callbackInfo);
+        EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(serviceProxy_));
+        EXPECT_CALL(*serviceProxy_, AsObject()).WillRepeatedly(Return(nullptr));
+        EXPECT_CALL(*serviceProxy_,
+            UnRegisterCheckTriggerCallbackInner(callbackInfo.callbackId, callbackInfo.bundleName))
+            .WillOnce(Return(E_OK));
+        int32_t res = CloudSyncManagerImpl::GetInstance().UnRegisterCheckTriggerCallback(callbackInfo);
+        EXPECT_EQ(res, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackTest001 FAILED";
+    }
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackTest001 End";
+}
+
+/**
+ * @tc.name: RegisterCheckTriggerCallbackTest003
+ * @tc.desc: Verify RegisterCheckTriggerCallback returns E_SA_LOAD_FAILED when the proxy is null.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, RegisterCheckTriggerCallbackTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest003 Start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "check_trigger_callback_test_003";
+        callbackInfo.bundleName = "com.ohos.photos";
+        callbackInfo.callback = make_shared<CloudCheckTriggerCallback>();
+        EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(nullptr));
+        int32_t res = CloudSyncManagerImpl::GetInstance().RegisterCheckTriggerCallback(callbackInfo);
+        EXPECT_EQ(res, E_SA_LOAD_FAILED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest003 FAILED";
+    }
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackTest003 End";
+}
+
+/**
+ * @tc.name: UnRegisterCheckTriggerCallbackTest002
+ * @tc.desc: Verify UnRegisterCheckTriggerCallback returns E_SA_LOAD_FAILED when the proxy is null.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, UnRegisterCheckTriggerCallbackTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackTest002 Start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "check_trigger_callback_test_004";
+        callbackInfo.bundleName = "com.ohos.photos";
+        EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(nullptr));
+        int32_t res = CloudSyncManagerImpl::GetInstance().UnRegisterCheckTriggerCallback(callbackInfo);
+        EXPECT_EQ(res, E_SA_LOAD_FAILED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackTest002 FAILED";
+    }
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackTest002 End";
+}
+
+/**
+ * @tc.name: UnRegisterCheckTriggerCallbackTest003
+ * @tc.desc: Verify UnRegisterCheckTriggerCallback rejects an empty callbackId.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, UnRegisterCheckTriggerCallbackTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackTest003 Start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.bundleName = "com.ohos.photos";
+        EXPECT_CALL(*proxy_, GetInstance(_)).Times(0);
+        int32_t res = CloudSyncManagerImpl::GetInstance().UnRegisterCheckTriggerCallback(callbackInfo);
+        EXPECT_EQ(res, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackTest003 FAILED";
+    }
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackTest003 End";
+}
+
+/**
+ * @tc.name: UnRegisterCheckTriggerCallbackTest004
+ * @tc.desc: Verify UnRegisterCheckTriggerCallback returns the service failure code.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, UnRegisterCheckTriggerCallbackTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackTest004 Start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "check_trigger_callback_test_006";
+        callbackInfo.bundleName = "com.ohos.photos";
+        EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(serviceProxy_));
+        EXPECT_CALL(*serviceProxy_, AsObject()).WillRepeatedly(Return(nullptr));
+        EXPECT_CALL(*serviceProxy_,
+            UnRegisterCheckTriggerCallbackInner(callbackInfo.callbackId, callbackInfo.bundleName))
+            .WillOnce(Return(E_PERMISSION_DENIED));
+        int32_t res = CloudSyncManagerImpl::GetInstance().UnRegisterCheckTriggerCallback(callbackInfo);
+        EXPECT_EQ(res, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackTest004 FAILED";
+    }
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackTest004 End";
 }
 
 } // namespace FileManagement::CloudSync

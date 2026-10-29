@@ -27,7 +27,8 @@ int32_t DataSyncManager::TriggerStartSync(const std::string &bundleName,
                                           const int32_t userId,
                                           SyncMode type,
                                           SyncTriggerType triggerType,
-                                          std::string prepareTraceId)
+                                          std::string prepareTraceId,
+                                          const std::string &triggerBundleName)
 {
     return E_OK;
 }
@@ -84,6 +85,21 @@ void DataSyncManager::RegisterCloudSyncCallback(const std::string &bundleName,
 void DataSyncManager::UnRegisterCloudSyncCallback(const std::string &bundleName,
                                                   const BundleNameUserInfo &bundleNameUserInfo,
                                                   const std::string &callbackId)
+{
+    return;
+}
+
+void DataSyncManager::RegisterCheckTriggerCallback(const std::string &bundleName,
+                                                   const BundleNameUserInfo &bundleNameUserInfo,
+                                                   const std::string &callbackId,
+                                                   const sptr<CloudSync::ICheckTriggerCallback> &callback)
+{
+    return;
+}
+
+void DataSyncManager::UnRegisterCheckTriggerCallback(const std::string &bundleName,
+                                                     const BundleNameUserInfo &bundleNameUserInfo,
+                                                     const std::string &callbackId)
 {
     return;
 }

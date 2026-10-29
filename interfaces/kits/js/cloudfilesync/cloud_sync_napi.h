@@ -23,6 +23,7 @@
 #include "cloud_upload_callback.h"
 #include "cloud_optimize_callback.h"
 #include "cloud_sync_common.h"
+#include "cloud_sync_constants.h"
 #include "data_ability_observer_interface.h"
 #include "data_ability_observer_stub.h"
 #include "dataobs_mgr_client.h"

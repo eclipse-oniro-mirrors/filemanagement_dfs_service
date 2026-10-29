@@ -54,6 +54,7 @@ ohos_unittest("cloud_sync_core_test") {
     "${interfaces_js_path}/ani/file_cloud_sync_manager/include",
     "${interfaces_js_path}/cloudfilesync",
     "${interfaces_js_path}/cloudsyncmanager",
+    "${utils_path}/inner_api",
   ]
 
   deps = [

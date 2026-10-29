@@ -19,6 +19,7 @@
 #include <memory>
 #include <stdint.h>
 
+#include "check_trigger_callback_info.h"
 #include "cloud_download_callback.h"
 #include "cloud_optimize_callback.h"
 #include "cloud_sync_callback.h"
@@ -39,6 +40,7 @@ public:
      */
     virtual int32_t RegisterCallback(const CallbackInfo &callbackInfo) = 0;
     virtual int32_t RegisterFileSyncCallback(const CallbackInfo &callbackInfo) = 0;
+    virtual int32_t RegisterCheckTriggerCallback(const CheckTriggerCallbackInfo &callbackInfo) = 0;
     /**
      * @brief 注册
      *
@@ -47,6 +49,7 @@ public:
      */
     virtual int32_t UnRegisterCallback(const CallbackInfo &callbackInfo) = 0;
     virtual int32_t UnRegisterFileSyncCallback(const CallbackInfo &callbackInfo) = 0;
+    virtual int32_t UnRegisterCheckTriggerCallback(const CheckTriggerCallbackInfo &callbackInfo) = 0;
     /**
      * @brief 启动同步
      *
@@ -268,6 +271,15 @@ public:
     virtual int32_t GetDecompressSystemFeature(bool &systemFeature) = 0;
 
     virtual int32_t GetDecompressCrossFsConfig(bool &crossFsConfig) = 0;
+
+    /**
+     * @brief 主动触发云空间核查操作
+     *
+     * @param userId 用户ID
+     * @param bundleName 待核查的应用包名
+     * @return int32_t 同步返回执行结果
+     */
+    virtual int32_t TriggerCloudCheck(const int32_t userId, const std::string &bundleName) = 0;
 };
 } // namespace OHOS::FileManagement::CloudSync
 

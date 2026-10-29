@@ -30,8 +30,10 @@ public:
     }
     MOCK_METHOD1(RegisterCallback, int32_t(const CallbackInfo &callbackInfo));
     MOCK_METHOD1(RegisterFileSyncCallback, int32_t(const CallbackInfo &callbackInfo));
+    MOCK_METHOD1(RegisterCheckTriggerCallback, int32_t(const CheckTriggerCallbackInfo &callbackInfo));
     MOCK_METHOD1(UnRegisterCallback, int32_t(const CallbackInfo &callbackInfo));
     MOCK_METHOD1(UnRegisterFileSyncCallback, int32_t(const CallbackInfo &callbackInfo));
+    MOCK_METHOD1(UnRegisterCheckTriggerCallback, int32_t(const CheckTriggerCallbackInfo &callbackInfo));
     MOCK_METHOD1(StartSync, int32_t(const std::string &bundleName));
     MOCK_METHOD2(StartSync, int32_t(SyncMode type, const std::string &bundleName));
     MOCK_METHOD1(StartFileSync, int32_t(const std::string &bundleName));
@@ -113,6 +115,7 @@ public:
     MOCK_METHOD1(GetDecompressUnsupportedList, int32_t(std::vector<std::string> &unsupportedList));
     MOCK_METHOD1(GetDecompressSystemFeature, int32_t(bool &systemFeature));
     MOCK_METHOD1(GetDecompressCrossFsConfig, int32_t(bool &crossFsConfig));
+    MOCK_METHOD2(TriggerCloudCheck, int32_t(const int32_t userId, const std::string &bundleName));
 };
 } // namespace OHOS::FileManagement::CloudSync
 #endif // OHOS_FILEMGMT_CLOUD_SYNC_MANAGER_MOCK

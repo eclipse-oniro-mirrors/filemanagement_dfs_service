@@ -27,6 +27,7 @@
 
 #include "cloud_sync_service_stub.h"
 #include "file_transfer_manager.h"
+#include "i_check_trigger_callback.h"
 #include "i_cloud_download_callback.h"
 #include "i_cloud_sync_callback.h"
 #include "svc_death_recipient.h"
@@ -49,12 +50,17 @@ public:
     ErrCode UnRegisterCallbackInner(const std::string &callbackId = "", const std::string &bundleName = "") override;
     ErrCode UnRegisterFileSyncCallbackInner(const std::string &callbackId = "",
                                             const std::string &bundleName = "") override;
+    ErrCode UnRegisterCheckTriggerCallbackInner(const std::string &callbackId = "",
+                                                const std::string &bundleName = "") override;
     ErrCode RegisterCallbackInner(const sptr<IRemoteObject> &remoteObject,
                                   const std::string &callbackId = "",
                                   const std::string &bundleName = "") override;
     ErrCode RegisterFileSyncCallbackInner(const sptr<IRemoteObject> &remoteObject,
                                           const std::string &callbackId = "",
                                           const std::string &bundleName = "") override;
+    ErrCode RegisterCheckTriggerCallbackInner(const sptr<IRemoteObject> &remoteObject,
+                                              const std::string &callbackId = "",
+                                              const std::string &bundleName = "") override;
     ErrCode StartSyncInner(int32_t type, const std::string &bundleName = "") override;
     ErrCode StartFileSyncInner(bool forceFlag, const std::string &bundleName = "") override;
     ErrCode TriggerSyncInner(const std::string &bundleName, int32_t userId) override;
@@ -146,8 +152,11 @@ public:
     ErrCode GetDecompressUnsupportedList(std::vector<std::string> &unsupportedList) override;
     ErrCode GetDecompressSystemFeature(bool &systemFeature) override;
     ErrCode GetDecompressCrossFsConfig(bool &crossFsConfig) override;
+    ErrCode TriggerCloudCheck(int32_t userId, const std::string &bundleName) override;
 private:
     std::string GetHmdfsPath(const std::string &uri, int32_t userId);
+    int32_t HandleTriggerCloudCheck(int32_t userId, const std::string &bundleName,
+        const std::string &triggerBundleName);
     void OnStart(const SystemAbilityOnDemandReason &startReason) override;
     void OnActive(const SystemAbilityOnDemandReason &startReason) override;
     void OnStop() override;
