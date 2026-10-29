@@ -77,6 +77,9 @@ static const string LOCAL_PATH_HMDFS_ACCOUNT = "/hmdfs/account";
 static const string LOCAL_PATH_HMDFS_CLOUD_CACHE = "/hmdfs/cache/cloud_cache";
 static const string DEVICE_VIEW_PHOTOS_PATH = "/account/device_view/local/data/";
 static const string CLOUD_CACHE_DIR = "/.video_cache";
+static const string NEW_CACHE_BASE_PREFIX = "/data/app/el2/";
+static const string NEW_CACHE_MID_PATH = "/base/";
+static const string NEW_CACHE_HAP_PATH = "/haps/phone_photos/cache";
 static const string PHOTOS_KEY = "persist.kernel.bundle_name.photos";
 static const string CLOUD_CACHE_XATTR_NAME = "user.cloud.cacheMap";
 static const string CLOUD_KEEP_CACHE_XATTR_NAME = "user.cloud.keepcache";
@@ -828,6 +831,11 @@ static bool IsValidCachePath(const string &cachePath)
 
 static string VideoCachePath(const string &path, struct FuseData *data)
 {
+    if (!IsValidCachePath(path)) {
+        LOGE("VideoCachePath: invalid relative path");
+        return "";
+    }
+
     string photoBundleName = "";
     if (data->photoBundleName.empty()) {
         photoBundleName = system::GetParameter(PHOTOS_KEY, "");
@@ -839,13 +847,27 @@ static string VideoCachePath(const string &path, struct FuseData *data)
     } else {
         photoBundleName = data->photoBundleName;
     }
-    string cachePath = HMDFS_PATH_PREFIX + to_string(data->userId) + DEVICE_VIEW_PHOTOS_PATH +
+
+    string newCachePath = NEW_CACHE_BASE_PREFIX + to_string(data->userId) + NEW_CACHE_MID_PATH +
+        photoBundleName + NEW_CACHE_HAP_PATH + CLOUD_CACHE_DIR + path;
+    string oldCachePath = HMDFS_PATH_PREFIX + to_string(data->userId) + DEVICE_VIEW_PHOTOS_PATH +
         photoBundleName + CLOUD_CACHE_DIR + path;
-    if (!IsValidCachePath(cachePath)) {
-        LOGE("cachePath failed");
-        return "";
+
+    // 1. new dir has cache file -> use new path
+    if (access(newCachePath.c_str(), F_OK) == 0) {
+        return newCachePath;
     }
-    return cachePath;
+    // 2. old dir has cache file -> use old path
+    if (access(oldCachePath.c_str(), F_OK) == 0) {
+        return oldCachePath;
+    }
+    // 3. no cache -> write to new path if new dir exists (gallery authorized), otherwise old path
+    string newCacheBase = NEW_CACHE_BASE_PREFIX + to_string(data->userId) + NEW_CACHE_MID_PATH +
+        photoBundleName + NEW_CACHE_HAP_PATH;
+    if (access(newCacheBase.c_str(), F_OK) == 0) {
+        return newCachePath;
+    }
+    return oldCachePath;
 }
 
 /* Write the keep-cache level to the cache-file xattr; best-effort, no-op when keepCache <= 0. */

@@ -784,6 +784,99 @@ HWTEST_F(PeriodicCleanTaskTest, RenameCacheDirTest006, TestSize.Level1)
 }
 
 /**
+ * @tc.name: RenameCacheDirTest007
+ * @tc.desc: Verify RenameCacheDir returns E_RENAME_FAIL when the NEW cache dir rename fails.
+ *           All four prior dirs rename/mkdir succeed; the 5th rename (newVideoCache) fails.
+ * @tc.type: FUNC
+ */
+HWTEST_F(PeriodicCleanTaskTest, RenameCacheDirTest007, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RenameCacheDirTest007 Start.";
+    try {
+        std::system("mkdir -p /data/service/el2/50/hmdfs/cache/account_cache/dentry_cache/cloud");
+        std::system("mkdir -p /mnt/hmdfs/50/account/device_view/local/files/.cloud_cache/pread_cache");
+        std::system("mkdir -p /mnt/hmdfs/50/account/device_view/local/files/.cloud_cache/download_cache");
+        std::system("mkdir -p /mnt/hmdfs/50/account/device_view/local/data/com.photos/.video_cache");
+        std::system("mkdir -p /data/app/el2/50/base/com.photos/haps/phone_photos/cache/.video_cache");
+        std::system("touch /data/service/el2/50/hmdfs/cache/account_cache/dentry_cache/cloud/file.txt");
+        std::system("touch /mnt/hmdfs/50/account/device_view/local/files/.cloud_cache/pread_cache/file.txt");
+        std::system("touch /mnt/hmdfs/50/account/device_view/local/files/.cloud_cache/download_cache/file.txt");
+        std::system("touch /mnt/hmdfs/50/account/device_view/local/data/com.photos/.video_cache/file.txt");
+        std::system("touch /data/app/el2/50/base/com.photos/haps/phone_photos/cache/.video_cache/file.txt");
+
+        EXPECT_CALL(*parameterMock_, GetParameter(_, _)).WillOnce(Return("com.photos"));
+        /* 4 prior dirs succeed, 5th (newVideoCache) rename fails */
+        EXPECT_CALL(*systemFuncMock_, rename(_, _)).WillOnce(Return(0)).WillOnce(Return(0))
+            .WillOnce(Return(0)).WillOnce(Return(0)).WillOnce(Return(-1));
+        EXPECT_CALL(*systemFuncMock_, mkdir(_, _)).WillOnce(Return(0)).WillOnce(Return(0))
+            .WillOnce(Return(0)).WillOnce(Return(0));
+
+        int32_t userId = 50;
+        int32_t ret = periodicCleanTask_->RenameCacheDir(userId);
+        EXPECT_EQ(ret, E_RENAME_FAIL);
+        EXPECT_EQ(periodicCleanTask_->runTaskForSwitchOff_, true);
+        EXPECT_EQ(periodicCleanTask_->bundleNames_.size(), 1);
+        EXPECT_EQ(periodicCleanTask_->taskName_, "periodic_clean_task");
+
+        std::system("rm -rf /data/service/el2/50/hmdfs/cache/account_cache/dentry_cache/cloud*");
+        std::system("rm -rf /mnt/hmdfs/50/account/device_view/local/files/.cloud_cache/pread_cache*");
+        std::system("rm -rf /mnt/hmdfs/50/account/device_view/local/files/.cloud_cache/download_cache*");
+        std::system("rm -rf /mnt/hmdfs/50/account/device_view/local/data/com.photos/.video_cache*");
+        std::system("rm -rf /data/app/el2/50/base/com.photos/haps/phone_photos/cache/.video_cache*");
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RenameCacheDirTest007 ERROR.";
+    }
+    GTEST_LOG_(INFO) << "RenameCacheDirTest007 End";
+}
+
+/**
+ * @tc.name: RenameCacheDirTest008
+ * @tc.desc: Verify RenameCacheDir returns E_OK when all five dirs (incl. the NEW cache dir) rename
+ *           and mkdir succeed. Covers the new cache dir success branch end-to-end.
+ * @tc.type: FUNC
+ */
+HWTEST_F(PeriodicCleanTaskTest, RenameCacheDirTest008, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RenameCacheDirTest008 Start.";
+    try {
+        std::system("mkdir -p /data/service/el2/50/hmdfs/cache/account_cache/dentry_cache/cloud");
+        std::system("mkdir -p /mnt/hmdfs/50/account/device_view/local/files/.cloud_cache/pread_cache");
+        std::system("mkdir -p /mnt/hmdfs/50/account/device_view/local/files/.cloud_cache/download_cache");
+        std::system("mkdir -p /mnt/hmdfs/50/account/device_view/local/data/com.photos/.video_cache");
+        std::system("mkdir -p /data/app/el2/50/base/com.photos/haps/phone_photos/cache/.video_cache");
+        std::system("touch /data/service/el2/50/hmdfs/cache/account_cache/dentry_cache/cloud/file.txt");
+        std::system("touch /mnt/hmdfs/50/account/device_view/local/files/.cloud_cache/pread_cache/file.txt");
+        std::system("touch /mnt/hmdfs/50/account/device_view/local/files/.cloud_cache/download_cache/file.txt");
+        std::system("touch /mnt/hmdfs/50/account/device_view/local/data/com.photos/.video_cache/file.txt");
+        std::system("touch /data/app/el2/50/base/com.photos/haps/phone_photos/cache/.video_cache/file.txt");
+
+        EXPECT_CALL(*parameterMock_, GetParameter(_, _)).WillOnce(Return("com.photos"));
+        EXPECT_CALL(*systemFuncMock_, rename(_, _)).WillOnce(Return(0)).WillOnce(Return(0))
+            .WillOnce(Return(0)).WillOnce(Return(0)).WillOnce(Return(0));
+        EXPECT_CALL(*systemFuncMock_, mkdir(_, _)).WillOnce(Return(0)).WillOnce(Return(0))
+            .WillOnce(Return(0)).WillOnce(Return(0)).WillOnce(Return(0));
+
+        int32_t userId = 50;
+        int32_t ret = periodicCleanTask_->RenameCacheDir(userId);
+        EXPECT_EQ(ret, E_OK);
+        EXPECT_EQ(periodicCleanTask_->runTaskForSwitchOff_, true);
+        EXPECT_EQ(periodicCleanTask_->bundleNames_.size(), 1);
+        EXPECT_EQ(periodicCleanTask_->taskName_, "periodic_clean_task");
+
+        std::system("rm -rf /data/service/el2/50/hmdfs/cache/account_cache/dentry_cache/cloud*");
+        std::system("rm -rf /mnt/hmdfs/50/account/device_view/local/files/.cloud_cache/pread_cache*");
+        std::system("rm -rf /mnt/hmdfs/50/account/device_view/local/files/.cloud_cache/download_cache*");
+        std::system("rm -rf /mnt/hmdfs/50/account/device_view/local/data/com.photos/.video_cache*");
+        std::system("rm -rf /data/app/el2/50/base/com.photos/haps/phone_photos/cache/.video_cache*");
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RenameCacheDirTest008 ERROR.";
+    }
+    GTEST_LOG_(INFO) << "RenameCacheDirTest008 End";
+}
+
+/**
  * @tc.name: RenameTempDirTest001
  * @tc.desc: Verify RenameTempDir function.
  * @tc.type: FUNC
@@ -1144,6 +1237,75 @@ HWTEST_F(PeriodicCleanTaskTest, PeriodicCleanTempDirTest006, TestSize.Level1)
         GTEST_LOG_(INFO) << "PeriodicCleanTempDirTest006 ERROR.";
     }
     GTEST_LOG_(INFO) << "PeriodicCleanTempDirTest006 End";
+}
+
+/**
+ * @tc.name: PeriodicCleanTempDirTest007
+ * @tc.desc: Verify PeriodicCleanTempDir returns E_STOP when the NEW cache base contains a temp dir
+ *           and the screen is on. Prior dirs have no temp entries so the new-cache branch is the
+ *           one that returns E_STOP.
+ * @tc.type: FUNC
+ */
+HWTEST_F(PeriodicCleanTaskTest, PeriodicCleanTempDirTest007, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "PeriodicCleanTempDirTest007 Start.";
+    try {
+        /* stage a temp dir under the NEW cache base */
+        std::system("mkdir -p /data/app/el2/100/base/com.photos/haps/phone_photos/cache/.video_cache_tmp_123");
+        /* ensure the OLD video cache base does not trigger an earlier E_STOP */
+        std::system("rm -rf /mnt/hmdfs/100/account/device_view/local/data/com.photos/.video_cache_tmp_123");
+
+        EXPECT_CALL(*screenStatusMock_, IsScreenOn()).WillOnce(Return(true));
+        EXPECT_CALL(*parameterMock_, GetParameter(_, _)).WillOnce(Return("com.photos"));
+
+        int32_t userId = 100;
+        int32_t ret = periodicCleanTask_->PeriodicCleanTempDir(userId);
+        EXPECT_EQ(ret, E_STOP);
+        EXPECT_EQ(periodicCleanTask_->runTaskForSwitchOff_, true);
+        EXPECT_EQ(periodicCleanTask_->bundleNames_.size(), 1);
+        EXPECT_EQ(periodicCleanTask_->taskName_, "periodic_clean_task");
+
+        std::system("rm -rf /data/app/el2/100/base/com.photos/haps/phone_photos/cache/.video_cache_tmp_123");
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "PeriodicCleanTempDirTest007 ERROR.";
+    }
+    GTEST_LOG_(INFO) << "PeriodicCleanTempDirTest007 End";
+}
+
+/**
+ * @tc.name: PeriodicCleanTempDirTest008
+ * @tc.desc: Verify PeriodicCleanTempDir returns E_OK when the NEW cache base contains a temp dir
+ *           and the screen is off (temp dir gets removed). Covers the new-cache clean success path.
+ * @tc.type: FUNC
+ */
+HWTEST_F(PeriodicCleanTaskTest, PeriodicCleanTempDirTest008, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "PeriodicCleanTempDirTest008 Start.";
+    try {
+        std::system("mkdir -p /data/app/el2/100/base/com.photos/haps/phone_photos/cache/.video_cache_tmp_123");
+        std::system("touch /data/app/el2/100/base/com.photos/haps/phone_photos/cache/.video_cache_tmp_123/file.txt");
+        std::system("rm -rf /mnt/hmdfs/100/account/device_view/local/data/com.photos/.video_cache_tmp_123");
+
+        EXPECT_CALL(*screenStatusMock_, IsScreenOn()).WillRepeatedly(Return(false));
+        EXPECT_CALL(*parameterMock_, GetParameter(_, _)).WillOnce(Return("com.photos"));
+        /* access/remove are mocked via BUILD defines; let the clean path walk through */
+        EXPECT_CALL(*systemFuncMock_, access(_, _)).WillRepeatedly(Return(0));
+        EXPECT_CALL(*systemFuncMock_, remove(_)).WillRepeatedly(Return(0));
+
+        int32_t userId = 100;
+        int32_t ret = periodicCleanTask_->PeriodicCleanTempDir(userId);
+        EXPECT_EQ(ret, E_OK);
+        EXPECT_EQ(periodicCleanTask_->runTaskForSwitchOff_, true);
+        EXPECT_EQ(periodicCleanTask_->bundleNames_.size(), 1);
+        EXPECT_EQ(periodicCleanTask_->taskName_, "periodic_clean_task");
+
+        std::system("rm -rf /data/app/el2/100/base/com.photos/haps/phone_photos/cache/.video_cache_tmp_123");
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "PeriodicCleanTempDirTest008 ERROR.";
+    }
+    GTEST_LOG_(INFO) << "PeriodicCleanTempDirTest008 End";
 }
 
 /**

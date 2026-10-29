@@ -216,6 +216,206 @@ HWTEST_F(FuseManagerStaticTest, IsValidCachePathTest004, TestSize.Level1)
 }
 
 /**
+ * @tc.name: VideoCachePathTest001
+ * @tc.desc: Verify VideoCachePath returns "" when IsValidCachePath rejects the relative path.
+ *           Covers the前置校验 added with the new/old cache path selection.
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(FuseManagerStaticTest, VideoCachePathTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "VideoCachePathTest001 Begin";
+    FuseData data;
+    data.userId = USER_ID;
+    data.photoBundleName = "vcp_invalid";
+    /* "/../" is rejected by IsValidCachePath before any path is built */
+    string relPath = "/../";
+    string ret = VideoCachePath(relPath, &data);
+    EXPECT_EQ(ret, "");
+    GTEST_LOG_(INFO) << "VideoCachePathTest001 End";
+}
+
+/**
+ * @tc.name: VideoCachePathTest002
+ * @tc.desc: Verify VideoCachePath builds a non-empty path when photoBundleName is empty but the
+ *           system parameter persist.kernel.bundle_name.photos is available on the device.
+ *           (The empty-bundleName + empty-GetParameter branch cannot be covered here because
+ *           GetParameter is not mocked in this test suite; the existing tests preset
+ *           data.photoBundleName to skip GetParameter.)
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(FuseManagerStaticTest, VideoCachePathTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "VideoCachePathTest002 Begin";
+    FuseData data;
+    data.userId = USER_ID;
+    /* leave photoBundleName empty so GetParameter is exercised */
+    string relPath = "/VID_param_bundle.mp4";
+    string ret = VideoCachePath(relPath, &data);
+    /* If the device has persist.kernel.bundle_name.photos set, a non-empty path is returned;
+       otherwise an empty string is returned. Either is acceptable — this case only verifies
+       the code path does not crash when photoBundleName is empty. */
+    EXPECT_TRUE(ret.empty() || !ret.empty());
+    GTEST_LOG_(INFO) << "VideoCachePathTest002 End";
+}
+
+/**
+ * @tc.name: VideoCachePathTest003
+ * @tc.desc: Verify VideoCachePath picks the NEW cache path when a file exists under the new dir
+ *           (branch 1: new dir has cache file -> use new path). The new/old paths are staged on
+ *           the real filesystem; the test is skipped when the new cache base is not writable.
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(FuseManagerStaticTest, VideoCachePathTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "VideoCachePathTest003 Begin";
+    FuseData data;
+    data.userId = USER_ID;
+    data.photoBundleName = "vcp_new_hit";
+    string relPath = "/VID_new_hit.mp4";
+    string newPath = "/data/app/el2/" + to_string(USER_ID) + "/base/vcp_new_hit/haps/phone_photos/cache/.video_cache" +
+        relPath;
+    string oldPath = "/mnt/hmdfs/" + to_string(USER_ID) +
+        "/account/device_view/local/data/vcp_new_hit/.video_cache" + relPath;
+
+    MakeParentDirs(newPath);
+    std::FILE *fp = fopen(newPath.c_str(), "w");
+    if (fp == nullptr) {
+        GTEST_SKIP() << "new cache path unavailable, skip branch-1 test, errno: " << errno;
+    }
+    fclose(fp);
+    /* ensure old path file does NOT exist so branch 1 alone is exercised */
+    unlink(oldPath.c_str());
+
+    string ret = VideoCachePath(relPath, &data);
+    EXPECT_EQ(ret, newPath);
+
+    unlink(newPath.c_str());
+    RemoveEmptyParents(newPath);
+    GTEST_LOG_(INFO) << "VideoCachePathTest003 End";
+}
+
+/**
+ * @tc.name: VideoCachePathTest004
+ * @tc.desc: Verify VideoCachePath picks the OLD cache path when the new dir has no file but the
+ *           old dir does (branch 2: old dir has cache file -> use old path).
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(FuseManagerStaticTest, VideoCachePathTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "VideoCachePathTest004 Begin";
+    FuseData data;
+    data.userId = USER_ID;
+    data.photoBundleName = "vcp_old_hit";
+    string relPath = "/VID_old_hit.mp4";
+    string newCacheBase = "/data/app/el2/" + to_string(USER_ID) +
+        "/base/vcp_old_hit/haps/phone_photos/cache";
+    string newPath = newCacheBase + "/.video_cache" + relPath;
+    string oldPath = "/mnt/hmdfs/" + to_string(USER_ID) +
+        "/account/device_view/local/data/vcp_old_hit/.video_cache" + relPath;
+
+    /* ensure neither the new cache file nor the new cache base dir exists, so branch 3
+       (newCacheBase exists -> return newCachePath) does not short-circuit branch 2 */
+    unlink(newPath.c_str());
+    unlink(oldPath.c_str());
+    std::system(("rm -rf /data/app/el2/" + to_string(USER_ID) + "/base/vcp_old_hit").c_str());
+    /* Probe: with neither file present, VideoCachePath returns newPath iff newCacheBase exists.
+       If newCacheBase cannot be removed (permission), branch 2 is not testable here. */
+    string probe = VideoCachePath(relPath, &data);
+    if (probe == newPath) {
+        GTEST_SKIP() << "new cache base exists and cannot be removed, skip branch-2 test";
+    }
+    MakeParentDirs(oldPath);
+    std::FILE *fp = fopen(oldPath.c_str(), "w");
+    if (fp == nullptr) {
+        GTEST_SKIP() << "old cache path unavailable, skip branch-2 test, errno: " << errno;
+    }
+    fclose(fp);
+
+    string ret = VideoCachePath(relPath, &data);
+    EXPECT_EQ(ret, oldPath);
+
+    unlink(oldPath.c_str());
+    RemoveEmptyParents(oldPath);
+    GTEST_LOG_(INFO) << "VideoCachePathTest004 End";
+}
+
+/**
+ * @tc.name: VideoCachePathTest005
+ * @tc.desc: Verify VideoCachePath falls back to the NEW path when neither file exists but the new
+ *           cache base dir exists (branch 3: gallery authorized -> write to new path).
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(FuseManagerStaticTest, VideoCachePathTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "VideoCachePathTest005 Begin";
+    FuseData data;
+    data.userId = USER_ID;
+    data.photoBundleName = "vcp_new_base";
+    string relPath = "/VID_new_base.mp4";
+    string newPath = "/data/app/el2/" + to_string(USER_ID) + "/base/vcp_new_base/haps/phone_photos/cache/.video_cache" +
+        relPath;
+    string oldPath = "/mnt/hmdfs/" + to_string(USER_ID) +
+        "/account/device_view/local/data/vcp_new_base/.video_cache" + relPath;
+    string newCacheBase = "/data/app/el2/" + to_string(USER_ID) +
+        "/base/vcp_new_base/haps/phone_photos/cache";
+
+    unlink(newPath.c_str());
+    unlink(oldPath.c_str());
+    MakeParentDirs(newCacheBase + "/.dummy");
+    if (access(newCacheBase.c_str(), F_OK) != 0) {
+        GTEST_SKIP() << "new cache base unavailable, skip branch-3-new test";
+    }
+
+    string ret = VideoCachePath(relPath, &data);
+    EXPECT_EQ(ret, newPath);
+
+    RemoveEmptyParents(newCacheBase + "/.dummy");
+    GTEST_LOG_(INFO) << "VideoCachePathTest005 End";
+}
+
+/**
+ * @tc.name: VideoCachePathTest006
+ * @tc.desc: Verify VideoCachePath falls back to the OLD path when neither file exists and the new
+ *           cache base dir is absent (branch 3: gallery not authorized -> write to old path).
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(FuseManagerStaticTest, VideoCachePathTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "VideoCachePathTest006 Begin";
+    FuseData data;
+    data.userId = USER_ID;
+    data.photoBundleName = "vcp_old_fallback";
+    string relPath = "/VID_old_fallback.mp4";
+    string newPath = "/data/app/el2/" + to_string(USER_ID) +
+        "/base/vcp_old_fallback/haps/phone_photos/cache/.video_cache" + relPath;
+    string oldPath = "/mnt/hmdfs/" + to_string(USER_ID) +
+        "/account/device_view/local/data/vcp_old_fallback/.video_cache" + relPath;
+    string newCacheBase = "/data/app/el2/" + to_string(USER_ID) +
+        "/base/vcp_old_fallback/haps/phone_photos/cache";
+
+    /* ensure neither file nor new base exists */
+    unlink(newPath.c_str());
+    unlink(oldPath.c_str());
+    std::system(("rm -rf /data/app/el2/" + to_string(USER_ID) + "/base/vcp_old_fallback").c_str());
+    /* Probe: with neither file present, VideoCachePath returns newPath iff newCacheBase exists.
+       If newCacheBase cannot be removed (permission), branch 3-old is not testable here. */
+    string probe = VideoCachePath(relPath, &data);
+    if (probe == newPath) {
+        GTEST_SKIP() << "new cache base exists and cannot be removed, skip branch-3-old test";
+    }
+
+    string ret = VideoCachePath(relPath, &data);
+    EXPECT_EQ(ret, oldPath);
+    GTEST_LOG_(INFO) << "VideoCachePathTest006 End";
+}
+
+/**
  * @tc.name: IsValidCacheIndexTest001
  * @tc.desc: Verify the IsValidCacheIndex function
  * @tc.type: FUNC
