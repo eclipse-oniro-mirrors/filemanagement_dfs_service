@@ -668,7 +668,7 @@ int32_t CloudDiskServiceLogFile::ProduceUnlinkLog(const std::shared_ptr<CloudDis
         LOGE("remove failed");
         return -1;
     }
-    if (IsPlaceholderState(placeholderState)) {
+    if (IsCountedPlaceholder(placeholderState)) {
         (void)RefreshAncestorPlaceholderCount(syncFolderPath_, path + "/" + name, -1);
     }
     return E_OK;
@@ -693,7 +693,7 @@ int32_t CloudDiskServiceLogFile::ProduceRenameOldLog(const std::shared_ptr<Cloud
         return -1;
     }
     renameRecordId_ = ctx.recordId;
-    if (IsPlaceholderState(renamePlaceholderState_)) {
+    if (IsCountedPlaceholder(renamePlaceholderState_)) {
         (void)RefreshAncestorPlaceholderCount(syncFolderPath_, path + "/" + name, -1);
     }
     return E_OK;
@@ -723,12 +723,12 @@ int32_t CloudDiskServiceLogFile::ProduceRenameNewLog(const std::shared_ptr<Cloud
         return -1;
     }
     ctx.recordId = renameRecordId_;
-    if (IsPlaceholderState(overwrittenState)) {
+    if (IsCountedPlaceholder(overwrittenState)) {
         // The overwritten dentry was itself a counted placeholder; offset its
         // contribution before adding the new one.
         (void)RefreshAncestorPlaceholderCount(syncFolderPath_, path + "/" + name, -1);
     }
-    if (IsPlaceholderState(renamePlaceholderState_)) {
+    if (IsCountedPlaceholder(renamePlaceholderState_)) {
         (void)RefreshAncestorPlaceholderCount(syncFolderPath_, path + "/" + name, 1);
     }
 

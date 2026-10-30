@@ -232,7 +232,7 @@ int32_t UpdateDirectoryCountAndState(const std::string &path, int32_t delta, boo
         return ret;
     }
     uint8_t newPlaceholderState =
-        newHasPlaceholder ? PLACEHOLDER_STATE_HAS_PLACEHOLDER : PLACEHOLDER_STATE_NONE;
+        newHasPlaceholder ? PLACEHOLDER_STATE_HAS_PLACEHOLDER : PLACEHOLDER_STATE_FULLY_HYDRATED;
     uint8_t newState = MakeFileSyncState(newPlaceholderState, GetSyncStateFromFileSyncState(oldState));
     return WriteFileSyncStateByteNoLock(path, newState);
 }
@@ -252,7 +252,7 @@ int32_t RecountFileNode(const std::string &path, int32_t userId, uint32_t syncFo
         LOGE("recount get file placeholder failed, errno:%{public}d", ret);
         placeholderState = PLACEHOLDER_STATE_NONE;
     }
-    isPlaceholder = IsPlaceholderState(placeholderState);
+    isPlaceholder = IsCountedPlaceholder(placeholderState);
     (void)UpdateDentryPlaceholderState(userId, syncFolderIndex, path, placeholderState);
     return E_OK;
 }
@@ -303,7 +303,7 @@ void UpdateDirectoryRecountState(const std::string &path, uint32_t count)
         LOGE("Read directory state after placeholder recount failed, errno:%{public}d", ret);
         return;
     }
-    uint8_t dirState = count > 0 ? PLACEHOLDER_STATE_HAS_PLACEHOLDER : PLACEHOLDER_STATE_NONE;
+    uint8_t dirState = count > 0 ? PLACEHOLDER_STATE_HAS_PLACEHOLDER : PLACEHOLDER_STATE_FULLY_HYDRATED;
     uint8_t newState = MakeFileSyncState(dirState, GetSyncStateFromFileSyncState(oldState));
     ret = WriteFileSyncStateByteNoLock(path, newState);
     if (ret != E_OK) {
@@ -337,7 +337,7 @@ int32_t RecountNode(const std::string &syncRoot,
     isPlaceholder = count > 0;
     if (path != syncRoot) {
         (void)UpdateDentryPlaceholderState(userId, syncFolderIndex, path,
-            isPlaceholder ? PLACEHOLDER_STATE_HAS_PLACEHOLDER : PLACEHOLDER_STATE_NONE);
+            isPlaceholder ? PLACEHOLDER_STATE_HAS_PLACEHOLDER : PLACEHOLDER_STATE_FULLY_HYDRATED);
     }
     return E_OK;
 }
@@ -346,6 +346,12 @@ int32_t RecountNode(const std::string &syncRoot,
 bool IsPlaceholderState(uint8_t placeholderState)
 {
     return placeholderState != PLACEHOLDER_STATE_NONE;
+}
+
+bool IsCountedPlaceholder(uint8_t placeholderState)
+{
+    return placeholderState == PLACEHOLDER_STATE_UNHYDRATED ||
+           placeholderState == PLACEHOLDER_STATE_PARTIALLY_HYDRATED;
 }
 
 bool IsValidPlaceholderState(uint8_t placeholderState)
