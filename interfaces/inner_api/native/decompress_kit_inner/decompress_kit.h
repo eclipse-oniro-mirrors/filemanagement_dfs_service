@@ -16,8 +16,6 @@
 #ifndef OHOS_FILEMGMT_DECOMPRESS_KIT_H
 #define OHOS_FILEMGMT_DECOMPRESS_KIT_H
 
-#include <cstdint>
-#include <memory>
 #include <string>
 
 #include "visibility.h"

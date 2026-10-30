@@ -491,7 +491,7 @@ bool DecompressGainsReporter::DumpAndReport(const std::string &bundleName)
     }
     if (found) {
         if (!WriteOrUpdateGainsRecord(info)) {
-            LOGD("WriteOrUpdateGainsRecord failed for bundle: %{public}s", bundleName.c_str());
+            LOGE("WriteOrUpdateGainsRecord failed for bundle: %{public}s", bundleName.c_str());
         }
     } else {
         LOGD("DumpAndReport: bundle %{public}s not found in gainsMap", bundleName.c_str());
