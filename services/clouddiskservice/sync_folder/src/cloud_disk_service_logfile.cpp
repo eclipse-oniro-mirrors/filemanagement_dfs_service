@@ -200,6 +200,39 @@ int32_t CloudDiskServiceLogFile::ReadLogFile(const uint64_t line, struct LogBloc
     return E_OK;
 }
 
+int32_t CloudDiskServiceLogFile::ReadSuperBlock(struct LogSuperBlock &superBlock)
+{
+    std::lock_guard<std::mutex> lock(fileMtx_);
+    ssize_t size = FileUtils::ReadFile(fd_, 0, LOG_SUPERBLOCK_SIZE, &superBlock);
+    if (size != LOG_SUPERBLOCK_SIZE) {
+        LOGE("ReadSuperBlock failed, size %{public}zd != %{public}d", size, LOG_SUPERBLOCK_SIZE);
+        return -1;
+    }
+    LOGD("ReadSuperBlock success, magic: %{public}u, version: %{public}u, currentLine: %{public}" PRIu64
+         ", reversal: %{public}u",
+         superBlock.magic, superBlock.version, superBlock.currentLine, superBlock.reversal);
+    return E_OK;
+}
+
+int32_t CloudDiskServiceLogFile::WriteSuperBlock()
+{
+    struct LogSuperBlock superBlock;
+    superBlock.magic = LOG_SUPERBLOCK_MAGIC;
+    superBlock.version = LOG_SUPERBLOCK_VERSION;
+    superBlock.currentLine = currentLine_.load();
+    superBlock.reversal = static_cast<uint8_t>(reversal_.load());
+
+    std::lock_guard<std::mutex> lock(fileMtx_);
+    int32_t size = FileUtils::WriteFile(fd_, &superBlock, 0, LOG_SUPERBLOCK_SIZE);
+    if (size != LOG_SUPERBLOCK_SIZE) {
+        LOGE("WriteSuperBlock failed, size %{public}d != %{public}d", size, LOG_SUPERBLOCK_SIZE);
+        return -1;
+    }
+    LOGD("WriteSuperBlock success, currentLine: %{public}" PRIu64 ", reversal: %{public}u",
+         superBlock.currentLine, superBlock.reversal);
+    return E_OK;
+}
+
 int32_t CloudDiskServiceLogFile::OnDataChange()
 {
     std::vector<ChangeData> tmpDatas;
@@ -230,12 +263,27 @@ CloudDiskServiceLogFile::CloudDiskServiceLogFile(const int32_t userId, const uin
     logFilePath_ = GetLogFileByPath(userId_, syncFolderIndex_);
     if (access(logFilePath_.c_str(), F_OK) == 0) {
         fd_ = UniqueFd{open(logFilePath_.c_str(), O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)};
-        currentLine_ = GetCurrentLine(fd_);
-        reversal_ = GetReversal(fd_, currentLine_);
+        struct LogSuperBlock superBlock;
+        if (ReadSuperBlock(superBlock) == E_OK && superBlock.magic == LOG_SUPERBLOCK_MAGIC &&
+            superBlock.version == LOG_SUPERBLOCK_VERSION) {
+            currentLine_ = superBlock.currentLine;
+            reversal_ = static_cast<bool>(superBlock.reversal);
+            LOGI("Load superBlock success, currentLine: %{public}" PRIu64 ", reversal: %{public}d",
+                 currentLine_.load(), reversal_.load());
+        } else {
+            currentLine_ = GetCurrentLine(fd_);
+            reversal_ = GetReversal(fd_, currentLine_);
+            WriteSuperBlock();
+            LOGW("ReadSuperBlock failed or invalid, currentLine: %{public}" PRIu64 ", reversal: %{public}d",
+                currentLine_.load(), reversal_.load());
+        }
     } else {
         fd_ = UniqueFd{open(logFilePath_.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)};
         ftruncate(fd_, LOGGROUP_SIZE * LOGGROUP_MAX + LOGGROUP_HEADER);
         currentLine_ = 0;
+        reversal_ = false;
+        WriteSuperBlock();
+        LOGD("Create new log file and init superBlock, syncFolderIndex: %{public}u", syncFolderIndex_);
     }
 }
 
@@ -264,6 +312,11 @@ int32_t CloudDiskServiceLogFile::GenerateLogBlock(const struct EventInfo &eventI
         return -1;
     }
     WriteLogFile(logBlock);
+    if (!reversal_.load() && currentLine_ > LOG_COUNT_MAX) {
+        reversal_ = true;
+        LOGI("Reversal enabled, currentLine: %{public}" PRIu64, currentLine_.load());
+    }
+    WriteSuperBlock();
     line = logBlock.line;
     LOGD("Generate log line:%{public}llu, operationType:%{public}d", line, logBlock.operationType);
     return E_OK;

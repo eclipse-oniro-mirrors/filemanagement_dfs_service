@@ -45,6 +45,10 @@ constexpr uint32_t LOGGROUP_INDEX_MASK = 0XFFFF;
 constexpr uint32_t LOGGROUP_HEADER = 4096;
 constexpr uint32_t LOG_INDEX_MASK = 0X3F;
 constexpr uint32_t LOG_COUNT_MAX = 65536;
+constexpr uint32_t LOG_SUPERBLOCK_MAGIC = 0X43445342;   // "CDSB"
+constexpr uint32_t LOG_SUPERBLOCK_VERSION = 1;
+constexpr uint32_t LOG_SUPERBLOCK_SIZE = 64;
+constexpr uint32_t LOG_SUPERBLOCK_RESERVED_SIZE = 47;
 
 struct LogGenerateCtx {
     std::string recordId{};
@@ -72,6 +76,15 @@ struct LogGroup {
     uint8_t reserved[LOGGROUP_RESERVED_LENGTH];
 };
 static_assert(sizeof(LogGroup) == LOGGROUP_SIZE);
+
+struct LogSuperBlock {
+    uint32_t magic{0};
+    uint32_t version{0};
+    uint64_t currentLine{0};
+    uint8_t reversal{0};
+    uint8_t reserved[LOG_SUPERBLOCK_RESERVED_SIZE];
+};
+static_assert(sizeof(LogSuperBlock) == LOG_SUPERBLOCK_SIZE);
 #pragma pack(pop)
 
 class CloudDiskServiceLogFile {
@@ -136,6 +149,8 @@ private:
 
     int32_t WriteLogFile(const struct LogBlock &logBlock);
     int32_t ReadLogFile(const uint64_t line, struct LogBlock &logBlock);
+    int32_t ReadSuperBlock(struct LogSuperBlock &superBlock);
+    int32_t WriteSuperBlock();
     int32_t GenerateLogBlock(const struct EventInfo &eventInfo,
                              const uint64_t parentInode,
                              const struct LogGenerateCtx &ctx,
@@ -158,8 +173,8 @@ private:
     uint8_t renamePlaceholderState_{0};
     UniqueFd fd_;
 
-    std::atomic<uint64_t> currentLine_;
-    std::atomic<bool> reversal_;
+    std::atomic<uint64_t> currentLine_{0};
+    std::atomic<bool> reversal_{false};
 
     std::mutex fileMtx_;
     std::mutex vectorMtx_;

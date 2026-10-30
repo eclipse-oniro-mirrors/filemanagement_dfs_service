@@ -151,6 +151,109 @@ HWTEST_F(CloudDiskServiceLogFileTest, ReadLogFileTest002, TestSize.Level1)
 }
 
 /**
+ * @tc.name: ReadSuperBlockTest001
+ * @tc.desc: Verify ReadSuperBlock when ReadFile returns wrong size
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, ReadSuperBlockTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ReadSuperBlockTest001 start";
+    try {
+        LogSuperBlock superBlock;
+        EXPECT_CALL(*insMock_, ReadFile(_, _, _, _)).WillRepeatedly(Return(0));
+        int32_t res = logFile_->ReadSuperBlock(superBlock);
+        EXPECT_EQ(res, -1);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "ReadSuperBlockTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "ReadSuperBlockTest001 end";
+}
+
+/**
+ * @tc.name: ReadSuperBlockTest002
+ * @tc.desc: Verify ReadSuperBlock when ReadFile returns correct size and valid data
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, ReadSuperBlockTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ReadSuperBlockTest002 start";
+    try {
+        LogSuperBlock superBlock;
+        EXPECT_CALL(*insMock_, ReadFile(_, _, _, _))
+            .WillOnce(Invoke([](int, off_t, size_t size, void *buf) -> int64_t {
+                auto *sb = static_cast<LogSuperBlock *>(buf);
+                sb->magic = LOG_SUPERBLOCK_MAGIC;
+                sb->version = LOG_SUPERBLOCK_VERSION;
+                sb->currentLine = 100;
+                sb->reversal = 1;
+                return static_cast<int64_t>(size);
+            }));
+        int32_t res = logFile_->ReadSuperBlock(superBlock);
+        EXPECT_EQ(res, E_OK);
+        EXPECT_EQ(superBlock.magic, LOG_SUPERBLOCK_MAGIC);
+        EXPECT_EQ(superBlock.version, LOG_SUPERBLOCK_VERSION);
+        EXPECT_EQ(superBlock.currentLine, 100);
+        EXPECT_EQ(superBlock.reversal, 1);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "ReadSuperBlockTest002 failed";
+    }
+    GTEST_LOG_(INFO) << "ReadSuperBlockTest002 end";
+}
+
+/**
+ * @tc.name: WriteSuperBlockTest001
+ * @tc.desc: Verify WriteSuperBlock when WriteFile returns wrong size
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, WriteSuperBlockTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "WriteSuperBlockTest001 start";
+    try {
+        logFile_->currentLine_ = 0;
+        logFile_->reversal_ = false;
+        EXPECT_CALL(*insMock_, WriteFile(_, _, _, _)).WillRepeatedly(Return(0));
+        int32_t res = logFile_->WriteSuperBlock();
+        EXPECT_EQ(res, -1);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "WriteSuperBlockTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "WriteSuperBlockTest001 end";
+}
+
+/**
+ * @tc.name: WriteSuperBlockTest002
+ * @tc.desc: Verify WriteSuperBlock when WriteFile succeeds, capture and verify data
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, WriteSuperBlockTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "WriteSuperBlockTest002 start";
+    try {
+        logFile_->currentLine_ = 200;
+        logFile_->reversal_ = true;
+        LogSuperBlock captured;
+        EXPECT_CALL(*insMock_, WriteFile(_, _, _, _))
+            .WillOnce(Invoke([&captured](int, const void *data, off_t, size_t size) -> int64_t {
+                (void)memcpy_s(&captured, sizeof(LogSuperBlock), data, sizeof(LogSuperBlock));
+                return static_cast<int64_t>(size);
+            }));
+        int32_t res = logFile_->WriteSuperBlock();
+        EXPECT_EQ(res, E_OK);
+        EXPECT_EQ(captured.magic, LOG_SUPERBLOCK_MAGIC);
+        EXPECT_EQ(captured.version, LOG_SUPERBLOCK_VERSION);
+        EXPECT_EQ(captured.currentLine, 200);
+        EXPECT_EQ(captured.reversal, 1);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "WriteSuperBlockTest002 failed";
+    }
+    GTEST_LOG_(INFO) << "WriteSuperBlockTest002 end";
+}
+
+/**
  * @tc.name: OnDataChangeTest001
  * @tc.desc: Verify the OnDataChange function
  * @tc.type: FUNC
@@ -226,6 +329,7 @@ HWTEST_F(CloudDiskServiceLogFileTest, CloudDiskServiceLogFileTest002, TestSize.L
         uint32_t syncFolderIndex = 1;
         EXPECT_CALL(*insMock_, access(_, _)).WillRepeatedly(Return(1));
         EXPECT_CALL(*insMock_, ftruncate(_, _)).WillOnce(Return(0));
+        EXPECT_CALL(*insMock_, WriteFile(_, _, _, _)).WillRepeatedly(Return(LOG_SUPERBLOCK_SIZE));
         shared_ptr<CloudDiskServiceLogFile> logFile = make_shared<CloudDiskServiceLogFile>(userId, syncFolderIndex);
         EXPECT_EQ(logFile->userId_, userId);
         EXPECT_EQ(logFile->syncFolderIndex_, syncFolderIndex);
@@ -250,10 +354,8 @@ HWTEST_F(CloudDiskServiceLogFileTest, CloudDiskServiceLogFileTest003, TestSize.L
         uint32_t userId = 1;
         uint32_t syncFolderIndex = 1;
         EXPECT_CALL(*insMock_, access(_, _)).WillRepeatedly(Return(0));
-        EXPECT_CALL(*insMock_, ReadFile(_, _, _, _))
-            .WillOnce(Return(LOGGROUP_SIZE))
-            .WillOnce(Return(LOGGROUP_SIZE))
-            .WillOnce(Return(LOGGROUP_SIZE));
+        EXPECT_CALL(*insMock_, ReadFile(_, _, _, _)).WillRepeatedly(Return(LOGGROUP_SIZE));
+        EXPECT_CALL(*insMock_, WriteFile(_, _, _, _)).WillRepeatedly(Return(LOG_SUPERBLOCK_SIZE));
         shared_ptr<CloudDiskServiceLogFile> logFile = make_shared<CloudDiskServiceLogFile>(userId, syncFolderIndex);
         EXPECT_EQ(logFile->userId_, userId);
         EXPECT_EQ(logFile->syncFolderIndex_, syncFolderIndex);
@@ -262,6 +364,162 @@ HWTEST_F(CloudDiskServiceLogFileTest, CloudDiskServiceLogFileTest003, TestSize.L
         GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest003 failed";
     }
     GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest003 end";
+}
+
+/**
+ * @tc.name: CloudDiskServiceLogFileTest004
+ * @tc.desc: Verify constructor when file exists and superblock is valid
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, CloudDiskServiceLogFileTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest004 start";
+    try {
+        uint32_t userId = 2;
+        uint32_t syncFolderIndex = 2;
+        EXPECT_CALL(*insMock_, access(_, _)).WillRepeatedly(Return(0));
+        EXPECT_CALL(*insMock_, ReadFile(_, _, _, _))
+            .WillRepeatedly(Invoke([](int, off_t, size_t size, void *buf) -> int64_t {
+                if (size == LOG_SUPERBLOCK_SIZE) {
+                    auto *sb = static_cast<LogSuperBlock *>(buf);
+                    sb->magic = LOG_SUPERBLOCK_MAGIC;
+                    sb->version = LOG_SUPERBLOCK_VERSION;
+                    sb->currentLine = 100;
+                    sb->reversal = 1;
+                    return static_cast<int64_t>(size);
+                }
+                return static_cast<int64_t>(size);
+            }));
+        shared_ptr<CloudDiskServiceLogFile> logFile = make_shared<CloudDiskServiceLogFile>(userId, syncFolderIndex);
+        EXPECT_EQ(logFile->currentLine_, 100);
+        EXPECT_TRUE(logFile->reversal_);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest004 failed";
+    }
+    GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest004 end";
+}
+
+/**
+ * @tc.name: CloudDiskServiceLogFileTest005
+ * @tc.desc: Verify constructor when file exists but superblock magic mismatch
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, CloudDiskServiceLogFileTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest005 start";
+    try {
+        uint32_t userId = 3;
+        uint32_t syncFolderIndex = 3;
+        EXPECT_CALL(*insMock_, access(_, _)).WillRepeatedly(Return(0));
+        EXPECT_CALL(*insMock_, ReadFile(_, _, _, _))
+            .WillRepeatedly(Invoke([](int, off_t, size_t size, void *buf) -> int64_t {
+                if (size == LOG_SUPERBLOCK_SIZE) {
+                    auto *sb = static_cast<LogSuperBlock *>(buf);
+                    sb->magic = 0;
+                    sb->version = LOG_SUPERBLOCK_VERSION;
+                    sb->currentLine = 100;
+                    sb->reversal = 1;
+                    return static_cast<int64_t>(size);
+                }
+                auto *group = static_cast<LogGroup *>(buf);
+                (void)memset_s(group, LOGGROUP_SIZE, 0, LOGGROUP_SIZE);
+                return static_cast<int64_t>(size);
+            }));
+        EXPECT_CALL(*insMock_, WriteFile(_, _, _, _)).WillRepeatedly(Return(LOG_SUPERBLOCK_SIZE));
+        shared_ptr<CloudDiskServiceLogFile> logFile = make_shared<CloudDiskServiceLogFile>(userId, syncFolderIndex);
+        EXPECT_NE(logFile->currentLine_, 100);
+        EXPECT_FALSE(logFile->reversal_);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest005 failed";
+    }
+    GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest005 end";
+}
+
+/**
+ * @tc.name: CloudDiskServiceLogFileTest006
+ * @tc.desc: Verify constructor when file exists but superblock version mismatch
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, CloudDiskServiceLogFileTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest006 start";
+    try {
+        uint32_t userId = 4;
+        uint32_t syncFolderIndex = 4;
+        EXPECT_CALL(*insMock_, access(_, _)).WillRepeatedly(Return(0));
+        EXPECT_CALL(*insMock_, ReadFile(_, _, _, _))
+            .WillRepeatedly(Invoke([](int, off_t, size_t size, void *buf) -> int64_t {
+                if (size == LOG_SUPERBLOCK_SIZE) {
+                    auto *sb = static_cast<LogSuperBlock *>(buf);
+                    sb->magic = LOG_SUPERBLOCK_MAGIC;
+                    sb->version = 0;
+                    sb->currentLine = 100;
+                    sb->reversal = 1;
+                    return static_cast<int64_t>(size);
+                }
+                auto *group = static_cast<LogGroup *>(buf);
+                (void)memset_s(group, LOGGROUP_SIZE, 0, LOGGROUP_SIZE);
+                return static_cast<int64_t>(size);
+            }));
+        EXPECT_CALL(*insMock_, WriteFile(_, _, _, _)).WillRepeatedly(Return(LOG_SUPERBLOCK_SIZE));
+        shared_ptr<CloudDiskServiceLogFile> logFile = make_shared<CloudDiskServiceLogFile>(userId, syncFolderIndex);
+        EXPECT_NE(logFile->currentLine_, 100);
+        EXPECT_FALSE(logFile->reversal_);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest006 failed";
+    }
+    GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest006 end";
+}
+
+/**
+ * @tc.name: CloudDiskServiceLogFileTest007
+ * @tc.desc: Verify constructor when file exists but ReadSuperBlock fails (read returns 0)
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, CloudDiskServiceLogFileTest007, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest007 start";
+    try {
+        uint32_t userId = 5;
+        uint32_t syncFolderIndex = 5;
+        EXPECT_CALL(*insMock_, access(_, _)).WillRepeatedly(Return(0));
+        EXPECT_CALL(*insMock_, ReadFile(_, _, _, _)).WillRepeatedly(Return(0));
+        EXPECT_CALL(*insMock_, WriteFile(_, _, _, _)).WillRepeatedly(Return(LOG_SUPERBLOCK_SIZE));
+        shared_ptr<CloudDiskServiceLogFile> logFile = make_shared<CloudDiskServiceLogFile>(userId, syncFolderIndex);
+        EXPECT_EQ(logFile->currentLine_, 0);
+        EXPECT_FALSE(logFile->reversal_);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest007 failed";
+    }
+    GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest007 end";
+}
+
+/**
+ * @tc.name: CloudDiskServiceLogFileTest008
+ * @tc.desc: Verify constructor when file does not exist, WriteSuperBlock is called
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, CloudDiskServiceLogFileTest008, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest008 start";
+    try {
+        uint32_t userId = 6;
+        uint32_t syncFolderIndex = 6;
+        EXPECT_CALL(*insMock_, access(_, _)).WillRepeatedly(Return(1));
+        EXPECT_CALL(*insMock_, ftruncate(_, _)).WillRepeatedly(Return(0));
+        EXPECT_CALL(*insMock_, WriteFile(_, _, _, _)).WillRepeatedly(Return(LOG_SUPERBLOCK_SIZE));
+        shared_ptr<CloudDiskServiceLogFile> logFile = make_shared<CloudDiskServiceLogFile>(userId, syncFolderIndex);
+        EXPECT_EQ(logFile->currentLine_, 0);
+        EXPECT_FALSE(logFile->reversal_);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest008 failed";
+    }
+    GTEST_LOG_(INFO) << "CloudDiskServiceLogFileTest008 end";
 }
 
 /**
@@ -282,15 +540,94 @@ HWTEST_F(CloudDiskServiceLogFileTest, GenerateLogBlockTest001, TestSize.Level1)
         ctx.bidx = 0;
         ctx.bitPos = 0;
         uint64_t line = 1;
+        logFile_->currentLine_ = 0;
+        logFile_->reversal_ = false;
         EXPECT_CALL(*insMock_, ReadFile(_, _, _, _)).WillRepeatedly(Return(LOGGROUP_SIZE));
-        EXPECT_CALL(*insMock_, WriteFile(_, _, _, _)).WillRepeatedly(Return(LOGGROUP_SIZE));
+        EXPECT_CALL(*insMock_, WriteFile(_, _, _, _))
+            .WillRepeatedly(Invoke([](int, const void *, off_t, size_t size) -> int64_t {
+                return static_cast<int64_t>(size);
+            }));
         int32_t res = logFile_->GenerateLogBlock(eventInfo, parentInode, ctx, parentRecordId, line);
         EXPECT_EQ(res, E_OK);
+        EXPECT_EQ(logFile_->currentLine_, 1);
+        EXPECT_FALSE(logFile_->reversal_);
     } catch (...) {
         EXPECT_TRUE(false);
         GTEST_LOG_(INFO) << "GenerateLogBlockTest001 failed";
     }
     GTEST_LOG_(INFO) << "GenerateLogBlockTest001 end";
+}
+
+/**
+ * @tc.name: GenerateLogBlockTest002
+ * @tc.desc: Verify GenerateLogBlock sets reversal_ when currentLine_ exceeds LOG_COUNT_MAX
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, GenerateLogBlockTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GenerateLogBlockTest002 start";
+    try {
+        EventInfo eventInfo;
+        uint64_t parentInode = 1;
+        string childRecordId = "childRecordId";
+        string parentRecordId = "parentRecordId";
+        struct LogGenerateCtx ctx;
+        ctx.recordId = childRecordId;
+        ctx.bidx = 0;
+        ctx.bitPos = 0;
+        uint64_t line = 1;
+        logFile_->currentLine_ = LOG_COUNT_MAX;
+        logFile_->reversal_ = false;
+        EXPECT_CALL(*insMock_, ReadFile(_, _, _, _)).WillRepeatedly(Return(LOGGROUP_SIZE));
+        EXPECT_CALL(*insMock_, WriteFile(_, _, _, _))
+            .WillRepeatedly(Invoke([](int, const void *, off_t, size_t size) -> int64_t {
+                return static_cast<int64_t>(size);
+            }));
+        int32_t res = logFile_->GenerateLogBlock(eventInfo, parentInode, ctx, parentRecordId, line);
+        EXPECT_EQ(res, E_OK);
+        EXPECT_EQ(logFile_->currentLine_, static_cast<uint64_t>(LOG_COUNT_MAX) + 1);
+        EXPECT_TRUE(logFile_->reversal_);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "GenerateLogBlockTest002 failed";
+    }
+    GTEST_LOG_(INFO) << "GenerateLogBlockTest002 end";
+}
+
+/**
+ * @tc.name: GenerateLogBlockTest003
+ * @tc.desc: Verify GenerateLogBlock does not set reversal_ when currentLine_ is below LOG_COUNT_MAX
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, GenerateLogBlockTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GenerateLogBlockTest003 start";
+    try {
+        EventInfo eventInfo;
+        uint64_t parentInode = 1;
+        string childRecordId = "childRecordId";
+        string parentRecordId = "parentRecordId";
+        struct LogGenerateCtx ctx;
+        ctx.recordId = childRecordId;
+        ctx.bidx = 0;
+        ctx.bitPos = 0;
+        uint64_t line = 1;
+        logFile_->currentLine_ = LOG_COUNT_MAX - 1;
+        logFile_->reversal_ = false;
+        EXPECT_CALL(*insMock_, ReadFile(_, _, _, _)).WillRepeatedly(Return(LOGGROUP_SIZE));
+        EXPECT_CALL(*insMock_, WriteFile(_, _, _, _))
+            .WillRepeatedly(Invoke([](int, const void *, off_t, size_t size) -> int64_t {
+                return static_cast<int64_t>(size);
+            }));
+        int32_t res = logFile_->GenerateLogBlock(eventInfo, parentInode, ctx, parentRecordId, line);
+        EXPECT_EQ(res, E_OK);
+        EXPECT_EQ(logFile_->currentLine_, LOG_COUNT_MAX);
+        EXPECT_FALSE(logFile_->reversal_);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "GenerateLogBlockTest003 failed";
+    }
+    GTEST_LOG_(INFO) << "GenerateLogBlockTest003 end";
 }
 
 /**
@@ -1837,6 +2174,11 @@ HWTEST_F(LogFileMgrTest, PraseRequestTest002, TestSize.Level1)
             .WillRepeatedly(Invoke([](int, off_t, size_t size, void *buf) -> int64_t {
                 if (buf == nullptr)
                     return -1;
+                if (size == LOG_SUPERBLOCK_SIZE) {
+                    auto *sb = static_cast<LogSuperBlock *>(buf);
+                    (void)memset_s(sb, LOG_SUPERBLOCK_SIZE, 0, LOG_SUPERBLOCK_SIZE);
+                    return static_cast<int64_t>(size);
+                }
                 auto *group = static_cast<LogGroup *>(buf);
                 (void)memset_s(group, LOGGROUP_SIZE, 0, LOGGROUP_SIZE);
                 group->logBlockCnt = 1;
@@ -1845,6 +2187,7 @@ HWTEST_F(LogFileMgrTest, PraseRequestTest002, TestSize.Level1)
                 group->nsl[0].parentInode = 1;
                 return static_cast<int64_t>(size);
             }));
+        EXPECT_CALL(*insMock_, WriteFile(_, _, _, _)).WillRepeatedly(Return(LOG_SUPERBLOCK_SIZE));
         logFileMgr_->PraseRequest(userId, syncFolderIndex, start, count, changeResult);
     } catch (...) {
         EXPECT_TRUE(false);
