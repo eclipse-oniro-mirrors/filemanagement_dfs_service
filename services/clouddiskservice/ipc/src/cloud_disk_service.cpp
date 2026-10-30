@@ -17,6 +17,7 @@
 
 #include <cerrno>
 #include <charconv>
+#include <chrono>
 #include <cinttypes>
 #include <climits>
 #include <cstdlib>
@@ -70,6 +71,7 @@ constexpr size_t PLACEHOLDER_CUSTOM_INFO_MAX_SIZE = 1024;
 constexpr uint64_t MAX_PLACEHOLDER_LOGICAL_SIZE = static_cast<uint64_t>(std::numeric_limits<off_t>::max());
 constexpr const char *CLOUD_DISK_CUSTOM_INFO_XATTR = "user.clouddisk.custominfo";
 constexpr int32_t DEHYDRATE_EXTEND_MAX_ATTEMPTS = 3;
+constexpr int32_t UNLOAD_DELAY_MS = 5000;
 
 int32_t ConvertTargetErrnoToCloudDiskError(int32_t error)
 {
@@ -461,6 +463,7 @@ void CloudDiskService::OnStop()
 {
     LOGI("Begin to stop");
 #ifdef SUPPORT_CLOUD_DISK_SERVICE
+    CancelPendingUnload();
     {
         std::lock_guard<std::mutex> lock(startMutex_);
         if (initState_ != nullptr) {
@@ -1176,6 +1179,7 @@ int32_t CloudDiskService::RegisterSyncFolderInner(
     int32_t userId, const std::string &bundleName, const std::string &path)
 {
 #ifdef SUPPORT_CLOUD_DISK_SERVICE
+    CancelPendingUnload();
     std::lock_guard<std::mutex> lifecycleLock(lifecycleMutex_);
     LOGI("Begin RegisterSyncFolderInner");
     RETURN_ON_ERR(CheckPermissions(PERM_CLOUD_DISK_SERVICE, true));
@@ -1325,7 +1329,31 @@ void CloudDiskService::UnloadSa()
         }
 #endif
         DiskMonitor::GetInstance().StopMonitor();
+        DelayUnloadSa();
+    }
+}
+
+void CloudDiskService::DelayUnloadSa()
+{
+    CancelPendingUnload();
+    std::lock_guard<ffrt::mutex> lock(unloadMutex_);
+    auto delayUs = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::milliseconds(UNLOAD_DELAY_MS));
+    unloadTaskHandle_ = unloadQueue_.submit_h([this]() {
+        if (CloudDiskSyncFolder::GetInstance().GetSyncFolderSize() > 0) {
+            LOGI("Sync folder registered during delay, cancel unload");
+            return;
+        }
         RequestUnloadCloudDiskService();
+    }, ffrt::task_attr().delay(delayUs.count()));
+}
+
+void CloudDiskService::CancelPendingUnload()
+{
+    std::lock_guard<ffrt::mutex> lock(unloadMutex_);
+    if (unloadTaskHandle_ != nullptr) {
+        unloadQueue_.cancel(unloadTaskHandle_);
+        unloadTaskHandle_ = {};
     }
 }
 

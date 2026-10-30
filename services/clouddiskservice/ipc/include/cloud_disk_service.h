@@ -107,6 +107,11 @@ private:
     int32_t currentUserId_ = -1;
     static sptr<CloudDiskService> instance_;
     std::mutex lifecycleMutex_;
+    void DelayUnloadSa();
+    void CancelPendingUnload();
+    ffrt::queue unloadQueue_{"clouddiskUnloadQueue"};
+    ffrt::task_handle unloadTaskHandle_{};
+    ffrt::mutex unloadMutex_;
     bool PublishSA();
     int32_t Init(const SystemAbilityOnDemandReason &startReason);
     int32_t WaitForInit();
