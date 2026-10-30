@@ -30,14 +30,14 @@
 #include "utils_log.h"
 
 namespace OHOS::FileManagement::CloudSync {
-const std::string QUERY_URI = "datashareproxy://";
+const std::string QUERY_URI_PREFIX = "datashareproxy://";
 const std::string SWITCH_STATUS_KEY = "useMobileNetworkData";
 const std::string CLOUDDRIVE_KEY = "persist.kernel.bundle_name.clouddrive";
 const std::string PHOTOS_BUNDLE_NAME = "com.ohos.photos";
 const std::string BUNDLE_NAME_KEY = "key";
 const std::string BUNDLE_NAME_VALUE = "value";
 auto driveBundleName = system::GetParameter(CLOUDDRIVE_KEY, "");
-auto commonQueryUri = QUERY_URI + driveBundleName + "/cloud_sp?key=" + SWITCH_STATUS_KEY;
+auto commonQueryUri = QUERY_URI_PREFIX + driveBundleName + "/cloud_sp?key=" + SWITCH_STATUS_KEY;
 DataShare::CreateOptions commonOptions;
 
 int32_t NetworkSetManager::QueryCellularConnect(int32_t userId, const std::string &bundleName)
@@ -50,9 +50,9 @@ int32_t NetworkSetManager::QueryCellularConnect(int32_t userId, const std::strin
     DataShare::CreateOptions options;
     options.enabled_ = true;
     auto clouddriveBundleName = system::GetParameter(CLOUDDRIVE_KEY, "");
-    auto queryUri = QUERY_URI + clouddriveBundleName + "/cloud_sp?user=" + std::to_string(userId);
+    auto queryUri = QUERY_URI_PREFIX + clouddriveBundleName + "/cloud_sp?user=" + std::to_string(userId);
     Uri uri(queryUri);
-    auto dataShareHelper = DataShare::DataShareHelper::Creator(QUERY_URI, options);
+    auto dataShareHelper = DataShare::DataShareHelper::Creator(queryUri, options);
     if (dataShareHelper == nullptr) {
         LOGE("dataShareHelper = nullptr");
         return E_RDB;
@@ -141,7 +141,7 @@ void NetworkSetManager::UnregisterObserver(const std::string &bundleName, const 
 {
     LOGI("UnregisterObserver start");
     commonOptions.enabled_ = true;
-    auto dataShareHelper = DataShare::DataShareHelper::Creator(QUERY_URI, commonOptions);
+    auto dataShareHelper = DataShare::DataShareHelper::Creator(commonQueryUri, commonOptions);
     if (dataShareHelper == nullptr) {
         LOGE("dataShareHelper = nullptr");
         return;
@@ -162,7 +162,7 @@ void NetworkSetManager::UnregisterObserver(const std::string &bundleName, const 
 void NetworkSetManager::RegisterObserver(const std::string &bundleName, const int32_t userId, const int32_t type)
 {
     commonOptions.enabled_ = true;
-    auto dataShareHelper = DataShare::DataShareHelper::Creator(QUERY_URI, commonOptions);
+    auto dataShareHelper = DataShare::DataShareHelper::Creator(commonQueryUri, commonOptions);
     if (dataShareHelper == nullptr) {
         LOGE("dataShareHelper = nullptr");
         return;
