@@ -483,7 +483,7 @@ napi_value CloudSyncNapi::Start(napi_env env, napi_callback_info info)
 
     std::string procedureName = "Start";
     std::string taskName = "cloudSync.GallerySync.start";
-    auto asyncWork = GetPromiseOrCallBackWork(env, funcArg, static_cast<size_t>(NARG_CNT::TWO), taskName);
+    auto asyncWork = GetPromiseOrCallBackWork(env, funcArg, static_cast<size_t>(NARG_CNT::ONE), taskName);
     return asyncWork == nullptr ? nullptr : asyncWork->Schedule(procedureName, cbExec, cbComplete).val_;
 }
 
@@ -665,7 +665,7 @@ napi_value CloudSyncNapi::Stop(napi_env env, napi_callback_info info)
 
     std::string procedureName = "Stop";
     std::string taskName = "cloudSync.GallerySync.stop";
-    auto asyncWork = GetPromiseOrCallBackWork(env, funcArg, static_cast<size_t>(NARG_CNT::TWO), taskName);
+    auto asyncWork = GetPromiseOrCallBackWork(env, funcArg, static_cast<size_t>(NARG_CNT::ONE), taskName);
     return asyncWork == nullptr ? nullptr : asyncWork->Schedule(procedureName, cbExec, cbComplete).val_;
 }
 
