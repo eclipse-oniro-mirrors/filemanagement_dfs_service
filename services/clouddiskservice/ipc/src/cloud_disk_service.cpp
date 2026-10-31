@@ -1654,6 +1654,17 @@ static int32_t DehydratePlaceholderFile(const PlaceholderStatePathContext &conte
 
     ret = DehydrateOpenFile(fd);
     LOGI("Dehydration finished, ret:%{public}d", ret);
+    if (ret == E_OK && !context.mntSyncFolder.empty()) {
+        if (state == PLACEHOLDER_STATE_FULLY_HYDRATED) {
+            // A fully hydrated placeholder was not counted; after dehydration it becomes
+            // unhydrated and must be counted again.
+            (void)RefreshAncestorPlaceholderCount(context.mntSyncFolder, context.hmdfsPath, 1);
+        }
+        if (context.userId >= 0) {
+            (void)UpdateDentryPlaceholderState(context.userId, context.syncFolderIndex, context.hmdfsPath,
+                                               PLACEHOLDER_STATE_UNHYDRATED);
+        }
+    }
     return ret;
 }
 
@@ -1668,13 +1679,14 @@ static int32_t ResolvePlaceholderStateTransition(uint8_t oldState,
                                                  int32_t &delta)
 {
     newState = PLACEHOLDER_STATE_NONE;
-    delta = -1;
+    // MARK moves a normal file to fully hydrated and UNMARK moves it back; neither state is
+    // counted, so the placeholder count stays unchanged.
+    delta = 0;
     if (transition == PlaceholderStateTransition::MARK) {
         if (IsPlaceholderState(oldState)) {
             return E_IS_A_PLACEHOLDER;
         }
         newState = PLACEHOLDER_STATE_FULLY_HYDRATED;
-        delta = 1;
         return E_OK;
     }
     if (!IsPlaceholderState(oldState)) {
@@ -1797,7 +1809,7 @@ static int32_t ConvertPlaceholderToEmptyFile(const std::string &hmdfsPath,
             ret = ConvertPlaceholderStateErrnoToCloudDiskError(ret);
             break;
         }
-        if (IsPlaceholderState(oldPlaceholderState) && !mntSyncFolder.empty()) {
+        if (IsCountedPlaceholder(oldPlaceholderState) && !mntSyncFolder.empty()) {
             (void)RefreshAncestorPlaceholderCount(mntSyncFolder, hmdfsPath, -1);
             if (userId >= 0) {
                 (void)UpdateDentryPlaceholderState(userId, syncFolderIndex, hmdfsPath, PLACEHOLDER_STATE_NONE);
@@ -2344,7 +2356,7 @@ static void RefreshUpdatedPlaceholderState(const std::string &hmdfsPath,
                                            uint8_t oldState,
                                            const PlaceholderUpdateContext &context)
 {
-    if (!IsPlaceholderState(oldState) && !context.mntSyncFolder.empty()) {
+    if (!IsCountedPlaceholder(oldState) && !context.mntSyncFolder.empty()) {
         (void)RefreshAncestorPlaceholderCount(context.mntSyncFolder, hmdfsPath, 1);
     }
     if (context.userId >= 0) {

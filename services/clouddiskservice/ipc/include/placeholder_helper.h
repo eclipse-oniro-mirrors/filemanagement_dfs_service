@@ -36,6 +36,7 @@ constexpr uint8_t FILE_SYNC_STATE_PLACEHOLDER_MASK = 0xE0;
 constexpr uint8_t FILE_SYNC_STATE_PLACEHOLDER_SHIFT = 5;
 
 bool IsPlaceholderState(uint8_t placeholderState);
+bool IsCountedPlaceholder(uint8_t placeholderState);
 bool IsValidPlaceholderState(uint8_t placeholderState);
 uint8_t GetPlaceholderStateFromFileSyncState(uint8_t state);
 uint8_t GetSyncStateFromFileSyncState(uint8_t state);

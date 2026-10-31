@@ -922,12 +922,25 @@ int32_t PlaceholderTaskManager::CommitFetchDataLocked(const std::shared_ptr<Plac
         // hydrated so the next access re-hydrates the missing ranges; the callback result stays
         // unchanged and the task completes normally.
         LOGE("Hydration completed with file holes, keep partial state, path:%{private}s",
-            task->hmdfsPath.c_str());
-        return EnsurePartialStateLocked(task);
+             task->hmdfsPath.c_str());
+        int32_t partialRet = EnsurePartialStateLocked(task);
+        if (partialRet == E_OK && !task->mountSyncFolder.empty() && task->userId >= 0) {
+            (void)UpdateDentryPlaceholderState(task->userId, task->syncFolderIndex, task->hmdfsPath,
+                                               PLACEHOLDER_STATE_PARTIALLY_HYDRATED);
+        }
+        return partialRet;
     }
     int32_t ret = SetCompleteStateLocked(task);
     if (ret != E_OK) {
         return ret;
+    }
+    if (!task->mountSyncFolder.empty()) {
+        // The file transitions from counted (1/2) to uncounted (3): decrease the count.
+        (void)RefreshAncestorPlaceholderCount(task->mountSyncFolder, task->hmdfsPath, -1);
+        if (task->userId >= 0) {
+            (void)UpdateDentryPlaceholderState(task->userId, task->syncFolderIndex, task->hmdfsPath,
+                                               PLACEHOLDER_STATE_FULLY_HYDRATED);
+        }
     }
     return E_OK;
 }
