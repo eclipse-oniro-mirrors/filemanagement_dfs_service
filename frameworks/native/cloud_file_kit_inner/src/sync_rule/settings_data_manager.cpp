@@ -30,7 +30,7 @@
 #include "utils_log.h"
 
 namespace OHOS::FileManagement::CloudSync {
-static const std::string SETTING_DATA_QUERY_URI = "datashareproxy://";
+static const std::string DATASHARE_PROXY_URI_PREFIX = "datashareproxy://";
 static const std::string SETTING_DATA_COMMON_URI = "datashare:///com.ohos.settingsdata/entry/settingsdata";
 static const std::string PHOTOS_KEY = "persist.kernel.bundle_name.photos";
 static const std::string SYNC_SWITCH_KEY = "photos_sync_options";                       // "0", "1", "2"
@@ -275,14 +275,14 @@ SwitchStatus SettingsDataManager::GetShareAlbumSwitchStatus(int32_t userId)
     DataShare::CreateOptions options;
     options.enabled_ = true;
     auto clouddriveBundleName = system::GetParameter(CLOUDDRIVE_KEY, "");
-    auto queryUri = SETTING_DATA_QUERY_URI + clouddriveBundleName +
+    auto queryUri = DATASHARE_PROXY_URI_PREFIX + clouddriveBundleName +
                     "/sync_switch?user=" + std::to_string(userId);
-    Uri uri(queryUri);
-    auto dataShareHelper = DataShare::DataShareHelper::Creator(SETTING_DATA_QUERY_URI, options);
+    auto dataShareHelper = DataShare::DataShareHelper::Creator(queryUri, options);
     if (dataShareHelper == nullptr) {
         LOGE("dataShareHelper is nullptr");
         return SwitchStatus::NONE;
     }
+    Uri uri(queryUri);
     auto resultSet = dataShareHelper->Query(uri, predicates, columns);
     dataShareHelper->Release();
     if (resultSet == nullptr) {
@@ -466,13 +466,13 @@ int32_t SettingsDataManager::QueryParamInUserSettingsData(const std::string &key
     std::vector<std::string> columns = {"value"};
     DataShare::CreateOptions options;
     options.enabled_ = true;
-    auto dataShareHelper = DataShare::DataShareHelper::Creator(SETTING_DATA_QUERY_URI, options);
+    std::string queryUri = GetUserSettingsDataUri(key);
+    auto dataShareHelper = DataShare::DataShareHelper::Creator(queryUri, options);
     if (dataShareHelper == nullptr) {
         LOGE("dataShareHelper == nullptr");
         return E_RDB;
     }
 
-    std::string queryUri = GetUserSettingsDataUri(key);
     Uri uri(queryUri);
     std::shared_ptr<DataShare::DataShareResultSet> resultSet = dataShareHelper->Query(uri, predicates, columns);
     dataShareHelper->Release();
@@ -510,13 +510,13 @@ int32_t SettingsDataManager::QueryParamInSettingsData(const std::string &key, st
     std::vector<std::string> columns = {"value"};
     DataShare::CreateOptions options;
     options.enabled_ = true;
-    auto dataShareHelper = DataShare::DataShareHelper::Creator(SETTING_DATA_QUERY_URI, options);
+    std::string queryUri = GetSettingsDataUri(key);
+    auto dataShareHelper = DataShare::DataShareHelper::Creator(queryUri, options);
     if (dataShareHelper == nullptr) {
         LOGE("dataShareHelper == nullptr");
         return E_RDB;
     }
 
-    std::string queryUri = GetSettingsDataUri(key);
     Uri uri(queryUri);
     std::shared_ptr<DataShare::DataShareResultSet> resultSet = dataShareHelper->Query(uri, predicates, columns);
     dataShareHelper->Release();
@@ -547,7 +547,8 @@ void SettingsDataManager::RegisterObserver(const std::string &key)
     LOGD("register key: %{public}s", key.c_str());
     DataShare::CreateOptions options;
     options.enabled_ = true;
-    auto dataShareHelper = DataShare::DataShareHelper::Creator(SETTING_DATA_QUERY_URI, options);
+    std::string uri = GetSettingsDataUri(key);
+    auto dataShareHelper = DataShare::DataShareHelper::Creator(uri, options);
     if (dataShareHelper == nullptr) {
         LOGE("dataShareHelper == nullptr");
         return;
@@ -559,7 +560,6 @@ void SettingsDataManager::RegisterObserver(const std::string &key)
         dataShareHelper->Release();
         return;
     }
-    std::string uri = GetSettingsDataUri(key);
     Uri observerUri(uri);
     int32_t ret = dataShareHelper->RegisterObserver(observerUri, dataObserver);
     dataShareHelper->Release();
@@ -580,13 +580,13 @@ void SettingsDataManager::RegisterObserver(const std::string &key, sptr<AAFwk::D
 
     DataShare::CreateOptions options;
     options.enabled_ = true;
-    auto dataShareHelper = DataShare::DataShareHelper::Creator(SETTING_DATA_QUERY_URI, options);
+    std::string uri = GetUserSettingsDataUri(key);
+    auto dataShareHelper = DataShare::DataShareHelper::Creator(uri, options);
     if (dataShareHelper == nullptr) {
         LOGE("dataShareHelper == nullptr");
         return;
     }
 
-    std::string uri = GetUserSettingsDataUri(key);
     Uri observerUri(uri);
     int32_t ret = dataShareHelper->RegisterObserver(observerUri, dataObserver);
     dataShareHelper->Release();
@@ -603,13 +603,14 @@ void SettingsDataManager::UnregisterDemonObserver(const std::string &key,
 
     DataShare::CreateOptions options;
     options.enabled_ = true;
-    auto dataShareHelper = DataShare::DataShareHelper::Creator(SETTING_DATA_QUERY_URI, options);
+    std::string uri = GetUserSettingsDataUri(key);
+    auto dataShareHelper = DataShare::DataShareHelper::Creator(uri, options);
     if (dataShareHelper == nullptr) {
         LOGE("dataShareHelper == nullptr");
         return;
     }
 
-    Uri observerUri(GetUserSettingsDataUri(key));
+    Uri observerUri(uri);
     dataShareHelper->UnregisterObserver(observerUri, dataObserver);
     dataShareHelper->Release();
 }
@@ -625,13 +626,13 @@ void SettingsDataManager::UnregisterObserver(const std::string &key)
 
     DataShare::CreateOptions options;
     options.enabled_ = true;
-    auto dataShareHelper = DataShare::DataShareHelper::Creator(SETTING_DATA_QUERY_URI, options);
+    std::string uri = GetSettingsDataUri(key);
+    auto dataShareHelper = DataShare::DataShareHelper::Creator(uri, options);
     if (dataShareHelper == nullptr) {
         LOGE("dataShareHelper == nullptr");
         return;
     }
 
-    std::string uri = GetSettingsDataUri(key);
     Uri observerUri(uri);
     dataShareHelper->UnregisterObserver(observerUri, dataObserver);
     dataShareHelper->Release();
