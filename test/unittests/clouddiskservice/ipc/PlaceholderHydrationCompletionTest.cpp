@@ -13,11 +13,13 @@
  * limitations under the License.
  */
 
+#include <chrono>
 #include <cstdlib>
 #include <fcntl.h>
 #include <gtest/gtest.h>
 #include <memory>
 #include <sys/stat.h>
+#include <thread>
 #include <unistd.h>
 
 #include "assistant.h"
@@ -68,6 +70,21 @@ CallbackExecuteRequest MakeRequest(const std::vector<uint8_t> &reqKey,
     return request;
 }
 
+constexpr int32_t TASK_POLL_MAX_ROUNDS = 100;
+constexpr int32_t TASK_POLL_INTERVAL_MS = 10;
+
+bool WaitTaskErased(PlaceholderTaskManager &manager, const PlaceholderTaskManager::RequestKey &key)
+{
+    PlaceholderTaskState state;
+    for (int32_t i = 0; i < TASK_POLL_MAX_ROUNDS; ++i) {
+        if (!manager.GetTaskState(key, state)) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(TASK_POLL_INTERVAL_MS));
+    }
+    return false;
+}
+
 } // namespace
 
 class PlaceholderHydrationCompletionTest : public testing::Test {
@@ -105,6 +122,24 @@ public:
         mock_ = nullptr;
     }
 
+    void ExpectStateTransitions(int32_t taskFd, uint8_t &stateByte)
+    {
+        constexpr int32_t stateUpdateCount = 2;                    // Partially hydrated, then fully hydrated.
+        constexpr int32_t stateReadCount = stateUpdateCount * 2;   // Get + Set per update.
+        EXPECT_CALL(*mock_, fgetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+            .Times(stateReadCount)
+            .WillRepeatedly(Invoke([&stateByte](int, const char *, void *value, size_t) {
+                *static_cast<uint8_t *>(value) = stateByte;
+                return static_cast<ssize_t>(sizeof(uint8_t));
+            }));
+        EXPECT_CALL(*mock_, fsetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+            .Times(stateUpdateCount)
+            .WillRepeatedly(Invoke([&stateByte](int, const char *, const void *value, size_t, int) {
+                stateByte = *static_cast<const uint8_t *>(value);
+                return 0;
+            }));
+    }
+
     static int32_t ActivateTask(PlaceholderTaskManager &manager,
                                 const PlaceholderTaskManager::RequestKey &reqKey,
                                 UniqueFd outputFd = OpenTaskFd())
@@ -120,6 +155,36 @@ public:
 
     std::shared_ptr<AssistantMock> mock_;
 };
+
+/**
+ * @tc.name: HydrationComplete_FullDelivery_001
+ * @tc.desc: A fully delivered completion claim moves the file to the fully hydrated state.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderHydrationCompletionTest, HydrationComplete_FullDelivery_001, TestSize.Level1)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    auto task = manager.taskMap_.at(key);
+    int32_t taskFd = ActivateTask(manager, key);
+    ASSERT_GE(taskFd, 0);
+    task->totalSize = 8192;
+    Assistant::mockFsyncApi = true;
+
+    uint8_t stateByte = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
+    ExpectStateTransitions(taskFd, stateByte);
+    EXPECT_CALL(*mock_, Fsync(taskFd)).WillOnce(Return(0));
+
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 0, std::vector<uint8_t>(8192, 1), 8192, true)),
+              E_OK);
+    EXPECT_EQ(GetPlaceholderStateFromFileSyncState(stateByte), PLACEHOLDER_STATE_FULLY_HYDRATED);
+    EXPECT_TRUE(WaitTaskErased(manager, key));
+}
 
 /**
  * @tc.name: HydrationTimestamps_RestoredPerWrite_001

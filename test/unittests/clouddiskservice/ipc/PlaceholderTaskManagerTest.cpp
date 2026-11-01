@@ -1014,6 +1014,8 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_003, TestSize.Level2)
     constexpr uint64_t MAX_OFFSET = static_cast<uint64_t>(std::numeric_limits<off_t>::max());
     request = MakeRequest(key, MAX_OFFSET + 1, {}, MAX_OFFSET + 1, true);
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, request), E_INVALID_ARG);
+    request = MakeRequest(key, MAX_OFFSET, {1}, MAX_OFFSET + 1, true);
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, request), E_INVALID_ARG);
     request = MakeRequest(key);
     request.filePath = "other.txt";
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, request), E_INVALID_ARG);
