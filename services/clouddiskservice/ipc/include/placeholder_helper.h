@@ -54,6 +54,7 @@ int32_t SetNewFilePlaceholderState(int32_t fd, uint8_t newState);
 int32_t SetFileSyncState(const std::string &path, uint8_t syncState);
 
 int32_t RefreshAncestorPlaceholderCount(const std::string &syncRoot, const std::string &path, int32_t delta);
+int32_t EnsureAncestorPlaceholderState(const std::string &syncRoot, const std::string &path);
 int32_t RecountPlaceholderState(const std::string &syncRoot,
                                 const std::string &subPath,
                                 int32_t userId,
@@ -62,7 +63,6 @@ int32_t UpdateDentryPlaceholderState(int32_t userId,
                                      uint32_t syncFolderIndex,
                                      const std::string &path,
                                      uint8_t placeholderState);
-bool HasFileHoles(int32_t fd);
 
 } // namespace OHOS::FileManagement::CloudDiskService
 
