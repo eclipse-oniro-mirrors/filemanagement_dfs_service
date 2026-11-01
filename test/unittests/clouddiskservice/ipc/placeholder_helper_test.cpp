@@ -732,6 +732,73 @@ HWTEST_F(PlaceholderHelperTest, EnsureAncestorPlaceholderStateSkipTracked_001, T
 }
 
 /**
+ * @tc.name: EnsureAncestorPlaceholderStateWriteFailContinue_001
+ * @tc.desc: A failed state write does not abort the walk; ancestors are still initialized and the error is returned.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderHelperTest, EnsureAncestorPlaceholderStateWriteFailContinue_001, TestSize.Level2)
+{
+    const std::string root = "/placeholder/root";
+    const std::string file = root + "/dir/file";
+    InSequence sequence;
+    EXPECT_CALL(*mock_, getxattr(StrEq(root + "/dir"), StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+        .WillOnce(Invoke([](const char *, const char *, void *, size_t) {
+            errno = ENODATA;
+            return static_cast<ssize_t>(-1);
+        }));
+    EXPECT_CALL(*mock_, setxattr(StrEq(root + "/dir"), StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+        .WillOnce(Invoke([](const char *, const char *, const void *, size_t, int) {
+            errno = EIO;
+            return -1;
+        }));
+    EXPECT_CALL(*mock_, getxattr(StrEq(root), StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+        .WillOnce(Invoke([](const char *, const char *, void *, size_t) {
+            errno = ENODATA;
+            return static_cast<ssize_t>(-1);
+        }));
+    EXPECT_CALL(*mock_, setxattr(StrEq(root), StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+        .WillOnce(Invoke([](const char *, const char *, const void *value, size_t, int) {
+            uint8_t stored = *static_cast<const uint8_t *>(value);
+            EXPECT_EQ(GetPlaceholderStateFromFileSyncState(stored), PLACEHOLDER_STATE_FULLY_HYDRATED);
+            return 0;
+        }));
+
+    EXPECT_EQ(EnsureAncestorPlaceholderState(root, file), EIO);
+}
+
+/**
+ * @tc.name: EnsureAncestorPlaceholderStateReadFailContinue_001
+ * @tc.desc: A failed state read skips the level without writing it and still initializes the ancestors.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderHelperTest, EnsureAncestorPlaceholderStateReadFailContinue_001, TestSize.Level2)
+{
+    const std::string root = "/placeholder/root";
+    const std::string file = root + "/dir/file";
+    InSequence sequence;
+    EXPECT_CALL(*mock_, getxattr(StrEq(root + "/dir"), StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+        .WillOnce(Invoke([](const char *, const char *, void *, size_t) {
+            errno = EACCES;
+            return static_cast<ssize_t>(-1);
+        }));
+    EXPECT_CALL(*mock_, getxattr(StrEq(root), StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+        .WillOnce(Invoke([](const char *, const char *, void *, size_t) {
+            errno = ENODATA;
+            return static_cast<ssize_t>(-1);
+        }));
+    EXPECT_CALL(*mock_, setxattr(StrEq(root), StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+        .WillOnce(Invoke([](const char *, const char *, const void *value, size_t, int) {
+            uint8_t stored = *static_cast<const uint8_t *>(value);
+            EXPECT_EQ(GetPlaceholderStateFromFileSyncState(stored), PLACEHOLDER_STATE_FULLY_HYDRATED);
+            return 0;
+        }));
+
+    EXPECT_EQ(EnsureAncestorPlaceholderState(root, file), EACCES);
+}
+
+/**
  * @tc.name: MntPathToPhysicalPath_001
  * @tc.desc: Convert an hmdfs view path to the physical namespace and reject other inputs.
  * @tc.type: FUNC
