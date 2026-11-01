@@ -574,6 +574,9 @@ int32_t UpdateDentryPlaceholderState(int32_t userId,
     std::string converted;
     if (MntPathToPhysicalPath(parentPath, userId, converted) == E_OK) {
         physicalParent = converted;
+    } else {
+        LOGW("Mnt to physical conversion skipped, use path as-is, path:%{public}s",
+             GetAnonyStringStrictly(path).c_str());
     }
     struct stat parentStat {};
     if (stat(physicalParent.c_str(), &parentStat) != 0) {
