@@ -544,21 +544,4 @@ int32_t UpdateDentryPlaceholderState(int32_t userId,
     return parentMetaFile->DoUpdatePlaceholderState(base, placeholderState);
 }
 
-bool HasFileHoles(int32_t fd)
-{
-    constexpr uint64_t stBlocksUnitBytes = 512;
-    struct stat st = {};
-    if (fstat(fd, &st) != 0 || st.st_size <= 0) {
-        return false;
-    }
-    // Use SEEK_HOLE as the primary check: st_blocks is inflated by xattr/metadata
-    // blocks on the placeholder file, which masks real data holes.
-    off_t hole = lseek(fd, 0, SEEK_HOLE);
-    if (hole >= 0) {
-        return static_cast<uint64_t>(hole) < static_cast<uint64_t>(st.st_size);
-    }
-    // SEEK_HOLE not supported; fall back to st_blocks (imperfect).
-    LOGW("SEEK_HOLE not supported, falling back to st_blocks, errno:%{public}d", errno);
-    return static_cast<uint64_t>(st.st_blocks) * stBlocksUnitBytes < static_cast<uint64_t>(st.st_size);
-}
 } // namespace OHOS::FileManagement::CloudDiskService

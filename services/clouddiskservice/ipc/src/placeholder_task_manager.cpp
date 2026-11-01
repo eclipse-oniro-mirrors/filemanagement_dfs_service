@@ -144,13 +144,9 @@ bool IsInvalidFetchDataRequest(const std::shared_ptr<PlaceholderTaskRecord> &tas
         (!request.isComplete && request.size == 0) ||
         (request.isComplete && request.totalSize != 0 && request.size == 0) ||
         (request.totalSize == 0 && (request.offset != 0 || request.size != 0 || !request.isComplete));
-    const bool invalidTaskSize = task->cachedSize > request.totalSize ||
-                                 (task->totalSizeInitialized && task->totalSize != request.totalSize) ||
-                                 (!task->totalSizeInitialized && request.totalSize != task->totalSize);
-    // A completion claim must cover the whole logical size, otherwise tail bytes inside the
-    // last allocated block stay unwritten and are invisible to physical hole detection.
-    const bool incompleteDelivery = request.isComplete && (task->cachedSize + request.size < request.totalSize);
-    return invalidDataBounds || invalidCompletion || invalidTaskSize || incompleteDelivery;
+    const bool invalidTaskSize =
+        task->cachedSize > request.totalSize || (task->totalSizeInitialized && task->totalSize != request.totalSize);
+    return invalidDataBounds || invalidCompletion || invalidTaskSize;
 }
 
 using CanonicalPath = std::string;
@@ -861,11 +857,7 @@ int32_t PlaceholderTaskManager::ExecuteFetchDataLocked(const std::shared_ptr<Pla
                                                        const CallbackExecuteRequest &request)
 {
     if (IsInvalidFetchDataRequest(task, request)) {
-        LOGE("Invalid Execute data bounds, offset:%{public}" PRIu64 ", size:%{public}" PRIu64
-            ", totalSize:%{public}" PRIu64 ", isComplete:%{public}d, cachedSize:%{public}" PRIu64
-            ", taskTotalSize:%{public}" PRIu64,
-            request.offset, static_cast<uint64_t>(request.size), request.totalSize,
-            static_cast<int>(request.isComplete), task->cachedSize, task->totalSize);
+        LOGE("Invalid Execute data bounds");
         return E_INVALID_ARG;
     }
     if (task->outputFd < 0) {
@@ -916,19 +908,6 @@ int32_t PlaceholderTaskManager::CommitFetchDataLocked(const std::shared_ptr<Plac
         if (ret != E_OK) {
             return ret;
         }
-    }
-    if (HasFileHoles(task->outputFd)) {
-        // The provider claimed completion but unwritten ranges remain. Keep the file partially
-        // hydrated so the next access re-hydrates the missing ranges; the callback result stays
-        // unchanged and the task completes normally.
-        LOGE("Hydration completed with file holes, keep partial state, path:%{private}s",
-             task->hmdfsPath.c_str());
-        int32_t partialRet = EnsurePartialStateLocked(task);
-        if (partialRet == E_OK && !task->mountSyncFolder.empty() && task->userId >= 0) {
-            (void)UpdateDentryPlaceholderState(task->userId, task->syncFolderIndex, task->hmdfsPath,
-                                               PLACEHOLDER_STATE_PARTIALLY_HYDRATED);
-        }
-        return partialRet;
     }
     int32_t ret = SetCompleteStateLocked(task);
     if (ret != E_OK) {
