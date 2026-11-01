@@ -20,6 +20,8 @@
 #include <mutex>
 #include <string>
 
+#include "cloud_disk_service_error.h"
+
 namespace OHOS {
 namespace FileManagement {
 namespace CloudDiskService {
@@ -54,6 +56,23 @@ private:
     std::unordered_map<uint32_t, SyncFolderValue> syncFolderMap;
     std::mutex mutex_;
 };
+
+// Free inline helper: mock stubs only replace class methods, so this stays real in all tests.
+// Composes the two established prefix maps (sandbox->mnt and sandbox->physical); the input
+// mnt path is already canonical (PathToMntPathBySandboxPath realpaths it), a pure prefix
+// swap is enough.
+inline int32_t MntPathToPhysicalPath(const std::string &path, int32_t userId, std::string &physicalPath)
+{
+    const std::string mntPrefix = "/mnt/hmdfs/" + std::to_string(userId) +
+                                  "/account/device_view/local/files/Docs";
+    const std::string physicalPrefix = "/data/service/el2/" + std::to_string(userId) +
+                                       "/hmdfs/account/files/Docs";
+    if (path.size() <= mntPrefix.size() || path.compare(0, mntPrefix.size(), mntPrefix) != 0) {
+        return E_INVALID_ARG;
+    }
+    physicalPath = physicalPrefix + path.substr(mntPrefix.size());
+    return E_OK;
+}
 } // namespace CloudDiskService
 } // namespace FileManagement
 } // namespace OHOS

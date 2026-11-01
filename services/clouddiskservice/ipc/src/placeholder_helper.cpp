@@ -28,6 +28,7 @@
 
 #include "cloud_disk_service_error.h"
 #include "cloud_disk_service_metafile.h"
+#include "cloud_disk_sync_folder.h"
 #include "utils_log.h"
 
 namespace OHOS::FileManagement::CloudDiskService {
@@ -225,6 +226,7 @@ int32_t UpdateDirectoryCountAndState(const std::string &path, int32_t delta, boo
     if (!shouldPropagate) {
         return E_OK;
     }
+    LOGI("Directory count flipped, path:%{private}s, count:%{public}u", path.c_str(), newCount);
 
     uint8_t oldState = 0;
     ret = ReadFileSyncStateByteNoLock(path, oldState, true);
@@ -506,6 +508,42 @@ int32_t RefreshAncestorPlaceholderCount(const std::string &syncRoot, const std::
     return lastError;
 }
 
+int32_t EnsureAncestorPlaceholderState(const std::string &syncRoot, const std::string &path)
+{
+    if (syncRoot.empty() || path.empty()) {
+        return E_OK;
+    }
+
+    std::string curPath = GetParentPath(path);
+    int32_t lastError = E_OK;
+    while (IsSameOrUnderPath(syncRoot, curPath)) {
+        {
+            std::lock_guard<std::mutex> lock(GetPlaceholderStateMutex());
+            uint8_t oldState = 0;
+            int32_t ret = ReadFileSyncStateByteNoLock(curPath, oldState, true);
+            if (ret == E_OK) {
+                if (GetPlaceholderStateFromFileSyncState(oldState) != PLACEHOLDER_STATE_NONE) {
+                    // Already tracked; its ancestors were initialized together with it.
+                    break;
+                }
+                uint8_t newState = MakeFileSyncState(PLACEHOLDER_STATE_FULLY_HYDRATED,
+                                                     GetSyncStateFromFileSyncState(oldState));
+                ret = WriteFileSyncStateByteNoLock(curPath, newState);
+            }
+            if (ret != E_OK) {
+                LOGE("ensure placeholder state failed, path:%{public}s, errno:%{public}d",
+                     GetAnonyStringStrictly(curPath).c_str(), ret);
+                lastError = ret;
+            }
+        }
+        if (curPath == syncRoot) {
+            break;
+        }
+        curPath = GetParentPath(curPath);
+    }
+    return lastError;
+}
+
 int32_t RecountPlaceholderState(const std::string &syncRoot,
                                 const std::string &subPath,
                                 int32_t userId,
@@ -526,11 +564,21 @@ int32_t UpdateDentryPlaceholderState(int32_t userId,
     std::string parentPath = GetParentPath(path);
     std::string name = GetFileName(path);
     if (parentPath.empty() || name.empty()) {
+        LOGE("Update dentry state rejected, invalid path");
         return EINVAL;
     }
-
+    // Normalize to the physical namespace: monitor-driven readers (unlink/rename) key the
+    // metafile manager by the physical inode, while SA-side callers carry hmdfs view paths
+    // whose inode differs; keep both sides on the same metafile instance.
+    std::string physicalParent = parentPath;
+    std::string converted;
+    if (MntPathToPhysicalPath(parentPath, userId, converted) == E_OK) {
+        physicalParent = converted;
+    }
     struct stat parentStat {};
-    if (stat(parentPath.c_str(), &parentStat) != 0) {
+    if (stat(physicalParent.c_str(), &parentStat) != 0) {
+        LOGE("stat parent failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(path).c_str(),
+             errno);
         return errno;
     }
 

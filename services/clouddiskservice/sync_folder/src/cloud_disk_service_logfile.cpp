@@ -740,6 +740,7 @@ int32_t CloudDiskServiceLogFile::ProduceRenameOldLog(const std::shared_ptr<Cloud
         LOGD("lookup placeholder state failed, errno:%{public}d", ret);
         renamePlaceholderState_ = PLACEHOLDER_STATE_NONE;
     }
+    LOGI("RenameOld placeholder state, state:%{public}u", renamePlaceholderState_);
     ret = parentMetaFile->DoRenameOld(mBase, ctx.recordId, ctx.bidx, ctx.bitPos);
     if (ret != 0) {
         LOGE("renameold failed");
@@ -759,8 +760,9 @@ int32_t CloudDiskServiceLogFile::ProduceRenameNewLog(const std::shared_ptr<Cloud
 {
     LOGD("Begin ProduceRenameNewLog");
     MetaBase mBase(name);
+    std::string fullPath = path + "/" + name;
     struct stat childStat;
-    if (stat((path + "/" + name).c_str(), &childStat) != 0) {
+    if (stat(fullPath.c_str(), &childStat) != 0) {
         LOGE("stat child failed for %{public}d", errno);
         return errno;
     }
@@ -768,6 +770,14 @@ int32_t CloudDiskServiceLogFile::ProduceRenameNewLog(const std::shared_ptr<Cloud
     mBase.atime = static_cast<uint64_t>(childStat.st_atime);
     mBase.mtime = static_cast<uint64_t>(childStat.st_mtime);
     mBase.size = static_cast<uint64_t>(childStat.st_size);
+    // Read the actual placeholder state from xattr on the new path; the dentry
+    // state captured by ProduceRenameOldLog may be stale (e.g. file was hydrated
+    // after the dentry was written).
+    uint8_t actualState = PLACEHOLDER_STATE_NONE;
+    int32_t stateRet = GetFilePlaceholderState(fullPath, actualState);
+    if (stateRet == E_OK) {
+        renamePlaceholderState_ = actualState;
+    }
     mBase.placeholder = renamePlaceholderState_;
     uint8_t overwrittenState = PLACEHOLDER_STATE_NONE;
     auto ret = parentMetaFile->DoRenameNew(mBase, renameRecordId_, ctx.bidx, ctx.bitPos, overwrittenState);
@@ -779,10 +789,14 @@ int32_t CloudDiskServiceLogFile::ProduceRenameNewLog(const std::shared_ptr<Cloud
     if (IsCountedPlaceholder(overwrittenState)) {
         // The overwritten dentry was itself a counted placeholder; offset its
         // contribution before adding the new one.
-        (void)RefreshAncestorPlaceholderCount(syncFolderPath_, path + "/" + name, -1);
+        (void)RefreshAncestorPlaceholderCount(syncFolderPath_, fullPath, -1);
     }
     if (IsCountedPlaceholder(renamePlaceholderState_)) {
-        (void)RefreshAncestorPlaceholderCount(syncFolderPath_, path + "/" + name, 1);
+        (void)RefreshAncestorPlaceholderCount(syncFolderPath_, fullPath, 1);
+    } else if (IsPlaceholderState(renamePlaceholderState_)) {
+        // A fully hydrated placeholder is not counted, but moving it in still marks the
+        // ancestors as tracked; uninitialized ones become FULLY_HYDRATED instead of NONE.
+        (void)EnsureAncestorPlaceholderState(syncFolderPath_, fullPath);
     }
 
     if (!S_ISDIR(childStat.st_mode)) {
