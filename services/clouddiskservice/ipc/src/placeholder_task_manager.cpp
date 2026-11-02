@@ -939,7 +939,6 @@ int32_t PlaceholderTaskManager::ExecuteFetchDataLocked(const std::shared_ptr<Pla
     if (ret != E_OK) {
         return ret;
     }
-    RestoreHydrationTimestamps(task);
     ret = CommitFetchDataLocked(task, request);
     if (ret != E_OK) {
         return ret;
@@ -1132,6 +1131,9 @@ void PlaceholderTaskManager::NotifyProgressLocked(const std::shared_ptr<Placehol
 
 void PlaceholderTaskManager::EraseTaskLocked(const std::shared_ptr<PlaceholderTaskRecord> &task)
 {
+    // The task ends here: restore the snapshot timestamps once, right before the hydration
+    // fd closes. Chunk writes during hydration do not touch the timestamps any more.
+    RestoreHydrationTimestamps(task);
     int32_t fd = task->outputFd.Release();
     if (fd >= 0 && close(fd) < 0) {
         LOGE("Close hydration fd failed, errno:%{public}d", errno);
