@@ -838,6 +838,9 @@ int32_t PlaceholderTaskManager::EnsurePartialStateLocked(const std::shared_ptr<P
             LOGE("Unexpected old hydration state, state:%{public}u", oldState);
             return E_TRY_AGAIN;
         }
+        // The xattr write above may trigger frontend re-reads; keep the timestamps at
+        // the snapshot values so observers do not see hydration-time jumps.
+        RestoreHydrationTimestamps(task);
     }
     task->hasPartialState = true;
     return E_OK;
@@ -873,6 +876,9 @@ int32_t PlaceholderTaskManager::SetCompleteStateLocked(const std::shared_ptr<Pla
         LOGE("Unexpected old hydration state before completion, state:%{public}u", oldState);
         return E_TRY_AGAIN;
     }
+    // The xattr write above may trigger frontend re-reads; keep the timestamps at
+    // the snapshot values so observers do not see hydration-time jumps.
+    RestoreHydrationTimestamps(task);
     return E_OK;
 }
 

@@ -191,8 +191,8 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationComplete_FullDelivery_001,
 
 /**
  * @tc.name: HydrationTimestamps_RestoredAtTaskEnd_001
- * @tc.desc: Chunk writes do not touch timestamps; the snapshot is restored once when the task
- *           ends, right before the hydration fd closes.
+ * @tc.desc: Every xattr state write and the final task end restore timestamps to the snapshot;
+ *           frontend re-reads triggered by xattr writes never observe hydration-time jumps.
  * @tc.type: FUNC
  * @tc.require: NA
  */
@@ -213,11 +213,18 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationTimestamps_RestoredAtTaskE
     Assistant::mockPwriteApi = true;
     Assistant::mockFsyncApi = true;
 
-    // While hydration is in progress, chunk writes never restore timestamps.
-    // Phase 1 flips the partial state (2 reads + 1 write); phase 2 flips it to fully
-    // hydrated (EnsurePartial is memoized by hasPartialState and does no xattr calls,
-    // SetComplete does 2 reads + 1 write).
-    EXPECT_CALL(*mock_, futimens(taskFd, _)).Times(0);
+    // Phase 1 flips the partial state (2 reads + 1 write + 1 timestamp restore);
+    // phase 2 flips it to fully hydrated (2 reads + 1 write + 1 restore) and the
+    // task end adds one more restore: 3 restores in total, all with snapshot values.
+    EXPECT_CALL(*mock_, futimens(taskFd, _))
+        .Times(3)
+        .WillRepeatedly(Invoke([](int, const struct timespec *times) {
+            EXPECT_EQ(times[0].tv_sec, 111);
+            EXPECT_EQ(times[0].tv_nsec, 222);
+            EXPECT_EQ(times[1].tv_sec, 333);
+            EXPECT_EQ(times[1].tv_nsec, 444);
+            return 0;
+        }));
     EXPECT_CALL(*mock_, Pwrite(taskFd, _, 4, 0)).WillOnce(Return(4));
     EXPECT_CALL(*mock_, fgetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
         .Times(4)
@@ -234,17 +241,8 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationTimestamps_RestoredAtTaskE
               E_OK);
     EXPECT_EQ(task->state.load(), PlaceholderTaskState::IN_PROGRESS);
 
-    // Completing the task restores the snapshot exactly once, before the fd closes.
     EXPECT_CALL(*mock_, Pwrite(taskFd, _, 4, 4)).WillOnce(Return(4));
     EXPECT_CALL(*mock_, Fsync(taskFd)).WillOnce(Return(0));
-    EXPECT_CALL(*mock_, futimens(taskFd, _))
-        .WillOnce(Invoke([](int, const struct timespec *times) {
-            EXPECT_EQ(times[0].tv_sec, 111);
-            EXPECT_EQ(times[0].tv_nsec, 222);
-            EXPECT_EQ(times[1].tv_sec, 333);
-            EXPECT_EQ(times[1].tv_nsec, 444);
-            return 0;
-        }));
 
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
                               MakeRequest(key, 4, {5, 6, 7, 8}, 8, true)),
