@@ -283,7 +283,7 @@ HWTEST_F(RadarReportAdapterTest, RadarReportAdapterTest_ReportDfxStatistics_002,
 
 /**
  * @tc.name: RadarReportAdapterTest_SetUserStatistics_002
- * @tc.desc: verify SetUserStatistics counts HMDFS_COPY_CNT and SEND_FILE_CNT.
+ * @tc.desc: verify SetUserStatistics counts COPY_HMDFS_CNT and COPY_SEND_CNT.
  * @tc.type: FUNC
  * @tc.require:
  */
@@ -291,9 +291,9 @@ HWTEST_F(RadarReportAdapterTest, RadarReportAdapterTest_SetUserStatistics_002, T
 {
     GTEST_LOG_(INFO) << "RadarReportAdapterTest_SetUserStatistics_002 begin";
     RadarReportAdapter::GetInstance().opStatistics_.clear();
-    RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::HMDFS_COPY_CNT);
-    RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::HMDFS_COPY_CNT);
-    RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::SEND_FILE_CNT);
+    RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::COPY_HMDFS_CNT);
+    RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::COPY_HMDFS_CNT);
+    RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::COPY_SEND_CNT);
     EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.hmdfsCopyCount, static_cast<uint32_t>(2));
     EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.sendFileCount, static_cast<uint32_t>(1));
     EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.connectSuccCount, static_cast<uint32_t>(0));

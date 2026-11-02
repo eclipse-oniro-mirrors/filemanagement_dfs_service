@@ -107,8 +107,8 @@ enum RadarStatisticInfoType {
     GENERATE_DIS_URI_FAIL_CNT,
     FILE_ACCESS_SUCC_CNT,
     FILE_ACCESS_FAIL_CNT,
-    HMDFS_COPY_CNT,
-    SEND_FILE_CNT,
+    COPY_HMDFS_CNT,
+    COPY_SEND_CNT,
 };
 
 struct RadarStatisticInfo {

@@ -92,10 +92,10 @@ void RadarReportAdapter::SetUserStatistics(const RadarStatisticInfoType type)
         case RadarStatisticInfoType::FILE_ACCESS_FAIL_CNT:
             opStatistics_.fileAccessFailCount++;
             break;
-        case RadarStatisticInfoType::HMDFS_COPY_CNT:
+        case RadarStatisticInfoType::COPY_HMDFS_CNT:
             opStatistics_.hmdfsCopyCount++;
             break;
-        case RadarStatisticInfoType::SEND_FILE_CNT:
+        case RadarStatisticInfoType::COPY_SEND_CNT:
             opStatistics_.sendFileCount++;
             break;
         default:

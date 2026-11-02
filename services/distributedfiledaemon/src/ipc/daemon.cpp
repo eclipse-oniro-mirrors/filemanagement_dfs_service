@@ -641,10 +641,10 @@ int32_t Daemon::ChooseCopyMode(const std::string &srcUri, const std::string &dst
     int32_t result = E_OK;
     if ((ret == FileManagement::ERR_OK) && (remoteDfsVersion.majorVersionNum != 0)) {
         result = InnerCopy(srcUri, dstUri, networkId, listenerCallback, info);
-        RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::HMDFS_COPY_CNT);
+        RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::COPY_HMDFS_CNT);
     } else {
         result = CopyBaseOnRPC(srcUri, dstUri, networkId, listenerCallback, info);
-        RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::SEND_FILE_CNT);
+        RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::COPY_SEND_CNT);
     }
     RadarReportAdapter::GetInstance().SetUserStatistics(result == E_OK ? FILE_ACCESS_SUCC_CNT : FILE_ACCESS_FAIL_CNT);
     if (result != E_OK) {

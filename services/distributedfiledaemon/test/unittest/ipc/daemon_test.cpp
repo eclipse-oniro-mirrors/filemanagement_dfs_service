@@ -2018,7 +2018,7 @@ HWTEST_F(DaemonTest, DaemonTest_InnerCopy_001, TestSize.Level1)
 
 /**
  * @tc.name: DaemonTest_ChooseCopyMode_001
- * @tc.desc: verify ChooseCopyMode selects InnerCopy and counts HMDFS_COPY_CNT when remote
+ * @tc.desc: verify ChooseCopyMode selects InnerCopy and counts COPY_HMDFS_CNT when remote
  *           dfs major version is not 0.
  * @tc.type: FUNC
  * @tc.require:
@@ -2043,7 +2043,7 @@ HWTEST_F(DaemonTest, DaemonTest_ChooseCopyMode_001, TestSize.Level1)
 
 /**
  * @tc.name: DaemonTest_ChooseCopyMode_002
- * @tc.desc: verify ChooseCopyMode selects CopyBaseOnRPC and counts SEND_FILE_CNT when remote
+ * @tc.desc: verify ChooseCopyMode selects CopyBaseOnRPC and counts COPY_SEND_CNT when remote
  *           dfs major version is 0.
  * @tc.type: FUNC
  * @tc.require:
@@ -2069,7 +2069,7 @@ HWTEST_F(DaemonTest, DaemonTest_ChooseCopyMode_002, TestSize.Level1)
 
 /**
  * @tc.name: DaemonTest_ChooseCopyMode_003
- * @tc.desc: verify ChooseCopyMode selects CopyBaseOnRPC and counts SEND_FILE_CNT when
+ * @tc.desc: verify ChooseCopyMode selects CopyBaseOnRPC and counts COPY_SEND_CNT when
  *           GetDfsVersionFromNetworkId fails.
  * @tc.type: FUNC
  * @tc.require:
