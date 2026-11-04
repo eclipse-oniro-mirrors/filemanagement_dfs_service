@@ -143,7 +143,6 @@ void CycleTaskRunner::SetRunableBundleNames()
         runnableBundleNames->insert(bundleName);
         LOGI("runable bundleName is %{public}s", bundleName.c_str());
     }
-
     string startCondition = "persist.kernel.cloudsync.screen_off_enable_download";
     if (runnableBundleNames->empty()) {
         LOGW("no runnable bundle names");
