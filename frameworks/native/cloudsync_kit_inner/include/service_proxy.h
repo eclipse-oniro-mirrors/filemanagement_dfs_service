@@ -28,7 +28,6 @@ class ServiceProxy : public IRemoteProxy<ICloudSyncService> {
 public:
     static sptr<ICloudSyncService> GetInstance(const std::string &callerMethod);
     static sptr<ICloudSyncService> GetInstanceWithoutLoad(const std::string &callerMethod);
-
     class ServiceProxyLoadCallback : public SystemAbilityLoadCallbackStub {
     public:
         void OnLoadSystemAbilitySuccess(int32_t systemAbilityId, const sptr<IRemoteObject> &remoteObject) override;
