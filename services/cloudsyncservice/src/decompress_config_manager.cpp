@@ -16,7 +16,8 @@
 #include "decompress_config_manager.h"
 
 #include "nlohmann/json.hpp"
-#include "decompress_update.h"
+#include "decompress_kit.h"
+#include "plugin_loader.h"
 #include "utils_log.h"
 
 #include <fstream>
@@ -40,7 +41,11 @@ void DecompressConfigManager::SetConfigDir(const std::string& configDir)
 
 std::vector<std::string> DecompressConfigManager::GetUnsupportedList()
 {
-    Decompress::DecompressUpdateManager::GetInstance().HandleDecompressUpdate();
+    CloudFile::PluginLoader::GetInstance().LoadDecompressPlugin();
+    auto kitInstance = Decompress::DecompressKit::GetInstance();
+    if (kitInstance != nullptr) {
+        kitInstance->HandleConfigUpdate();
+    }
     std::vector<std::pair<std::string, std::string>> paths = {
         {"Default path", configDir_ + "/" + FAKE_DECOMPRESSION_FILE},
         {"Preset path", sysConfigDir_ + "/" + FAKE_DECOMPRESSION_FILE},
@@ -97,7 +102,11 @@ std::pair<bool, std::vector<std::string>> DecompressConfigManager::ParseUnsuppor
 
 bool DecompressConfigManager::GetSystemFeature()
 {
-    Decompress::DecompressUpdateManager::GetInstance().HandleDecompressUpdate();
+    CloudFile::PluginLoader::GetInstance().LoadDecompressPlugin();
+    auto kitInstance = Decompress::DecompressKit::GetInstance();
+    if (kitInstance != nullptr) {
+        kitInstance->HandleConfigUpdate();
+    }
     std::vector<std::pair<std::string, std::string>> paths = {
         {"Default path", configDir_ + "/" + FAKE_DECOMPRESSION_FILE},
         {"Preset path", sysConfigDir_ + "/" + FAKE_DECOMPRESSION_FILE},
@@ -119,7 +128,11 @@ bool DecompressConfigManager::GetSystemFeature()
 
 bool DecompressConfigManager::GetCrossFsConfig()
 {
-    Decompress::DecompressUpdateManager::GetInstance().HandleDecompressUpdate();
+    CloudFile::PluginLoader::GetInstance().LoadDecompressPlugin();
+    auto kitInstance = Decompress::DecompressKit::GetInstance();
+    if (kitInstance != nullptr) {
+        kitInstance->HandleConfigUpdate();
+    }
     std::vector<std::pair<std::string, std::string>> paths = {
         {"Default path", configDir_ + "/" + FAKE_DECOMPRESSION_FILE},
         {"Preset path", sysConfigDir_ + "/" + FAKE_DECOMPRESSION_FILE},
