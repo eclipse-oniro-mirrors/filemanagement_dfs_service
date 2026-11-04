@@ -225,6 +225,11 @@ pid_t IPCSkeleton::GetCallingUid()
     return g_getCallingUid;
 }
 
+pid_t IPCSkeleton::GetCallingAppUid()
+{
+    return IPCSkeleton::GetCallingUid();
+}
+
 std::string IPCSkeleton::GetCallingDeviceID()
 {
     return g_getCallingNetworkId;

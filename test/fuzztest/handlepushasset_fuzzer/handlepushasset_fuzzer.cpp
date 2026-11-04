@@ -41,6 +41,11 @@ pid_t IPCSkeleton::GetCallingUid()
 {
     return g_uid;
 }
+
+pid_t IPCSkeleton::GetCallingAppUid()
+{
+    return IPCSkeleton::GetCallingUid();
+}
 }
 
 namespace OHOS {

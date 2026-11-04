@@ -220,7 +220,7 @@ int32_t RemoteFileCopyManager::CreateFileInfos(const std::string &srcUri,
     infos->srcPath = srcPhysicalPath;
     infos->destPath = dstPhysicalPath;
     infos->srcUriIsFile = IsFile(infos->srcPath, srcUri);
-    infos->callingUid = IPCSkeleton::GetCallingUid();
+    infos->callingAppUid = IPCSkeleton::GetCallingAppUid();
     AddFileInfos(infos);
     return E_OK;
 }
@@ -255,10 +255,10 @@ int32_t RemoteFileCopyManager::RemoteCancel(const std::string &srcUri, const std
             ++item;
             continue;
         }
-        auto callingUid = IPCSkeleton::GetCallingUid();
-        if (callingUid != (*item)->callingUid) {
-            LOGE("RemoteCancel failed, calling uid=%{public}d has no permission to cancel copy for uid=%{public}d.",
-                callingUid, (*item)->callingUid);
+        auto callingAppUid = IPCSkeleton::GetCallingAppUid();
+        if (callingAppUid != (*item)->callingAppUid) {
+            LOGE("RemoteCancel failed, calling appUid=%{public}d has no permission to cancel copy for appUid=%{public}d.",
+                callingAppUid, (*item)->callingAppUid);
             RadarParaInfo info = {"RemoteCancel", ReportLevel::INNER, DfxBizStage::HMDFS_COPY,
                 DEFAULT_PKGNAME, "", EPERM, "RemoteCancel failed"};
             RadarReportAdapter::GetInstance().ReportFileAccessAdapter(info);
@@ -301,8 +301,8 @@ int32_t RemoteFileCopyManager::RemoteCopy(const std::string &srcUri, const std::
     infos->localListener = FileCopyLocalListener::GetLocalListener(infos->srcPath,
         infos->srcUriIsFile, processCallback);
     auto result = FileCopyManager::GetInstance().ExecLocal(infos);
-    if (ChangeOwnerRecursive(infos->destPath, infos->callingUid, infos->callingUid) != 0) {
-        LOGE("ChangeOwnerRecursive failed, calling uid= %{public}d", infos->callingUid);
+    if (ChangeOwnerRecursive(infos->destPath, infos->callingAppUid, infos->callingAppUid) != 0) {
+        LOGE("ChangeOwnerRecursive failed, calling appUid= %{public}d", infos->callingAppUid);
     }
     RemoveFileInfos(infos);
     infos->localListener->StopListener();

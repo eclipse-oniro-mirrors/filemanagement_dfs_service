@@ -47,7 +47,7 @@ struct FileInfos {
     std::string srcPath;
     std::string destPath;
     bool srcUriIsFile = false;
-    int callingUid {};
+    int callingAppUid {};
     std::shared_ptr<FileCopyLocalListener> localListener = nullptr;
     sptr<TransListener> transListener = nullptr;
     std::atomic_bool needCancel{ false };

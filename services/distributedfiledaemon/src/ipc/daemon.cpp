@@ -743,7 +743,7 @@ int32_t Daemon::StoreSessionAndListener(const std::string &physicalPath,
                                         std::string &sessionName,
                                         const sptr<IFileTransListener> &listener)
 {
-    SoftBusSessionPool::SessionInfo sessionInfo{.dstPath = physicalPath, .uid = IPCSkeleton::GetCallingUid()};
+    SoftBusSessionPool::SessionInfo sessionInfo{.dstPath = physicalPath, .uid = IPCSkeleton::GetCallingAppUid()};
     sessionName = SoftBusSessionPool::GetInstance().GenerateSessionName(sessionInfo);
     if (sessionName.empty()) {
         LOGE("SessionServer exceed max");
@@ -1045,10 +1045,10 @@ int32_t Daemon::CancelCopyTask(const std::string &sessionName)
         HiAudit::GetInstance().WriteEnd("CancelCopyTask", E_INVAL_ARG);
         return E_INVAL_ARG;
     }
-    auto callingUid = IPCSkeleton::GetCallingUid();
-    if (callingUid != sessionInfo.uid) {
+    auto callingAppUid = IPCSkeleton::GetCallingAppUid();
+    if (callingAppUid != sessionInfo.uid) {
         LOGE("CancelCopyTask failed, calling uid=%{public}d has no permission to cancel copy for uid=%{public}d.",
-             callingUid, sessionInfo.uid);
+             callingAppUid, sessionInfo.uid);
         RadarParaInfo info = {"CancelCopyTask", ReportLevel::INNER, DfxBizStage::HMDFS_COPY,
             "softbus", "", E_PERMISSION_DENIED, "ipc call failed"};
         RadarReportAdapter::GetInstance().ReportFileAccessAdapter(info);

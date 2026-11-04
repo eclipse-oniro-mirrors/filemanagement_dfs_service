@@ -123,7 +123,7 @@ void SoftBusHandlerAsset::CreateAssetLocalSessionServer()
         Shutdown(socketId);
         return;
     }
-    SoftBusSessionPool::SessionInfo sessionInfo{.uid = IPCSkeleton::GetCallingUid()};
+    SoftBusSessionPool::SessionInfo sessionInfo{.uid = IPCSkeleton::GetCallingAppUid()};
     SoftBusSessionPool::GetInstance().AddSessionInfo(ASSET_LOCAL_SESSION_NAME, sessionInfo);
     {
         std::lock_guard<std::mutex> lock(serverIdMapMutex_);

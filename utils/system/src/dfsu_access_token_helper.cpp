@@ -119,8 +119,8 @@ bool DfsuAccessTokenHelper::IsSystemApp()
 
 int32_t DfsuAccessTokenHelper::GetUserId()
 {
-    auto uid = IPCSkeleton::GetCallingUid();
-    return uid / BASE_USER_RANGE;
+    auto appUid = IPCSkeleton::GetCallingAppUid();
+    return appUid / BASE_USER_RANGE;
 }
 
 bool DfsuAccessTokenHelper::IsUserVerifyed(const int32_t userId)

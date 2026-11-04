@@ -55,6 +55,11 @@ pid_t IPCSkeleton::GetCallingUid()
     return UID;
 }
 
+pid_t IPCSkeleton::GetCallingAppUid()
+{
+    return IPCSkeleton::GetCallingUid();
+}
+
 bool IPCSkeleton::IsLocalCalling()
 {
     return g_isLocalCalling;
