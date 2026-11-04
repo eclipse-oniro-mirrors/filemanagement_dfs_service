@@ -250,4 +250,86 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationTimestamps_RestoredAtTaskE
     EXPECT_TRUE(WaitTaskErased(manager, key));
 }
 
+/**
+ * @tc.name: HydrationTimestamps_FutimensFail_001
+ * @tc.desc: Hydration still succeeds when the timestamp restore futimens call fails.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderHydrationCompletionTest, HydrationTimestamps_FutimensFail_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    auto task = manager.taskMap_.at(key);
+    int32_t taskFd = ActivateTask(manager, key);
+    ASSERT_GE(taskFd, 0);
+    task->totalSize = 4;
+    task->timestampsSaved = true;
+    task->savedAtime = {111, 222};
+    task->savedMtime = {333, 444};
+    Assistant::mockPwriteApi = true;
+    Assistant::mockFsyncApi = true;
+
+    EXPECT_CALL(*mock_, Pwrite(taskFd, _, 4, 0)).WillOnce(Return(4));
+    EXPECT_CALL(*mock_, futimens(taskFd, _))
+        .WillRepeatedly(Invoke([](int, const struct timespec *) {
+            errno = EIO;
+            return -1;
+        }));
+    EXPECT_CALL(*mock_, fgetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+        .WillRepeatedly(Invoke([](int, const char *, void *value, size_t) {
+            *static_cast<uint8_t *>(value) = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
+            return static_cast<ssize_t>(sizeof(uint8_t));
+        }));
+    EXPECT_CALL(*mock_, fsetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+        .WillRepeatedly(Return(0));
+    EXPECT_CALL(*mock_, Fsync(taskFd)).WillOnce(Return(0));
+
+    // A failing futimens only logs a warning; hydration must still complete.
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 0, {1, 2, 3, 4}, 4, true)),
+              E_OK);
+    EXPECT_TRUE(WaitTaskErased(manager, key));
+}
+
+/**
+ * @tc.name: HydrationSetStateWriteFail_001
+ * @tc.desc: A failing placeholder state xattr write during hydration propagates the error.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderHydrationCompletionTest, HydrationSetStateWriteFail_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    auto task = manager.taskMap_.at(key);
+    int32_t taskFd = ActivateTask(manager, key);
+    ASSERT_GE(taskFd, 0);
+    task->totalSize = 4;
+    Assistant::mockPwriteApi = true;
+
+    EXPECT_CALL(*mock_, Pwrite(taskFd, _, 4, 0)).WillOnce(Return(4));
+    EXPECT_CALL(*mock_, fgetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+        .WillRepeatedly(Invoke([](int, const char *, void *value, size_t) {
+            *static_cast<uint8_t *>(value) = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
+            return static_cast<ssize_t>(sizeof(uint8_t));
+        }));
+    EXPECT_CALL(*mock_, fsetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+        .WillRepeatedly(Invoke([](int, const char *, const void *, size_t, int) {
+            errno = ENOSPC;
+            return -1;
+        }));
+
+    // The state xattr write failure propagates as an IO error from Execute.
+    EXPECT_NE(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                             MakeRequest(key, 0, {1, 2, 3, 4}, 4, true)),
+              E_OK);
+}
+
 } // namespace OHOS::FileManagement::CloudDiskService::Test
