@@ -37,6 +37,11 @@ NetworkSignalStrengthSubscriber::NetworkSignalStrengthSubscriber(
 
 void NetworkSignalStrengthSubscriber::OnReceiveEvent(const EventFwk::CommonEventData &eventData)
 {
+    if (!NetworkStatus::IsWeakNetworkSyncEnabled()) {
+        LOGD("Weak network sync disabled, skip recovery sync");
+        return;
+    }
+
     auto action = eventData.GetWant().GetAction();
     if (action == EventFwk::CommonEventSupport::COMMON_EVENT_SIGNAL_INFO_CHANGED) {
         if (NetworkStatus::GetNetConnStatus() != NetworkStatus::NetConnStatus::CELLULAR_CONNECT) {

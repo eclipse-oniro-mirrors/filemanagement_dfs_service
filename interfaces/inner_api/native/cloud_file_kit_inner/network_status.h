@@ -53,6 +53,7 @@ public:
     static void SetWifiSignalStopStrength(int32_t status);
     static void SetWifiSignalStartStrength(int32_t status);
     static void SetWeakNetworkSyncEnable(bool flag);
+    static bool IsWeakNetworkSyncEnabled();
     static int32_t GetDefaultWeakNetConfig();
     static void SetCellularAllowSync(bool flag);
     static void SetWifiAllowSync(bool flag);
