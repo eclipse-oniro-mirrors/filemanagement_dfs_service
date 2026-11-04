@@ -20,6 +20,7 @@
 #include <memory>
 #include <regex>
 #include <sstream>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "all_connect/all_connect_manager.h"
@@ -501,8 +502,13 @@ int32_t SoftBusHandlerAsset::CompressFileInner(const std::string &rootFile, zipF
     size_t actLen;
     do {
         actLen = fread(buf.get(), 1, pageSize, f);
-        if (actLen > 0) {
-            zipWriteInFileInZip(outputFile, buf.get(), actLen);
+        if (actLen > 0 && zipWriteInFileInZip(outputFile, buf.get(), actLen) != ZIP_OK) {
+            LOGE("Minizip failed to zipWriteInFileInZip");
+            fclose(f);
+            RadarParaInfo info = {"CompressFile", ReportLevel::INNER, DfxBizStage::PUSH_ASSERT,
+                                  DEFAULT_PKGNAME, "", E_ZIP, "Minizip failed to zipWriteInFileInZip"};
+            RadarReportAdapter::GetInstance().ReportFileAccessAdapter(info);
+            return E_ZIP;
         }
     } while (actLen == pageSize);
     if (fclose(f) != 0) {
@@ -650,6 +656,29 @@ bool SoftBusHandlerAsset::IsDir(const std::string &path)
     return S_ISDIR(st.st_mode);
 }
 
+bool SoftBusHandlerAsset::HasSymlinkInPath(const std::string &filenameWithPath, const std::string &dir)
+{
+    size_t pos = filenameWithPath.rfind('/');
+    if (pos == std::string::npos) {
+        return false;
+    }
+    std::string sub = filenameWithPath.substr(0, pos);
+    struct stat symStat;
+    while (sub.size() > dir.size()) {
+        if (lstat(sub.c_str(), &symStat) == 0 && S_ISLNK(symStat.st_mode)) {
+            LOGE("symlink component rejected: %{public}s", sub.c_str());
+            return true;
+        }
+        size_t p = sub.rfind('/');
+        if (p == std::string::npos) {
+            break;
+        }
+        sub = sub.substr(0, p);
+    }
+    LOGI("ExtractFile symlink check passed, no symlink component found in path");
+    return false;
+}
+
 void SoftBusHandlerAsset::ExtractFileInner(unzFile unZipFile, const std::string &filenameWithPath)
 {
     if (!IsDir(filenameWithPath)) {
@@ -658,6 +687,39 @@ void SoftBusHandlerAsset::ExtractFileInner(unzFile unZipFile, const std::string 
     if (unzOpenCurrentFile(unZipFile) != UNZ_OK) {
         LOGE("Minizip failed to unzOpenCurrentFile");
     }
+}
+
+bool SoftBusHandlerAsset::WriteZipContentToFile(unzFile unZipFile, const std::string &filenameWithPath)
+{
+    ExtractFileInner(unZipFile, filenameWithPath);
+    std::fstream file;
+    file.open(filenameWithPath, std::ios_base::out | std::ios_base::binary);
+    if (!file.is_open()) {
+        LOGE("open zip file fail, errno: %{public}d, path: %{public}s", errno, filenameWithPath.c_str());
+        return false;
+    }
+    const size_t pageSize = { getpagesize() };
+    auto fileData = std::make_unique<char[]>(pageSize);
+    int32_t bytesRead;
+    int64_t totalWritten = 0;
+    do {
+        bytesRead = unzReadCurrentFile(unZipFile, (voidp)fileData.get(), pageSize);
+        if (bytesRead < 0) {
+            LOGE("Minizip failed to unzReadCurrentFile, bytesRead: %{public}d, path: %{public}s",
+                 bytesRead, filenameWithPath.c_str());
+            file.close();
+            RadarParaInfo info = {"ExtractFile", ReportLevel::INNER, DfxBizStage::RECV_ASSERT,
+                                  "zip", "", bytesRead, "Minizip failed to unzReadCurrentFile"};
+            RadarReportAdapter::GetInstance().ReportFileAccessAdapter(info);
+            return false;
+        }
+        file.write(fileData.get(), bytesRead);
+        totalWritten += bytesRead;
+    } while (bytesRead > 0);
+    file.close();
+    LOGI("ExtractFile success, path: %{public}s, totalWritten: %{public}ld",
+         filenameWithPath.c_str(), static_cast<long>(totalWritten));
+    return true;
 }
 
 std::string SoftBusHandlerAsset::ExtractFile(unzFile unZipFile, const std::string &dir)
@@ -686,30 +748,15 @@ std::string SoftBusHandlerAsset::ExtractFile(unzFile unZipFile, const std::strin
         return "";
     }
     std::string filenameWithoutPath = filenameWithPath.substr(pos + 1);
-
-    ExtractFileInner(unZipFile, filenameWithPath);
-    std::fstream file;
-    file.open(filenameWithPath, std::ios_base::out | std::ios_base::binary);
-    if (!file.is_open()) {
-        LOGE("open zip file fail, errno: %{public}d", errno);
+    if (HasSymlinkInPath(filenameWithPath, dir)) {
+        RadarParaInfo info = {"ExtractFile", ReportLevel::INNER, DfxBizStage::RECV_ASSERT,
+                              DEFAULT_PKGNAME, "", DEFAULT_ERR, "symlink component rejected"};
+        RadarReportAdapter::GetInstance().ReportFileAccessAdapter(info);
         return "";
     }
-    const size_t pageSize =  { getpagesize() };
-    auto fileData = std::make_unique<char[]>(pageSize);
-    int32_t bytesRead;
-    do {
-        bytesRead = unzReadCurrentFile(unZipFile, (voidp)fileData.get(), pageSize);
-        if (bytesRead < 0) {
-            LOGE("Minizip failed to unzReadCurrentFile");
-            file.close();
-            RadarParaInfo info = {"ExtractFile", ReportLevel::INNER, DfxBizStage::RECV_ASSERT,
-                "zip", "", bytesRead, "Minizip failed to unzReadCurrentFile"};
-            RadarReportAdapter::GetInstance().ReportFileAccessAdapter(info);
-            return "";
-        }
-        file.write(fileData.get(), bytesRead);
-    } while (bytesRead > 0);
-    file.close();
+    if (!WriteZipContentToFile(unZipFile, filenameWithPath)) {
+        return "";
+    }
     return filenameWithPath;
 }
 
