@@ -13,17 +13,17 @@
  * limitations under the License.
  */
 #include "cloud_disk_download_file_stat.h"
- 
+
 #include <fcntl.h>
 #include <fstream>
 #include <sys/stat.h>
 #include <unistd.h>
- 
+
 #include "dfs_error.h"
 #include "hisysevent.h"
 #include "utils_log.h"
 #include "parameter.h"
- 
+
 namespace OHOS {
 namespace FileManagement {
 namespace CloudFile {
@@ -35,24 +35,24 @@ namespace CloudFile {
 #define CLOUD_SYNC_SYS_EVENT(eventName, type, ...)    \
     HiSysEventWrite(HiviewDFX::HiSysEvent::Domain::FILEMANAGEMENT, eventName,    \
                     type, ##__VA_ARGS__)    \
- 
+
 static const std::string FILEMANAGER_KEY = "persist.kernel.bundle_name.filemanager";
 const std::string DOWNLOAD_FILE_STAT_LOCAL_PATH = "/data/service/el1/public/cloudfile/cloud_data_statistic";
 const std::string DOWNLOAD_FILE_STAT_NAME = "/cloud_disk_sync_download_file_stat";
 const std::vector<uint64_t> DOWNLOAD_FILE_SIZE_RANGE_VECTOR = { 2, 4, 6, 8, 15 };
- 
+
 enum DownloadFileStatIndex {
     DOWNLOAD_BUNDLE_NAME = 0,
     DOWNLOAD_FILE_ERROR,
     DOWNLOAD_FILE_SIZE,
     DOWNLOAD_FILE_SPEED,
 };
- 
+
 std::string CloudDiskDownloadFileStat::GetLocalPath()
 {
     return DOWNLOAD_FILE_STAT_LOCAL_PATH + "/" + bundleName_;
 }
- 
+
 static int32_t CreateDataStatisticFolder()
 {
     std::string path = DOWNLOAD_FILE_STAT_LOCAL_PATH;
@@ -67,7 +67,7 @@ static int32_t CreateDataStatisticFolder()
     }
     return E_OK;
 }
- 
+
 int32_t CloudDiskDownloadFileStat::CreateDownloadFileStatData()
 {
     std::string localPath = GetLocalPath();
@@ -90,7 +90,7 @@ int32_t CloudDiskDownloadFileStat::CreateDownloadFileStatData()
     }
     return E_OK;
 }
- 
+
 CloudDiskDownloadFileStat::CloudDiskDownloadFileStat()
 {
     auto ret = CreateDataStatisticFolder();
@@ -104,7 +104,7 @@ CloudDiskDownloadFileStat::CloudDiskDownloadFileStat()
         return;
     }
 }
- 
+
 static uint32_t GetRangeIndex(uint64_t value, const std::vector<uint64_t> rangeVector)
 {
     uint32_t index = 0;
@@ -115,12 +115,12 @@ static uint32_t GetRangeIndex(uint64_t value, const std::vector<uint64_t> rangeV
     }
     return index;
 }
- 
+
 void CloudDiskDownloadFileStat::UpdateDownloadSpeedStat(uint64_t size, uint64_t duration)
 {
     double sizeMb = static_cast<double>(size) / DOWNLOAD_FILE_BYTE_SIZE;
     double time = static_cast<double>(duration) / DOWNLOAD_FILE_BYTE_SIZE;
- 
+
     double precision = 1e-10;
     uint32_t indexSpeed = 15;
     if (abs(time) > precision) {
@@ -131,7 +131,7 @@ void CloudDiskDownloadFileStat::UpdateDownloadSpeedStat(uint64_t size, uint64_t 
         stat_.fileDownloadSpeed[indexSpeed]++;
     }
 }
- 
+
 void CloudDiskDownloadFileStat::UpdateDownloadSizeStat(uint64_t size, uint64_t duration)
 {
     uint32_t index = GetRangeIndex(size, DOWNLOAD_FILE_SIZE_RANGE_VECTOR);
@@ -140,20 +140,20 @@ void CloudDiskDownloadFileStat::UpdateDownloadSizeStat(uint64_t size, uint64_t d
     }
     stat_.fileSize[index]++;
 }
- 
+
 void CloudDiskDownloadFileStat::UpdateDownloadStat(uint64_t size, uint64_t duration)
 {
     UpdateDownloadSizeStat(size, duration);
     UpdateDownloadSpeedStat(size, duration);
 }
- 
+
 void CloudDiskDownloadFileStat::UpdateDownloadBundleName(const std::string &bundleName)
 {
     std::unique_lock<std::mutex> lock(mutex_);
     stat_.bundleName = bundleName;
     bundleName_ = bundleName;
 }
- 
+
 static std::string VectorToString(const std::vector<uint64_t> &vec)
 {
     std::ostringstream oss;
@@ -165,7 +165,7 @@ static std::string VectorToString(const std::vector<uint64_t> &vec)
     }
     return oss.str();
 }
- 
+
 static std::vector<uint64_t> StringToVector(std::string line)
 {
     std::vector<uint64_t> vec;
@@ -176,7 +176,7 @@ static std::vector<uint64_t> StringToVector(std::string line)
     }
     return vec;
 }
- 
+
 static inline void SumTwoVector(std::vector<uint64_t> &dataOne, std::vector<uint64_t> dataTwo)
 {
     if (dataOne.size() != dataTwo.size()) {
@@ -187,7 +187,7 @@ static inline void SumTwoVector(std::vector<uint64_t> &dataOne, std::vector<uint
     }
     return;
 }
- 
+
 static inline CloudDiskDownloadFileStatInfo SumTwoDownloadFileStat(CloudDiskDownloadFileStatInfo dataOne,
     CloudDiskDownloadFileStatInfo dataTwo)
 {
@@ -212,7 +212,7 @@ void CloudDiskDownloadFileStat::HandleBundleName(const CloudDiskDownloadFileStat
         stat_ = SumTwoDownloadFileStat(stat_, info);
     }
 }
- 
+
 void CloudDiskDownloadFileStat::OutputToFile()
 {
     std::lock_guard<std::mutex> lck(mutex_);
@@ -222,7 +222,7 @@ void CloudDiskDownloadFileStat::OutputToFile()
     }
     CloudDiskDownloadFileStatInfo tmpInfo = ReadVecFromLocal();
     HandleBundleName(tmpInfo);
- 
+
     std::vector<std::string> lines;
     /*  Keep code order below */
     lines.emplace_back(stat_.bundleName);
@@ -242,7 +242,7 @@ void CloudDiskDownloadFileStat::OutputToFile()
     ClearDownloadFileStat();
     return;
 }
- 
+
 CloudDiskDownloadFileStatInfo CloudDiskDownloadFileStat::ReadVecFromLocal()
 {
     std::vector<uint64_t> vec;
@@ -276,14 +276,14 @@ CloudDiskDownloadFileStatInfo CloudDiskDownloadFileStat::ReadVecFromLocal()
     }
     return tmpStat;
 }
- 
+
 void CloudDiskDownloadFileStat::ClearDownloadFileStat()
 {
     std::fill(stat_.downloadFileError.begin(), stat_.downloadFileError.end(), 0);
     std::fill(stat_.fileSize.begin(), stat_.fileSize.end(), 0);
     std::fill(stat_.fileDownloadSpeed.begin(), stat_.fileDownloadSpeed.end(), 0);
 }
- 
+
 int32_t CloudDiskDownloadFileStat::ReportDownloadFileStat(const CloudDiskDownloadFileStatInfo &info)
 {
     int32_t ret = CLOUD_SYNC_SYS_EVENT("CLOUD_SYNC_DOWNLOAD_FILE_STAT",
@@ -294,7 +294,7 @@ int32_t CloudDiskDownloadFileStat::ReportDownloadFileStat(const CloudDiskDownloa
         "file_download_speed", info.fileDownloadSpeed);
     return ret;
 }
- 
+
 void CloudDiskDownloadFileStat::Report()
 {
     std::lock_guard<std::mutex> lck(mutex_);
@@ -304,10 +304,10 @@ void CloudDiskDownloadFileStat::Report()
         LOGE("download file statistics data file not exists");
         return;
     }
- 
+
     /* read stat from dist */
     stat_ = ReadVecFromLocal();
- 
+
     int32_t ret = ReportDownloadFileStat(stat_);
     if (ret != E_OK) {
         LOGE("report CLOUD_SYNC_DOWNLOAD_FILE_STAT error %{public}d", ret);
@@ -317,13 +317,13 @@ void CloudDiskDownloadFileStat::Report()
         LOGE("fail to delete local statistic data, errno %{public}d", errno);
     }
 }
- 
+
 CloudDiskDownloadFileStat &CloudDiskDownloadFileStat::GetInstance()
 {
     static CloudDiskDownloadFileStat downloadStat_;
     return downloadStat_;
 }
- 
+
 } // CloudFile
 } // FileManagement
 } // OHOS
