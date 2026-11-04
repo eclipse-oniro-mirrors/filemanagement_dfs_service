@@ -974,7 +974,7 @@ static void ReleaseSyncFoldersEx(OH_CloudDisk_SyncFolderEx *folders, size_t coun
     }
     delete[] folders;
 }
- 
+
 static bool FillSyncFolderEx(OH_CloudDisk_SyncFolderEx &folder, const OHOS::FileManagement::SyncFolder &src)
 {
     folder.version = OH_CLOUD_DISK_SYNC_FOLDER_EX_VERSION_1;
@@ -998,7 +998,7 @@ static bool FillSyncFolderEx(OH_CloudDisk_SyncFolderEx &folder, const OHOS::File
     return true;
 }
 #endif
- 
+
 CloudDisk_ErrorCode OH_CloudDisk_GetSyncFoldersEx(OH_CloudDisk_SyncFolderEx **syncFolders, size_t *count)
 {
 #ifdef SUPPORT_CLOUD_DISK_SERVICE
