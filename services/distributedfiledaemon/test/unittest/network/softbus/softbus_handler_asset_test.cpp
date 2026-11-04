@@ -806,11 +806,7 @@ HWTEST_F(SoftBusHandlerAssetTest, SoftBusHandlerAssetTest_ExtractFile_0200, Test
 
 /**
  * @tc.name: SoftBusHandlerAssetTest_ExtractFile_0700
- * @tc.desc: Verify ExtractFile rejects extraction through a symlink component (Zip Slip symlink attack).
- *           A symlink under dir points back into dir; a malicious zip entry traverses the symlink
- *           to overwrite an existing business file. Without the lstat fix, fstream.open follows the
- *           symlink and overwrites the victim file. With the fix, the symlink component is detected
- *           and extraction is rejected.
+ * @tc.desc: ExtractFile rejects symlink traversal in zip entry path (Zip Slip symlink attack).
  * @tc.type: SECURITY
  * @tc.require: I9JXPR
  */
@@ -821,64 +817,44 @@ HWTEST_F(SoftBusHandlerAssetTest, SoftBusHandlerAssetTest_ExtractFile_0700, Test
 
     std::string baseDir = "/data/local/tmp/assetSlip_0700/";
     std::string victimDir = baseDir + "com.victim/";
-    std::string configDir = victimDir + "config/";
-    std::string victimFile = configDir + "important.cfg";
+    std::string victimFile = victimDir + "config/important.cfg";
     std::string sandboxParent = victimDir + "ASSET_TEMP/";
     std::string symlinkPath = sandboxParent + "sandbox";
     std::string zipFileName = baseDir + "attack.zip";
+    std::string entryName = "com.victim/ASSET_TEMP/sandbox/config/important.cfg";
+    const std::string originalContent = "CRITICAL_CONFIG_VICTIM";
+    const std::string attackContent = "ATTACKER_OVERWRITE";
 
     ForceRemoveDirectoryBMS(baseDir);
-    ASSERT_TRUE(ForceCreateDirectory(configDir.c_str()))
-        << "Failed to create victim config dir";
-    ASSERT_TRUE(ForceCreateDirectory(sandboxParent.c_str()))
-        << "Failed to create sandbox parent dir";
-
-    const std::string originalContent = "CRITICAL_CONFIG_VICTIM";
+    ASSERT_TRUE(ForceCreateDirectory((victimDir + "config/").c_str()));
+    ASSERT_TRUE(ForceCreateDirectory(sandboxParent.c_str()));
     {
         std::ofstream vf(victimFile, std::ios_base::out | std::ios_base::trunc);
-        ASSERT_TRUE(vf.is_open()) << "Failed to open victim file for writing";
+        ASSERT_TRUE(vf.is_open());
         vf << originalContent;
-        vf.close();
     }
-
-    int symRet = symlink(victimDir.c_str(), symlinkPath.c_str());
-    ASSERT_EQ(symRet, 0) << "Failed to create symlink sandbox -> com.victim/, errno=" << errno;
+    ASSERT_EQ(symlink(victimDir.c_str(), symlinkPath.c_str()), 0) << "symlink errno=" << errno;
 
     zipFile zf = zipOpen64(zipFileName.c_str(), APPEND_STATUS_CREATE);
-    ASSERT_TRUE(zf != nullptr) << "zipOpen64 failed for " << zipFileName;
-
-    const std::string entryName = "com.victim/ASSET_TEMP/sandbox/config/important.cfg";
-    const std::string attackContent = "ATTACKER_OVERWRITE";
-    int zerr = zipOpenNewFileInZip3_64(zf, entryName.c_str(), NULL, NULL, 0, NULL, 0, NULL,
-                                       Z_DEFLATED, 0, 0, -MAX_WBITS, DEF_MEM_LEVEL,
-                                       Z_DEFAULT_STRATEGY, NULL, 0, 0);
-    ASSERT_EQ(zerr, ZIP_OK) << "zipOpenNewFileInZip3_64 failed, err=" << zerr;
-    zerr = zipWriteInFileInZip(zf, attackContent.c_str(), attackContent.size());
-    ASSERT_EQ(zerr, ZIP_OK) << "zipWriteInFileInZip failed, err=" << zerr;
+    ASSERT_TRUE(zf != nullptr);
+    ASSERT_EQ(zipOpenNewFileInZip3_64(zf, entryName.c_str(), NULL, NULL, 0, NULL, 0, NULL,
+        Z_DEFLATED, 0, 0, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY, NULL, 0, 0), ZIP_OK);
+    ASSERT_EQ(zipWriteInFileInZip(zf, attackContent.c_str(), attackContent.size()), ZIP_OK);
     zipCloseFileInZip(zf);
     zipClose(zf, NULL);
 
     unzFile unZipFile = unzOpen64(zipFileName.c_str());
-    ASSERT_TRUE(unZipFile != nullptr) << "unzOpen64 failed";
-
+    ASSERT_TRUE(unZipFile != nullptr);
     std::string result = softBusHandlerAsset.ExtractFile(unZipFile, baseDir);
     unzClose(unZipFile);
 
-    GTEST_LOG_(INFO) << "ExtractFile returned: \"" << result << "\"";
-
     std::string afterContent;
     {
-        std::ifstream vf(victimFile, std::ios_base::in);
-        ASSERT_TRUE(vf.is_open()) << "Failed to open victim file for reading";
+        std::ifstream vf(victimFile);
         std::getline(vf, afterContent);
-        vf.close();
     }
-    GTEST_LOG_(INFO) << "Business config after extraction: " << afterContent;
-
-    EXPECT_EQ(result, "") << "ExtractFile should reject symlink component in path";
-    EXPECT_EQ(afterContent, originalContent)
-        << "Victim business file must NOT be overwritten via symlink traversal";
-
+    EXPECT_EQ(result, "") << "should reject symlink component";
+    EXPECT_EQ(afterContent, originalContent) << "victim file must not be overwritten";
     ForceRemoveDirectoryBMS(baseDir);
     GTEST_LOG_(INFO) << "SoftBusHandlerAssetTest_ExtractFile_0700 end";
 }
