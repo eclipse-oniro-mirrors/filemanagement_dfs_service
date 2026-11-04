@@ -67,7 +67,7 @@ struct hmfs_pdedup_create_arg_v1 {
 struct hmfs_pdedup_create_arg_v2 {
     struct hmfs_pdedup_create_arg_common common;
     uint64_t flags;
-    uint64_t reserved[HMFS_PDEDUP_CREATE_RESERVED_NUM];
+    uint8_t reserved[HMFS_PDEDUP_CREATE_RESERVED_NUM];
     struct hmfs_pdedup_extent extents[]; /* map extends */
 };
 
