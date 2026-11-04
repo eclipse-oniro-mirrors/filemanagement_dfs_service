@@ -22,7 +22,7 @@
 #include "system_ability_definition.h"
 #include "utils_log.h"
 #include "operation_log_handler.h"
-#include "rdb_errno.h
+#include "rdb_errno.h"
 
 namespace OHOS::FileManagement::CloudSync {
 
