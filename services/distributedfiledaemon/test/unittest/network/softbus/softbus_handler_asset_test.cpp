@@ -805,6 +805,61 @@ HWTEST_F(SoftBusHandlerAssetTest, SoftBusHandlerAssetTest_ExtractFile_0200, Test
 }
 
 /**
+ * @tc.name: SoftBusHandlerAssetTest_ExtractFile_0700
+ * @tc.desc: ExtractFile rejects symlink traversal in zip entry path (Zip Slip symlink attack).
+ * @tc.type: SECURITY
+ * @tc.require: I9JXPR
+ */
+HWTEST_F(SoftBusHandlerAssetTest, SoftBusHandlerAssetTest_ExtractFile_0700, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "SoftBusHandlerAssetTest_ExtractFile_0700 start";
+    auto &&softBusHandlerAsset = SoftBusHandlerAsset::GetInstance();
+
+    std::string baseDir = "/data/local/tmp/assetSlip_0700/";
+    std::string victimDir = baseDir + "com.victim/";
+    std::string victimFile = victimDir + "config/important.cfg";
+    std::string sandboxParent = victimDir + "ASSET_TEMP/";
+    std::string symlinkPath = sandboxParent + "sandbox";
+    std::string zipFileName = baseDir + "attack.zip";
+    std::string entryName = "com.victim/ASSET_TEMP/sandbox/config/important.cfg";
+    const std::string originalContent = "CRITICAL_CONFIG_VICTIM";
+    const std::string attackContent = "ATTACKER_OVERWRITE";
+
+    ForceRemoveDirectoryBMS(baseDir);
+    ASSERT_TRUE(ForceCreateDirectory((victimDir + "config/").c_str()));
+    ASSERT_TRUE(ForceCreateDirectory(sandboxParent.c_str()));
+    {
+        std::ofstream vf(victimFile, std::ios_base::out | std::ios_base::trunc);
+        ASSERT_TRUE(vf.is_open());
+        vf << originalContent;
+    }
+    ASSERT_EQ(symlink(victimDir.c_str(), symlinkPath.c_str()), 0) << "symlink errno=" << errno;
+
+    zipFile zf = zipOpen64(zipFileName.c_str(), APPEND_STATUS_CREATE);
+    ASSERT_TRUE(zf != nullptr);
+    ASSERT_EQ(zipOpenNewFileInZip3_64(zf, entryName.c_str(), NULL, NULL, 0, NULL, 0, NULL,
+        Z_DEFLATED, 0, 0, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY, NULL, 0, 0), ZIP_OK);
+    ASSERT_EQ(zipWriteInFileInZip(zf, attackContent.c_str(), attackContent.size()), ZIP_OK);
+    zipCloseFileInZip(zf);
+    zipClose(zf, NULL);
+
+    unzFile unZipFile = unzOpen64(zipFileName.c_str());
+    ASSERT_TRUE(unZipFile != nullptr);
+    std::string result = softBusHandlerAsset.ExtractFile(unZipFile, baseDir);
+    unzClose(unZipFile);
+
+    std::string afterContent;
+    {
+        std::ifstream vf(victimFile);
+        std::getline(vf, afterContent);
+    }
+    EXPECT_EQ(result, "") << "should reject symlink component";
+    EXPECT_EQ(afterContent, originalContent) << "victim file must not be overwritten";
+    ForceRemoveDirectoryBMS(baseDir);
+    GTEST_LOG_(INFO) << "SoftBusHandlerAssetTest_ExtractFile_0700 end";
+}
+
+/**
  * @tc.name: SoftBusHandlerAssetTest_CompressFileInner_0100
  * @tc.desc: Verify the CompressFileInner function.
  * @tc.type: FUNC
