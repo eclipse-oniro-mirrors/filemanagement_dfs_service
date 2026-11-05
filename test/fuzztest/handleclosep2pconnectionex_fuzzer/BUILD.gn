@@ -46,6 +46,7 @@ ohos_fuzztest("HandleCloseP2PConnectionExFuzzTest") {
     "app_file_service:remote_file_share_native",
     "cJSON:cjson_static",
     "c_utils:utils",
+    "config_policy:configpolicy_util",
     "device_manager:devicemanagersdk",
     "dsoftbus:softbus_client",
     "hilog:libhilog",
