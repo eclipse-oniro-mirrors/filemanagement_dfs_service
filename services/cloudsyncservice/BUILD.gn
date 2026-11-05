@@ -296,7 +296,6 @@ ohos_static_library("cloudsync_sa_static") {
     "${distributedfile_path}/frameworks/native/cloudsync_kit_inner/src/cloud_sync_common.cpp",
     "${distributedfile_path}/utils/system/src/account_utils.cpp",
     "src/decompress_config_manager.cpp",
-    "src/decompress_update.cpp",
     "src/ipc/cloud_sync_service.cpp",
     "src/ipc/download_asset_callback_manager.cpp",
     "src/ipc/download_asset_callback_proxy.cpp",
