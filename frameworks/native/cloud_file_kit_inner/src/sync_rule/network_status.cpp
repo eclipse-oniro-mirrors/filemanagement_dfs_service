@@ -104,7 +104,12 @@ void NetworkStatus::SetWeakNetworkSyncEnable(bool flag)
 {
     weakNetworkSyncEnable_.store(flag);
 }
- 
+
+bool NetworkStatus::IsWeakNetworkSyncEnabled()
+{
+    return weakNetworkSyncEnable_.load();
+}
+
 bool NetworkStatus::IsAllowSync(SyncTriggerType triggerType)
 {
     LOGI("IsAllowSync");
