@@ -107,6 +107,8 @@ enum RadarStatisticInfoType {
     GENERATE_DIS_URI_FAIL_CNT,
     FILE_ACCESS_SUCC_CNT,
     FILE_ACCESS_FAIL_CNT,
+    COPY_HMDFS_CNT,
+    COPY_SEND_CNT,
 };
 
 struct RadarStatisticInfo {
@@ -116,10 +118,13 @@ struct RadarStatisticInfo {
     uint32_t generateUriFailCount;
     uint32_t fileAccessSuccCount;
     uint32_t fileAccessFailCount;
+    uint32_t hmdfsCopyCount;
+    uint32_t sendFileCount;
     bool empty() const
     {
         return connectSuccCount == 0 && connectFailCount == 0 && generateUriSuccCount == 0 &&
-               generateUriFailCount == 0 && fileAccessSuccCount == 0 && fileAccessFailCount == 0;
+               generateUriFailCount == 0 && fileAccessSuccCount == 0 && fileAccessFailCount == 0 &&
+               hmdfsCopyCount == 0 && sendFileCount == 0;
     }
     void clear()
     {
@@ -129,6 +134,8 @@ struct RadarStatisticInfo {
         generateUriFailCount = 0;
         fileAccessSuccCount = 0;
         fileAccessFailCount = 0;
+        hmdfsCopyCount = 0;
+        sendFileCount = 0;
     }
 };
 
