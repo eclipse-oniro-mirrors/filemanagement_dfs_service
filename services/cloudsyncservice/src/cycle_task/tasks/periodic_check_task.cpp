@@ -53,9 +53,11 @@ int32_t PeriodicCheckTask::RunTaskForBundle(int32_t userId, std::string bundleNa
         LOGE("UpdateCachedFileSize failed for %{public}s, ret: %{public}d", bundleName.c_str(), ret);
     }
 
-    ret = CloudDisk::OperationLogHandler::GetInstance().CleanOldRecords();
-    if (ret != E_OK) {
-        LOGE("OperationLogHandler CleanOldRecords failed for %{public}s, ret: %{public}d", bundleName.c_str(), ret);
+    if (bundleName != GALLERY_BUNDLE_NAME && bundleName != HDC_BUNDLE_NAME) {
+        ret = CloudDisk::OperationLogHandler::GetInstance().CleanOldRecords();
+        if (ret != E_OK) {
+            LOGE("OperationLogHandler CleanOldRecords failed for %{public}s, ret: %{public}d", bundleName.c_str(), ret);
+        }
     }
     return ret;
 }
