@@ -64,7 +64,7 @@ int32_t g_getPhysicalPath = 0;
 bool g_checkValidPath = false;
 bool g_isFolder = false;
 bool g_isFile = false;
-pid_t g_getCallingUid = 100;
+pid_t g_getCallingAppUid = 100;
 std::string g_getCallingNetworkId;
 bool g_publish;
 bool g_subscribeCommonEvent;
@@ -220,14 +220,9 @@ namespace OHOS {
 #ifdef CONFIG_IPC_SINGLE
 using namespace IPC_SINGLE;
 #endif
-pid_t IPCSkeleton::GetCallingUid()
-{
-    return g_getCallingUid;
-}
-
 pid_t IPCSkeleton::GetCallingAppUid()
 {
-    return IPCSkeleton::GetCallingUid();
+    return g_getCallingAppUid;
 }
 
 std::string IPCSkeleton::GetCallingDeviceID()
@@ -504,11 +499,11 @@ HWTEST_F(DaemonTest, DaemonTest_GetDfsUrisDirFromLocal_0100, TestSize.Level0)
     std::string normalUri = "file://docs/data/storage/el2/cloud";
     std::string errUri = "file://docs/data/storage/../el2/cloud";
     std::unordered_map<std::string, AppFileService::ModuleRemoteFileShare::HmdfsUriInfo> uriToDfsUriMaps;
-    g_getCallingUid = -1;
+    g_getCallingAppUid = -1;
     auto ret = daemon_->GetDfsUrisDirFromLocal(uriList, userId, uriToDfsUriMaps);
     EXPECT_EQ(ret, FileManagement::E_PERMISSION_DENIED);
 
-    g_getCallingUid = PASTE_BOARD_UID;
+    g_getCallingAppUid = PASTE_BOARD_UID;
     uriList.emplace_back(normalUri);
     uriList.emplace_back(errUri);
     ret = daemon_->GetDfsUrisDirFromLocal(uriList, userId, uriToDfsUriMaps);
@@ -523,7 +518,7 @@ HWTEST_F(DaemonTest, DaemonTest_GetDfsUrisDirFromLocal_0100, TestSize.Level0)
     ret = daemon_->GetDfsUrisDirFromLocal(uriList, userId, uriToDfsUriMaps);
     EXPECT_EQ(ret, OHOS::FileManagement::E_OK);
 
-    g_getCallingUid = UDMF_UID;
+    g_getCallingAppUid = UDMF_UID;
     uriList.emplace_back(errUri);
     ret = daemon_->GetDfsUrisDirFromLocal(uriList, userId, uriToDfsUriMaps);
     EXPECT_EQ(ret, FileManagement::E_ILLEGAL_URI);
@@ -555,7 +550,7 @@ HWTEST_F(DaemonTest, DaemonTest_UMountDisShareFile_0100, TestSize.Level1)
         std::string bundleName = "com.example.app";
         int32_t userId = 100;
 
-        g_getCallingUid = 1001;
+        g_getCallingAppUid = 1001;
         auto ret = daemon_->UMountDisShareFile(bundleName, userId);
         EXPECT_EQ(ret, FileManagement::E_PERMISSION_DENIED);
     } catch (const exception &e) {
@@ -582,7 +577,7 @@ HWTEST_F(DaemonTest, DaemonTest_UMountDisShareFile_0200, TestSize.Level1)
         std::string bundleName = "com.example.app.notexist";
         int32_t userId = 100;
 
-        g_getCallingUid = INSTALLSUSERID;
+        g_getCallingAppUid = INSTALLSUSERID;
         auto ret = daemon_->UMountDisShareFile(bundleName, userId);
         EXPECT_EQ(ret, FileManagement::E_OK);
     } catch (const exception &e) {
@@ -609,7 +604,7 @@ HWTEST_F(DaemonTest, DaemonTest_UMountDisShareFile_0300, TestSize.Level1)
         std::string bundleName = "com.example.app";
         int32_t userId = 100;
 
-        g_getCallingUid = INSTALLSUSERID;
+        g_getCallingAppUid = INSTALLSUSERID;
         std::string remoteShareDir = "/data/service/el2/100/hmdfs/account/data/" + bundleName + "/.remote_share/";
         std::filesystem::create_directories(remoteShareDir + "networkId1/data/storage/el2/base");
         std::filesystem::create_directories(remoteShareDir + "networkId2/data/storage/el2/base");
@@ -644,7 +639,7 @@ HWTEST_F(DaemonTest, DaemonTest_UMountDisShareFile_0350, TestSize.Level1)
         std::string bundleName = "com.example.app";
         int32_t userId = 100;
 
-        g_getCallingUid = INSTALLSUSERID;
+        g_getCallingAppUid = INSTALLSUSERID;
         std::string remoteShareDir = "/data/service/el2/100/hmdfs/account/data/" + bundleName + "/.remote_share/";
         std::filesystem::create_directories(remoteShareDir + "networkId1/data/storage/el2/base");
 
@@ -680,7 +675,7 @@ HWTEST_F(DaemonTest, DaemonTest_UMountDisShareFile_0400, TestSize.Level1)
         std::string bundleName = "com.example.app.empty";
         int32_t userId = 100;
 
-        g_getCallingUid = INSTALLSUSERID;
+        g_getCallingAppUid = INSTALLSUSERID;
         std::string remoteShareDir = "/data/service/el2/100/hmdfs/account/data/" + bundleName + "/.remote_share/";
         std::filesystem::create_directories(remoteShareDir);
 
@@ -712,7 +707,7 @@ HWTEST_F(DaemonTest, DaemonTest_UMountDisShareFile_0500, TestSize.Level1)
     try {
         std::string bundleName = "com.example.app";
         int32_t userId = 100;
-        g_getCallingUid = INSTALLSUSERID;
+        g_getCallingAppUid = INSTALLSUSERID;
         std::string remoteShareDir = "/data/service/el2/100/hmdfs/account/data/" + bundleName + "/.remote_share/";
         std::filesystem::create_directories(remoteShareDir + "networkId1/data/storage/el2/base");
         std::filesystem::create_directories(remoteShareDir + "networkId2/data/storage/el2/base");
@@ -749,7 +744,7 @@ HWTEST_F(DaemonTest, DaemonTest_UMountDisShareFile_0600, TestSize.Level1)
     try {
         std::string bundleName = "com.example.app.withfiles";
         int32_t userId = 100;
-        g_getCallingUid = INSTALLSUSERID;
+        g_getCallingAppUid = INSTALLSUSERID;
         std::string remoteShareDir = "/data/service/el2/100/hmdfs/account/data/" + bundleName + "/.remote_share/";
         std::filesystem::create_directories(remoteShareDir + "networkId1/data/storage/el2/base");
         std::filesystem::create_directories(remoteShareDir);
@@ -784,7 +779,7 @@ HWTEST_F(DaemonTest, DaemonTest_UMountDisShareFile_0700, TestSize.Level1)
     try {
         std::string bundleName = "com.example.app.userid";
         int32_t userId = 200;
-        g_getCallingUid = INSTALLSUSERID;
+        g_getCallingAppUid = INSTALLSUSERID;
         std::string remoteShareDir = "/data/service/el2/200/hmdfs/account/data/" + bundleName + "/.remote_share/";
         std::filesystem::create_directories(remoteShareDir + "networkId1/data/storage/el2/base");
 
@@ -816,7 +811,7 @@ HWTEST_F(DaemonTest, DaemonTest_UMountDisShareFile_0800, TestSize.Level1)
     try {
         std::string bundleName = "";
         int32_t userId = 100;
-        g_getCallingUid = INSTALLSUSERID;
+        g_getCallingAppUid = INSTALLSUSERID;
 
         auto ret = daemon_->UMountDisShareFile(bundleName, userId);
         EXPECT_EQ(ret, FileManagement::E_OK);
@@ -843,7 +838,7 @@ HWTEST_F(DaemonTest, DaemonTest_UMountDisShareFile_0900, TestSize.Level1)
     try {
         std::string bundleName = "com.example.app.onlyfiles";
         int32_t userId = 100;
-        g_getCallingUid = INSTALLSUSERID;
+        g_getCallingAppUid = INSTALLSUSERID;
         std::string remoteShareDir = "/data/service/el2/100/hmdfs/account/data/" + bundleName + "/.remote_share/";
         std::filesystem::create_directories(remoteShareDir);
         std::ofstream(remoteShareDir + "file1.txt");
@@ -878,7 +873,7 @@ HWTEST_F(DaemonTest, DaemonTest_UMountDisShareFile_1000, TestSize.Level1)
     try {
         std::string bundleName = "com.example.app.multi";
         int32_t userId = 100;
-        g_getCallingUid = INSTALLSUSERID;
+        g_getCallingAppUid = INSTALLSUSERID;
         std::string remoteShareDir = "/data/service/el2/100/hmdfs/account/data/" + bundleName + "/.remote_share/";
         std::filesystem::create_directories(remoteShareDir + "device1/data/storage/el2/base");
         std::filesystem::create_directories(remoteShareDir + "device2/data/storage/el2/base");
@@ -913,7 +908,7 @@ HWTEST_F(DaemonTest, DaemonTest_UMountDisShareFile_1100, TestSize.Level1)
     try {
         std::string bundleName = "com.example.app.uidtest";
         int32_t userId = 100;
-        g_getCallingUid = INSTALLSUSERID;
+        g_getCallingAppUid = INSTALLSUSERID;
         std::string remoteShareDir = "/data/service/el2/100/hmdfs/account/data/" + bundleName + "/.remote_share/";
         std::filesystem::create_directories(remoteShareDir + "networkId1/data/storage/el2/base");
 
@@ -1864,11 +1859,11 @@ HWTEST_F(DaemonTest, DaemonTest_CancelCopyTask_001, TestSize.Level1)
     EXPECT_EQ(daemon_->CancelCopyTask("test"), E_INVAL_ARG);
 
     SoftBusSessionPool::SessionInfo sessionInfo{.uid = 100};
-    g_getCallingUid = 101;
+    g_getCallingAppUid = 101;
     SoftBusSessionPool::GetInstance().AddSessionInfo("test", sessionInfo);
     EXPECT_EQ(daemon_->CancelCopyTask("test"), E_PERMISSION_DENIED);
 
-    g_getCallingUid = 100;
+    g_getCallingAppUid = 100;
     EXPECT_EQ(daemon_->CancelCopyTask("test"), E_OK);
     SoftBusSessionPool::GetInstance().DeleteSessionInfo("test");
     GTEST_LOG_(INFO) << "DaemonTest_CancelCopyTask_001 end";

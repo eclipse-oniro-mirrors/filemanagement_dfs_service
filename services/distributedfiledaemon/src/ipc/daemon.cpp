@@ -1230,8 +1230,8 @@ int32_t Daemon::GetDfsUrisDirFromLocal(const std::vector<std::string> &uriList,
     RadarParaInfo info = {"GetDfsUrisDirFromLocal", ReportLevel::DEFAULT, DfxBizStage::GENERATE_DIS_URI,
         DEFAULT_PKGNAME, "", E_OK, "GetDfsUrisDirFromLocal Begin"};
     RadarReportAdapter::GetInstance().ReportGenerateDisUriAdapter(info);
-    auto callingUid = IPCSkeleton::GetCallingUid();
-    if (callingUid != PASTEBOARDUSERID && callingUid != UDMFUSERID) {
+    auto callingAppUid = IPCSkeleton::GetCallingAppUid();
+    if (callingAppUid != PASTEBOARDUSERID && callingAppUid != UDMFUSERID) {
         LOGE("Permission denied, caller is not pasterboard or udmf");
         info = {"GetDfsUrisDirFromLocal", ReportLevel::INTERFACE, DfxBizStage::GENERATE_DIS_URI,
             DEFAULT_PKGNAME, "", E_PERMISSION_DENIED, "Permission Denied"};
@@ -1288,9 +1288,9 @@ sptr<StorageManager::IStorageManager> Daemon::GetStorageManager()
 int32_t Daemon::UMountDisShareFile(const std::string &bundleName, const int32_t userId)
 {
     LOGI("Daemon::UMountDisShareFile start");
-    auto callingUid = IPCSkeleton::GetCallingUid();
-    if (callingUid != INSTALLSUSERID) {
-        LOGE("UMountDisShareFile permission denied, callingUid: %{public}d", callingUid);
+    auto callingAppUid = IPCSkeleton::GetCallingAppUid();
+    if (callingAppUid != INSTALLSUSERID) {
+        LOGE("UMountDisShareFile permission denied, callingAppUid: %{public}d", callingAppUid);
         return E_PERMISSION_DENIED;
     }
 

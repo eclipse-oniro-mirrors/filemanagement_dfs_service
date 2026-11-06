@@ -445,8 +445,8 @@ int32_t DaemonStub::HandleInnerCancelCopyTask(MessageParcel &data, MessageParcel
 int32_t DaemonStub::HandleRegisterRecvCallback(MessageParcel &data, MessageParcel &reply)
 {
     LOGI("Begin RegisterRecvCallback");
-    auto uid = IPCSkeleton::GetCallingUid();
-    if (uid != DATA_UID) {
+    auto appUid = IPCSkeleton::GetCallingAppUid();
+    if (appUid != DATA_UID) {
         LOGE("Permission denied, caller is not data!");
         return E_PERMISSION_DENIED;
     }
@@ -475,8 +475,8 @@ int32_t DaemonStub::HandleRegisterRecvCallback(MessageParcel &data, MessageParce
 int32_t DaemonStub::HandleUnRegisterRecvCallback(MessageParcel &data, MessageParcel &reply)
 {
     LOGI("Begin UnRegisterRecvCallback");
-    auto uid = IPCSkeleton::GetCallingUid();
-    if (uid != DATA_UID) {
+    auto appUid = IPCSkeleton::GetCallingAppUid();
+    if (appUid != DATA_UID) {
         LOGE("Permission denied, caller is not data!");
         return E_PERMISSION_DENIED;
     }
@@ -505,8 +505,8 @@ int32_t DaemonStub::HandleUnRegisterRecvCallback(MessageParcel &data, MessagePar
 int32_t DaemonStub::HandlePushAsset(MessageParcel &data, MessageParcel &reply)
 {
     LOGI("Begin PushAsset");
-    auto uid = IPCSkeleton::GetCallingUid();
-    if (uid != DATA_UID) {
+    auto appUid = IPCSkeleton::GetCallingAppUid();
+    if (appUid != DATA_UID) {
         LOGE("Permission denied, caller is not data!");
         return E_PERMISSION_DENIED;
     }
@@ -547,8 +547,8 @@ int32_t DaemonStub::HandlePushAsset(MessageParcel &data, MessageParcel &reply)
 
 int32_t DaemonStub::HandleGetDfsUrisDirFromLocal(MessageParcel &data, MessageParcel &reply)
 {
-    auto callingUid = IPCSkeleton::GetCallingUid();
-    if (callingUid != PASTEBOARDUSERID && callingUid != UDMFUSERID) {
+    auto callingAppUid = IPCSkeleton::GetCallingAppUid();
+    if (callingAppUid != PASTEBOARDUSERID && callingAppUid != UDMFUSERID) {
         LOGE("Permission denied, caller is not pasterboard or udmf");
         return E_PERMISSION_DENIED;
     }

@@ -33,18 +33,13 @@
 
 namespace OHOS {
 constexpr pid_t DATA_UID = 3012;
-pid_t g_uid = 1009;
+pid_t g_appUid = 1009;
 #ifdef CONFIG_IPC_SINGLE
 using namespace IPC_SINGLE;
 #endif
-pid_t IPCSkeleton::GetCallingUid()
-{
-    return g_uid;
-}
-
 pid_t IPCSkeleton::GetCallingAppUid()
 {
-    return IPCSkeleton::GetCallingUid();
+    return g_appUid;
 }
 }
 
@@ -188,7 +183,7 @@ void HandleRegisterRecvCallbackFuzzTest(std::shared_ptr<DaemonStub> daemonStubPt
                                         const uint8_t *data,
                                         size_t size)
 {
-    OHOS::g_uid = DATA_UID;
+    OHOS::g_appUid = DATA_UID;
     uint32_t code = static_cast<uint32_t>(DistributedFileDaemonInterfaceCode::DISTRIBUTED_FILE_REGISTER_ASSET_CALLBACK);
     MessageParcel datas;
     datas.WriteInterfaceToken(DaemonStub::GetDescriptor());
