@@ -146,7 +146,7 @@ static bool IsAllDigits(const std::string &s)
     }
     return true;
 }
- 
+
 static void CollectPathsRecursive(const std::string &dir, std::vector<std::string> &paths)
 {
     DIR *d = opendir(dir.c_str());
@@ -169,7 +169,7 @@ static void CollectPathsRecursive(const std::string &dir, std::vector<std::strin
     }
     closedir(d);
 }
- 
+
 int32_t MetaFile::RemoveSharedFIleDentryFiles(uint32_t userId, const std::string &bucketRootPath)
 {
     if (bucketRootPath.empty()) {
@@ -208,11 +208,11 @@ int32_t MetaFile::RemoveSharedFIleDentryFiles(uint32_t userId, const std::string
 
         bucketsProcessed++;
         std::string bucketPath = bucketRootPath + "/" + bucketName;
- 
+
         std::vector<std::string> paths;
         paths.push_back(bucketPath);
         CollectPathsRecursive(bucketPath, paths);
- 
+
         for (const auto &path : paths) {
             int32_t ret = MetaFileMgr::GetInstance().RemoveByPath(userId, path);
             if (ret == E_OK) {
@@ -231,7 +231,7 @@ int32_t MetaFile::RemoveSharedFIleDentryFiles(uint32_t userId, const std::string
          bucketsProcessed, totalDeleted, totalFailed);
     return totalDeleted;
 }
- 
+
 int32_t MetaFile::RemovePrivateFIleDentryFiles(uint32_t userId, const std::string &bucketRootPath)
 {
     if (bucketRootPath.empty()) {

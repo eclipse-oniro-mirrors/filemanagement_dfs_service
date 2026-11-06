@@ -1199,10 +1199,10 @@ ErrCode CloudSyncService::GetDecompressSystemFeature(bool &systemFeature)
 ErrCode CloudSyncService::GetDecompressCrossFsConfig(bool &crossFsConfig)
 {
     LOGD("Begin GetDecompressCrossFsConfig");
-    
+
     auto &manager = DecompressConfigManager::GetInstance();
     crossFsConfig = manager.GetCrossFsConfig();
-    
+
     LOGD("End GetDecompressCrossFsConfig, crossFsConfig: %{public}s", crossFsConfig ? "true" : "false");
     return E_OK;
 }
