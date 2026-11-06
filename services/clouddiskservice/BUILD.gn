@@ -58,7 +58,9 @@ idl_gen_interface("cloud_disk_service") {
     cfi_vcall_icall_only = true
     debug = false
   }
-  cflags = [ "-mbranch-protection=pac-ret+b-key" ]
+  if (current_cpu == "arm64") {
+    cflags = [ "-mbranch-protection=pac-ret+b-key" ]
+  }
 
   log_domainid = "0xD003900"
   log_tag = "CloudDiskService"
