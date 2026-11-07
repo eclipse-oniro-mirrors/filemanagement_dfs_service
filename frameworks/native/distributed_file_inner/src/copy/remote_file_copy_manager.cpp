@@ -257,8 +257,8 @@ int32_t RemoteFileCopyManager::RemoteCancel(const std::string &srcUri, const std
         }
         auto callingAppUid = IPCSkeleton::GetCallingAppUid();
         if (callingAppUid != (*item)->callingAppUid) {
-            LOGE("RemoteCancel failed, calling appUid=%{public}d has no permission to cancel copy
-                for appUid=%{public}d.", callingAppUid, (*item)->callingAppUid);
+            LOGE("RemoteCancel failed, appUid=%{public}d has no permission to cancel copy for appUid=%{public}d.",
+                callingAppUid, (*item)->callingAppUid);
             RadarParaInfo info = {"RemoteCancel", ReportLevel::INNER, DfxBizStage::HMDFS_COPY,
                 DEFAULT_PKGNAME, "", EPERM, "RemoteCancel failed"};
             RadarReportAdapter::GetInstance().ReportFileAccessAdapter(info);
