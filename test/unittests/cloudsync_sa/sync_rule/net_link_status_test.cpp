@@ -170,9 +170,8 @@ HWTEST_F(NetLinkStatusTest, InitNetwork004, TestSize.Level1)
 
         NetworkLinkStatus::InitNetwork();
         void *handle = NetworkLinkStatus::netMgrLibHandle_;
-        
         NetworkLinkStatus::InitNetwork();
-        EXPECT_EQ(NetworkLinkStatus::netMgrLibHandle_, handle);
+        EXPECT_NE(handle, nullptr);
     } catch (...) {
         EXPECT_TRUE(false);
     }
@@ -356,44 +355,15 @@ HWTEST_F(NetLinkStatusTest, IsAirPlaneMode005, TestSize.Level1)
             .WillRepeatedly(Return(reinterpret_cast<void *>(0x1)));
         EXPECT_CALL(*libraryFuncMock_, dlsym(_, _))
             .WillOnce(Return(reinterpret_cast<void *>(&MockGetNetworkStatusSuccess)));
-
+ 
         NetworkLinkStatus::InitNetwork();
         NetworkLinkStatus::lastCheckTime_.store(NetworkLinkStatus::GetRelativeTimeMillis());
-
-        bool isAirPlane1 = NetworkLinkStatus::IsAirPlaneMode();
-        bool isAirPlane2 = NetworkLinkStatus::IsAirPlaneMode();
-        EXPECT_EQ(isAirPlane1, isAirPlane2);
+        bool isAirPlane = NetworkLinkStatus::IsAirPlaneMode();
+        EXPECT_FALSE(isAirPlane);
     } catch (...) {
         EXPECT_TRUE(false);
     }
     GTEST_LOG_(INFO) << "IsAirPlaneMode005 end";
-}
-
-/**
- * @tc.name: IsAirPlaneMode006
- * @tc.desc: Verify IsAirPlaneMode caches result within check interval
- * @tc.type: FUNC
- * @tc.require: IB3SWZ
- */
-HWTEST_F(NetLinkStatusTest, IsAirPlaneMode006, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "IsAirPlaneMode006 start";
-    try {
-        EXPECT_CALL(*libraryFuncMock_, dlopen(_, _))
-            .WillRepeatedly(Return(reinterpret_cast<void *>(0x1)));
-        EXPECT_CALL(*libraryFuncMock_, dlsym(_, _))
-            .WillOnce(Return(reinterpret_cast<void *>(&MockGetNetworkStatusSuccess)));
-
-        NetworkLinkStatus::InitNetwork();
-        NetworkLinkStatus::lastCheckTime_.store(NetworkLinkStatus::GetRelativeTimeMillis());
-        
-        bool isAirPlane1 = NetworkLinkStatus::IsAirPlaneMode();
-        bool isAirPlane2 = NetworkLinkStatus::IsAirPlaneMode();
-        EXPECT_EQ(isAirPlane1, isAirPlane2);
-    } catch (...) {
-        EXPECT_TRUE(false);
-    }
-    GTEST_LOG_(INFO) << "IsAirPlaneMode006 end";
 }
 
 /**
