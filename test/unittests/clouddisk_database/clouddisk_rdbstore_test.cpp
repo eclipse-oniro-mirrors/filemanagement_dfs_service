@@ -4790,6 +4790,37 @@ HWTEST_F(CloudDiskRdbStoreTest, RenameTest11, TestSize.Level1)
 }
 
 /**
+ * @tc.name: Rename
+ * @tc.desc: Verify the CloudDiskRdbStore::Rename function
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskRdbStoreTest, RenameTest12, TestSize.Level1)
+{
+    const std::string oldParentCloudId = "100";
+    const std::string oldFileName = "normalFile";
+    const std::string newParentCloudId = "100";
+    const std::string newFileName = "newFile";
+    const bool newFileNoNeedUpload = false;
+    const bool needSyncAndNotify = true;
+    auto rdb = make_shared<RdbStoreMock>();
+    clouddiskrdbStore_->rdbStore_ = rdb;
+    std::shared_ptr<ResultSetMock> rset = std::make_shared<ResultSetMock>();
+
+    EXPECT_CALL(*rdb, QueryByStep(An<const AbsRdbPredicates &>(), An<const std::vector<std::string> &>(), _))
+        .WillOnce(Return(ByMove(rset)));
+    EXPECT_CALL(*rset, GoToNextRow()).WillOnce(Return(E_OK));
+    EXPECT_CALL(*rset, GetColumnIndex(_, _)).WillRepeatedly(Return(E_OK));
+    EXPECT_CALL(*rset, GetInt(_, _)).WillRepeatedly(Return(E_OK));
+    EXPECT_CALL(*rdb, Update(_, _, _, _, An<const std::vector<ValueObject>&>()))
+        .WillOnce(Return(E_RDB));
+
+    int32_t ret = clouddiskrdbStore_->Rename(oldParentCloudId, oldFileName, newParentCloudId, newFileName,
+                                             newFileNoNeedUpload, needSyncAndNotify);
+    EXPECT_EQ(ret, E_OK);
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+}
+
+/**
  * @tc.name: GetHasChild
  * @tc.desc: Verify the CloudDiskRdbStore::GetHasChild function
  * @tc.type: FUNC

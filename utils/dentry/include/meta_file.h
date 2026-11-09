@@ -248,6 +248,7 @@ struct RestoreInfo {
     std::string parentCloudId;
     std::string newName;
     int64_t rowId = 0;
+    uint64_t metaTimeEdited = 0;
 };
 } // namespace FileManagement
 } // namespace OHOS
