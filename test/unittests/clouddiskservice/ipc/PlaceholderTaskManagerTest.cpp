@@ -584,6 +584,183 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationQueueIndex_001, TestSize.Level1)
 }
 
 /**
+ * @tc.name: HydrationQueueIndex_StaleMissing_001
+ * @tc.desc: Self-heal a stale index whose task record is missing.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationQueueIndex_StaleMissing_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "stale-has.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    {
+        std::lock_guard<std::mutex> lock(manager.mapMutex_);
+        manager.taskMap_.erase(key);
+    }
+    EXPECT_FALSE(manager.HasOutstandingTask(TEST_SYNC_FOLDER, "stale-has.txt", TEST_SYNC_FOLDER_INDEX));
+    EXPECT_TRUE(manager.taskKeyIndex_.empty());
+
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "stale-cancel.txt", TEST_BUNDLE_NAME,
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    {
+        std::lock_guard<std::mutex> lock(manager.mapMutex_);
+        manager.taskMap_.erase(key);
+    }
+    EXPECT_EQ(manager.CancelTask(TEST_SYNC_FOLDER, "stale-cancel.txt", TEST_SYNC_FOLDER_INDEX),
+              E_NO_HYDRATION_IN_PROGRESS);
+    EXPECT_TRUE(manager.taskKeyIndex_.empty());
+
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "stale-prepare.txt", TEST_BUNDLE_NAME,
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    {
+        std::lock_guard<std::mutex> lock(manager.mapMutex_);
+        manager.taskMap_.erase(key);
+    }
+    PlaceholderTaskManager::RequestKey recreatedKey;
+    EXPECT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "stale-prepare.txt", TEST_BUNDLE_NAME,
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(),
+                                        recreatedKey),
+              E_OK);
+    EXPECT_EQ(manager.taskKeyIndex_.size(), 1U);
+    EXPECT_EQ(manager.CancelTask(TEST_SYNC_FOLDER, "stale-prepare.txt", TEST_SYNC_FOLDER_INDEX), E_OK);
+    EXPECT_TRUE(manager.taskMap_.empty());
+    EXPECT_TRUE(manager.taskKeyIndex_.empty());
+}
+
+/**
+ * @tc.name: HydrationQueueIndex_StaleTerminal_001
+ * @tc.desc: Handle a terminal task that still owns the identity index.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationQueueIndex_StaleTerminal_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "stale-terminal-has.txt", TEST_BUNDLE_NAME,
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    auto terminalTask = manager.taskMap_.at(key);
+    terminalTask->state = PlaceholderTaskState::COMPLETED;
+    EXPECT_FALSE(manager.HasOutstandingTask(TEST_SYNC_FOLDER, "stale-terminal-has.txt", TEST_SYNC_FOLDER_INDEX));
+    EXPECT_TRUE(manager.taskKeyIndex_.empty());
+    manager.EraseTaskLocked(terminalTask);
+    EXPECT_TRUE(manager.taskMap_.empty());
+
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "stale-terminal-cancel.txt", TEST_BUNDLE_NAME,
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    terminalTask = manager.taskMap_.at(key);
+    terminalTask->state = PlaceholderTaskState::COMPLETED;
+    EXPECT_EQ(manager.CancelTask(TEST_SYNC_FOLDER, "stale-terminal-cancel.txt", TEST_SYNC_FOLDER_INDEX),
+              E_NO_HYDRATION_IN_PROGRESS);
+    EXPECT_EQ(manager.taskKeyIndex_.size(), 1U);
+
+    PlaceholderTaskManager::RequestKey recreatedKey;
+    EXPECT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "stale-terminal-cancel.txt", TEST_BUNDLE_NAME,
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(),
+                                        recreatedKey),
+              E_OK);
+    EXPECT_EQ(manager.taskMap_.size(), 2U);
+    EXPECT_EQ(manager.taskKeyIndex_.size(), 1U);
+    manager.EraseTaskLocked(terminalTask);
+    EXPECT_EQ(manager.taskMap_.count(key), 0U);
+    EXPECT_EQ(manager.taskMap_.count(recreatedKey), 1U);
+    EXPECT_EQ(manager.taskKeyIndex_.size(), 1U);
+    EXPECT_EQ(manager.CancelTask(TEST_SYNC_FOLDER, "stale-terminal-cancel.txt", TEST_SYNC_FOLDER_INDEX), E_OK);
+    EXPECT_TRUE(manager.taskMap_.empty());
+    EXPECT_TRUE(manager.taskKeyIndex_.empty());
+}
+
+/**
+ * @tc.name: ActiveSlotBookkeeping_001
+ * @tc.desc: Cover duplicate, missing, and inconsistent active-slot bookkeeping paths.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, ActiveSlotBookkeeping_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "active-bookkeeping.txt", TEST_BUNDLE_NAME,
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    ActivateTask(manager, key);
+    auto task = manager.taskMap_.at(key);
+    auto activeKey = PlaceholderTaskManager::MakeAppUserKey(TEST_BUNDLE_NAME, -1);
+    manager.MarkTaskActiveLocked(task);
+    {
+        std::lock_guard<std::mutex> lock(manager.mapMutex_);
+        EXPECT_EQ(manager.activeByKey_.at(activeKey), 1U);
+    }
+
+    auto orphanTask = std::make_shared<PlaceholderTaskRecord>();
+    orphanTask->reqKey = {0xEE};
+    orphanTask->bundleName = TEST_BUNDLE_NAME;
+    orphanTask->userId = -1;
+    manager.MarkTaskActiveLocked(orphanTask);
+    {
+        std::lock_guard<std::mutex> lock(manager.mapMutex_);
+        EXPECT_EQ(manager.activeByKey_.at(activeKey), 1U);
+    }
+
+    PlaceholderTaskRecord ghostTask;
+    ghostTask.activeSlotHeld = true;
+    ghostTask.bundleName = "com.example.ghost";
+    ghostTask.userId = 123;
+    {
+        std::lock_guard<std::mutex> lock(manager.mapMutex_);
+        manager.ReleaseActiveSlotLocked(ghostTask);
+    }
+    EXPECT_FALSE(ghostTask.activeSlotHeld);
+
+    auto zeroKey = PlaceholderTaskManager::MakeAppUserKey("com.example.ghost-zero", 456);
+    PlaceholderTaskRecord zeroTask;
+    zeroTask.activeSlotHeld = true;
+    zeroTask.bundleName = "com.example.ghost-zero";
+    zeroTask.userId = 456;
+    {
+        std::lock_guard<std::mutex> lock(manager.mapMutex_);
+        manager.activeByKey_[zeroKey] = 0;
+        manager.ReleaseActiveSlotLocked(zeroTask);
+        manager.activeByKey_.erase(zeroKey);
+    }
+    EXPECT_FALSE(zeroTask.activeSlotHeld);
+
+    {
+        std::lock_guard<std::mutex> lock(manager.mapMutex_);
+        manager.LogQueueSummaryLocked(nullptr);
+    }
+
+    PlaceholderTaskManager::RequestKey pendingKey;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "index-missing-erase.txt", TEST_BUNDLE_NAME,
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(),
+                                        pendingKey),
+              E_OK);
+    auto pendingTask = manager.taskMap_.at(pendingKey);
+    {
+        std::lock_guard<std::mutex> lock(manager.mapMutex_);
+        auto indexItem = manager.taskKeyIndex_.find(
+            PlaceholderTaskManager::MakeTaskKey(TEST_SYNC_FOLDER, "index-missing-erase.txt", TEST_SYNC_FOLDER_INDEX));
+        if (indexItem != manager.taskKeyIndex_.end()) {
+            manager.taskKeyIndex_.erase(indexItem);
+        }
+    }
+    manager.EraseTaskLocked(pendingTask);
+    EXPECT_EQ(manager.taskMap_.count(pendingKey), 0U);
+
+    EXPECT_EQ(manager.CancelTask(TEST_SYNC_FOLDER, "active-bookkeeping.txt", TEST_SYNC_FOLDER_INDEX), E_OK);
+    EXPECT_TRUE(manager.taskMap_.empty());
+    EXPECT_TRUE(manager.taskKeyIndex_.empty());
+    EXPECT_TRUE(manager.activeByKey_.empty());
+}
+
+/**
  * @tc.name: SchedulerCapacity_001
  * @tc.desc: Enforce five active tasks per app-user key without a global active cap.
  * @tc.type: FUNC
