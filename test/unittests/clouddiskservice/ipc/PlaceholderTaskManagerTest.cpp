@@ -309,6 +309,7 @@ public:
         task->outputFd = std::move(outputFd);
         task->fetchDispatched = true;
         task->state = PlaceholderTaskState::IN_PROGRESS;
+        manager.MarkTaskActiveLocked(task);
         manager.NotifyProgressLocked(task);
         return taskFd;
     }
@@ -440,6 +441,7 @@ HWTEST_F(PlaceholderTaskManagerTest, CreateHydrateTask_001, TestSize.Level1)
     ASSERT_NE(selected, nullptr);
     EXPECT_EQ(selected->reqKey, highKey);
     selected->state = PlaceholderTaskState::IN_PROGRESS;
+    manager.MarkTaskActiveLocked(selected);
     selected = manager.SelectNextTaskLocked();
     ASSERT_NE(selected, nullptr);
     EXPECT_EQ(selected->reqKey, secondHighKey);
@@ -517,48 +519,80 @@ HWTEST_F(PlaceholderTaskManagerTest, CreateHydrateTask_003, TestSize.Level2)
 
 /**
  * @tc.name: CreateHydrateTask_004
- * @tc.desc: Enforce the twenty-per-application and forty-global pending hydration task limits.
+ * @tc.desc: Accept pending hydration tasks without per-app or global pending caps.
  * @tc.type: FUNC
  * @tc.require: NA
  */
 HWTEST_F(PlaceholderTaskManagerTest, CreateHydrateTask_004, TestSize.Level1)
 {
-    constexpr size_t APP_TASK_LIMIT = CLOUD_DISK_MAX_PENDING_TASKS_PER_APP;
-    constexpr size_t GLOBAL_TASK_LIMIT = CLOUD_DISK_MAX_PENDING_TASKS_GLOBAL;
+    constexpr size_t taskCount = 100;
+    constexpr size_t otherAppTaskCount = 20;
     auto &manager = PlaceholderTaskManager::GetInstance();
-    for (size_t index = 0; index < APP_TASK_LIMIT; ++index) {
+    for (size_t index = 0; index < taskCount; ++index) {
         PlaceholderTaskManager::RequestKey key;
-        ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "app-" + std::to_string(index), TEST_BUNDLE_NAME,
+        ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "bulk-" + std::to_string(index), TEST_BUNDLE_NAME,
                                             TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(),
                                             key),
                   E_OK);
     }
-    PlaceholderTaskManager::RequestKey rejectedKey;
-    EXPECT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "app-overflow", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
-                                        CLOUD_DISK_HYDRATE_PRIORITY_HIGH, OpenTaskFd(), rejectedKey),
-              E_HYDRATION_TASK_LIMIT_REACHED);
+    EXPECT_EQ(manager.taskMap_.size(), taskCount);
+    EXPECT_EQ(manager.taskKeyIndex_.size(), taskCount);
+    EXPECT_TRUE(manager.activeByKey_.empty());
 
-    for (size_t index = APP_TASK_LIMIT; index < GLOBAL_TASK_LIMIT; ++index) {
+    PlaceholderTaskManager::RequestKey duplicateKey;
+    EXPECT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "bulk-0", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_HIGH, OpenTaskFd(), duplicateKey),
+              E_HYDRATE_IN_PROGRESS);
+
+    for (size_t index = 0; index < otherAppTaskCount; ++index) {
         PlaceholderTaskManager::RequestKey key;
-        ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "global-" + std::to_string(index),
-                                            "com.example.other." + std::to_string(index), TEST_SYNC_FOLDER_INDEX,
+        ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "bulk-other-" + std::to_string(index),
+                                            "com.example.other", TEST_SYNC_FOLDER_INDEX,
                                             CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
                   E_OK);
     }
-    EXPECT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "global-overflow", "com.example.last", TEST_SYNC_FOLDER_INDEX,
-                                        CLOUD_DISK_HYDRATE_PRIORITY_HIGH, OpenTaskFd(), rejectedKey),
-              E_HYDRATION_TASK_LIMIT_REACHED);
+    EXPECT_EQ(manager.taskMap_.size(), taskCount + otherAppTaskCount);
+    EXPECT_EQ(manager.taskKeyIndex_.size(), taskCount + otherAppTaskCount);
+}
+
+/**
+ * @tc.name: HydrationQueueIndex_001
+ * @tc.desc: Remove the task identity index and active count after cancellation and allow a new task.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationQueueIndex_001, TestSize.Level1)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "indexed.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    EXPECT_TRUE(manager.HasOutstandingTask(TEST_SYNC_FOLDER, "indexed.txt", TEST_SYNC_FOLDER_INDEX));
+    EXPECT_EQ(manager.taskKeyIndex_.size(), 1U);
+    ASSERT_EQ(manager.CancelTask(TEST_SYNC_FOLDER, "indexed.txt", TEST_SYNC_FOLDER_INDEX), E_OK);
+    EXPECT_FALSE(manager.HasOutstandingTask(TEST_SYNC_FOLDER, "indexed.txt", TEST_SYNC_FOLDER_INDEX));
+    EXPECT_TRUE(manager.taskMap_.empty());
+    EXPECT_TRUE(manager.taskKeyIndex_.empty());
+    EXPECT_TRUE(manager.activeByKey_.empty());
+
+    PlaceholderTaskManager::RequestKey recreatedKey;
+    EXPECT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "indexed.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), recreatedKey),
+              E_OK);
+    EXPECT_EQ(manager.taskKeyIndex_.size(), 1U);
 }
 
 /**
  * @tc.name: SchedulerCapacity_001
- * @tc.desc: Skip an application at its active limit and stop dispatching at the global active limit.
+ * @tc.desc: Enforce five active tasks per app-user key without a global active cap.
  * @tc.type: FUNC
  * @tc.require: NA
  */
 HWTEST_F(PlaceholderTaskManagerTest, SchedulerCapacity_001, TestSize.Level1)
 {
     auto &manager = PlaceholderTaskManager::GetInstance();
+    const std::string eligibleBundle = "com.example.eligible";
     for (size_t index = 0; index < CLOUD_DISK_MAX_ACTIVE_TASKS_PER_APP; ++index) {
         PlaceholderTaskManager::RequestKey key;
         ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "active-app-" + std::to_string(index), TEST_BUNDLE_NAME,
@@ -573,7 +607,7 @@ HWTEST_F(PlaceholderTaskManagerTest, SchedulerCapacity_001, TestSize.Level1)
                                         CLOUD_DISK_HYDRATE_PRIORITY_HIGH, OpenTaskFd(), blockedAppKey),
               E_OK);
     PlaceholderTaskManager::RequestKey eligibleAppKey;
-    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "eligible-app.txt", "com.example.eligible",
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "eligible-app.txt", eligibleBundle,
                                         TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_LOW, OpenTaskFd(),
                                         eligibleAppKey),
               E_OK);
@@ -582,16 +616,76 @@ HWTEST_F(PlaceholderTaskManagerTest, SchedulerCapacity_001, TestSize.Level1)
     EXPECT_EQ(selected->reqKey, eligibleAppKey);
     ActivateTask(manager, eligibleAppKey);
 
-    constexpr size_t ACTIVE_AFTER_ELIGIBLE = CLOUD_DISK_MAX_ACTIVE_TASKS_PER_APP + 1;
-    for (size_t index = ACTIVE_AFTER_ELIGIBLE; index < CLOUD_DISK_MAX_ACTIVE_TASKS_GLOBAL; ++index) {
+    for (size_t index = 1; index < CLOUD_DISK_MAX_ACTIVE_TASKS_PER_APP; ++index) {
         PlaceholderTaskManager::RequestKey key;
-        ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "active-global-" + std::to_string(index),
-                                            "com.example.global." + std::to_string(index), TEST_SYNC_FOLDER_INDEX,
+        ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "active-eligible-" + std::to_string(index),
+                                            eligibleBundle, TEST_SYNC_FOLDER_INDEX,
                                             CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
                   E_OK);
         ActivateTask(manager, key);
     }
-    EXPECT_EQ(manager.SelectNextTaskLocked(), nullptr);
+    {
+        std::lock_guard<std::mutex> lock(manager.mapMutex_);
+        EXPECT_EQ(manager.GetActiveCountLocked(eligibleBundle, -1), CLOUD_DISK_MAX_ACTIVE_TASKS_PER_APP);
+    }
+
+    PlaceholderTaskManager::RequestKey thirdAppKey;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "third-app.txt", "com.example.third",
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_LOW, OpenTaskFd(),
+                                        thirdAppKey),
+              E_OK);
+    selected = manager.SelectNextTaskLocked();
+    ASSERT_NE(selected, nullptr);
+    EXPECT_EQ(selected->reqKey, thirdAppKey);
+
+    PlaceholderTaskState blockedState = PlaceholderTaskState::CANCELLED;
+    ASSERT_TRUE(manager.GetTaskState(blockedAppKey, blockedState));
+    EXPECT_EQ(blockedState, PlaceholderTaskState::PENDING);
+}
+
+/**
+ * @tc.name: SchedulerCapacity_MultiUser_001
+ * @tc.desc: Isolate the five active slots by bundleName and userId.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, SchedulerCapacity_MultiUser_001, TestSize.Level1)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderProgressContext firstUserContext;
+    firstUserContext.userId = 100;
+    for (size_t index = 0; index < CLOUD_DISK_MAX_ACTIVE_TASKS_PER_APP; ++index) {
+        PlaceholderTaskManager::RequestKey key;
+        ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "user-100-" + std::to_string(index), TEST_BUNDLE_NAME,
+                                            TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(),
+                                            key, firstUserContext),
+                  E_OK);
+        ActivateTask(manager, key);
+    }
+
+    PlaceholderTaskManager::RequestKey blockedKey;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "user-100-blocked.txt", TEST_BUNDLE_NAME,
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_HIGH, OpenTaskFd(),
+                                        blockedKey, firstUserContext),
+              E_OK);
+    PlaceholderProgressContext secondUserContext;
+    secondUserContext.userId = 200;
+    PlaceholderTaskManager::RequestKey secondUserKey;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "user-200.txt", TEST_BUNDLE_NAME,
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_LOW, OpenTaskFd(),
+                                        secondUserKey, secondUserContext),
+              E_OK);
+
+    auto selected = manager.SelectNextTaskLocked();
+    ASSERT_NE(selected, nullptr);
+    EXPECT_EQ(selected->reqKey, secondUserKey);
+    auto firstUserKey = PlaceholderTaskManager::MakeAppUserKey(TEST_BUNDLE_NAME, 100);
+    auto secondUserActiveKey = PlaceholderTaskManager::MakeAppUserKey(TEST_BUNDLE_NAME, 200);
+    {
+        std::lock_guard<std::mutex> lock(manager.mapMutex_);
+        EXPECT_EQ(manager.activeByKey_.at(firstUserKey), CLOUD_DISK_MAX_ACTIVE_TASKS_PER_APP);
+        EXPECT_EQ(manager.activeByKey_.count(secondUserActiveKey), 0U);
+    }
 }
 
 /**
@@ -921,6 +1015,9 @@ HWTEST_F(PlaceholderTaskManagerTest, StartScheduler_001, TestSize.Level1)
     manager.StopScheduler();
     EXPECT_FALSE(manager.GetTaskState(reqKey, state));
     EXPECT_EQ(fcntl(taskFd, F_GETFD), -1);
+    EXPECT_TRUE(manager.taskMap_.empty());
+    EXPECT_TRUE(manager.taskKeyIndex_.empty());
+    EXPECT_TRUE(manager.activeByKey_.empty());
 }
 
 /**
@@ -1805,11 +1902,15 @@ HWTEST_F(PlaceholderTaskManagerTest, CancelTasksBySyncFolder_001, TestSize.Level
     EXPECT_EQ(manager.taskMap_.count(pendingKey), 0U);
     EXPECT_EQ(manager.taskMap_.count(activeKey), 0U);
     EXPECT_EQ(manager.taskMap_.count(otherKey), 1U);
+    EXPECT_TRUE(manager.activeByKey_.empty());
+    EXPECT_EQ(manager.taskKeyIndex_.size(), 1U);
     EXPECT_EQ(manager.cancellationRecordMap_.count(pendingKey), 0U);
     EXPECT_EQ(manager.cancellationRecordMap_.count(activeKey), 1U);
 
     manager.CancelAllTasks(PlaceholderTaskCancelReason::USER_SWITCH);
     EXPECT_TRUE(manager.taskMap_.empty());
+    EXPECT_TRUE(manager.taskKeyIndex_.empty());
+    EXPECT_TRUE(manager.activeByKey_.empty());
     EXPECT_EQ(manager.cancellationRecordMap_.count(otherKey), 0U);
     manager.ClearCancellationRecords();
     EXPECT_TRUE(manager.cancellationRecordMap_.empty());
