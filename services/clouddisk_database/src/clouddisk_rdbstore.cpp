@@ -1212,8 +1212,11 @@ int32_t CloudDiskRdbStore::GetSourcePathFromAttr(const std::string &cloudId, std
     } else {
         LOGD("srcPath not found in attribute, return root dir");
     }
-    sourcePath = sourcePath == "/" ? sandboxPrefix + sourcePath : sandboxPrefix + sourcePath + "/";
-    sourcePath = CloudFileUtils::GetRealPath(sourcePath) + "/";
+    if (sourcePath == "/") {
+        sourcePath = sandboxPrefix + sourcePath;
+    } else {
+        sourcePath = CloudFileUtils::GetRealPath(sandboxPrefix + sourcePath) + "/";
+    }
 
     return E_OK;
 }
@@ -1664,6 +1667,7 @@ int32_t CloudDiskRdbStore::FileStatusGetXattr(const std::string &cloudId, const 
     ret = CloudDiskRdbUtils::GetInt(FileColumn::FILE_STATUS, fileStatus, resultSet);
     if (ret != E_OK) {
         LOGE("get file status failed");
+        resultSet->Close();
         return ret;
     }
     int32_t dirtyType = static_cast<int32_t>(DirtyType::TYPE_SYNCED);
@@ -1680,6 +1684,7 @@ int32_t CloudDiskRdbStore::FileStatusGetXattr(const std::string &cloudId, const 
             fileStatus, dirtyType, position, positionRet, cloudId.c_str());
     }
     value = to_string(fileStatus);
+    resultSet->Close();
     return E_OK;
 }
 
