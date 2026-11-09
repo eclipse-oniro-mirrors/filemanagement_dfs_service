@@ -929,7 +929,7 @@ HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_003, TestSize.Level1)
     auto& manager = DecompressConfigManager::GetInstance();
     bool crossFsConfig = manager.GetCrossFsConfig();
 
-    EXPECT_FALSE(crossFsConfig);
+    EXPECT_TRUE(crossFsConfig);
     GTEST_LOG_(INFO) << "GetCrossFsConfig_003 end";
 }
 
@@ -952,7 +952,7 @@ HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_004, TestSize.Level1)
     auto& manager = DecompressConfigManager::GetInstance();
     bool crossFsConfig = manager.GetCrossFsConfig();
 
-    EXPECT_FALSE(crossFsConfig);
+    EXPECT_TRUE(crossFsConfig);
 
     unlink(filePath.c_str());
     GTEST_LOG_(INFO) << "GetCrossFsConfig_004 end";
@@ -979,7 +979,7 @@ HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_005, TestSize.Level1)
     auto& manager = DecompressConfigManager::GetInstance();
     bool crossFsConfig = manager.GetCrossFsConfig();
 
-    EXPECT_FALSE(crossFsConfig);
+    EXPECT_TRUE(crossFsConfig);
 
     unlink(filePath.c_str());
     GTEST_LOG_(INFO) << "GetCrossFsConfig_005 end";
@@ -1006,7 +1006,7 @@ HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_006, TestSize.Level1)
     auto& manager = DecompressConfigManager::GetInstance();
     bool crossFsConfig = manager.GetCrossFsConfig();
 
-    EXPECT_FALSE(crossFsConfig);
+    EXPECT_TRUE(crossFsConfig);
 
     unlink(filePath.c_str());
     GTEST_LOG_(INFO) << "GetCrossFsConfig_006 end";
@@ -1113,7 +1113,7 @@ HWTEST_F(DecompressConfigManagerTest, GetCrossFsConfig_BothMissing_001, TestSize
 {
     GTEST_LOG_(INFO) << "GetCrossFsConfig_BothMissing_001 begin";
     auto& manager = DecompressConfigManager::GetInstance();
-    EXPECT_FALSE(manager.GetCrossFsConfig());
+    EXPECT_TRUE(manager.GetCrossFsConfig());
     GTEST_LOG_(INFO) << "GetCrossFsConfig_BothMissing_001 end";
 }
 
@@ -1171,7 +1171,7 @@ HWTEST_F(DecompressConfigManagerTest, ParseCrossFsConfig_001, TestSize.Level1)
     auto& manager = DecompressConfigManager::GetInstance();
     bool crossFsConfig = manager.GetCrossFsConfig();
 
-    EXPECT_FALSE(crossFsConfig);
+    EXPECT_TRUE(crossFsConfig);
 
     unlink(filePath.c_str());
     GTEST_LOG_(INFO) << "ParseCrossFsConfig_001 end";

@@ -125,7 +125,7 @@ bool DecompressConfigManager::GetCrossFsConfig()
         {"Preset path", sysConfigDir_ + "/" + FAKE_DECOMPRESSION_FILE},
     };
 
-    bool newCrossFsConfig = false;
+    bool newCrossFsConfig = true;
     for (const auto &[alias, path] : paths) {
         auto [isSuccess, crossFsConfig] = ParseCrossFsConfig(path);
         if (isSuccess) {
