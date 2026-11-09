@@ -638,10 +638,15 @@ int32_t CloudSyncService::RegisterFileSyncCallbackInner(const sptr<IRemoteObject
     return E_OK;
 }
 
-int32_t CloudSyncService::StartSyncInner(bool forceFlag, const string &bundleName)
+int32_t CloudSyncService::StartSyncInner(int32_t type, const string &bundleName)
 {
-    LOGI("Begin StartSyncInner");
+    LOGI("Begin StartSyncInner, type: %{public}d", type);
     RETURN_ON_ERR(CheckPermissions(PERM_CLOUD_SYNC, true));
+
+    if (type < static_cast<int32_t>(SyncMode::NORMAL) || type > static_cast<int32_t>(SyncMode::FORCE_THM)) {
+        LOGE("Invalid sync type: %{public}d", type);
+        return E_INVAL_ARG;
+    }
 
     string targetBundleName = bundleName;
     string callerBundleName = "";
@@ -651,8 +656,9 @@ int32_t CloudSyncService::StartSyncInner(bool forceFlag, const string &bundleNam
         return ret;
     }
     auto callerUserId = DfsuAccessTokenHelper::GetUserId();
-    ret = dataSyncManager_->TriggerStartSync(targetBundleName, callerUserId, forceFlag, SyncTriggerType::APP_TRIGGER);
-    LOGI("End StartSyncInner");
+    ret = dataSyncManager_->TriggerStartSync(
+        targetBundleName, callerUserId, static_cast<SyncMode>(type), SyncTriggerType::APP_TRIGGER);
+    LOGI("End StartSyncInner, ret: %{public}d", ret);
     return ret;
 }
 
@@ -667,7 +673,8 @@ int32_t CloudSyncService::StartFileSyncInner(bool forceFlag, const string &bundl
         return ret;
     }
     auto callerUserId = DfsuAccessTokenHelper::GetUserId();
-    ret = dataSyncManager_->TriggerStartSync(targetBundleName, callerUserId, forceFlag, SyncTriggerType::APP_TRIGGER);
+    SyncMode type = forceFlag ? SyncMode::FORCE : SyncMode::NORMAL;
+    ret = dataSyncManager_->TriggerStartSync(targetBundleName, callerUserId, type, SyncTriggerType::APP_TRIGGER);
     LOGI("End StartFileSyncInner");
     return ret;
 }
@@ -681,7 +688,8 @@ int32_t CloudSyncService::TriggerSyncInner(const std::string &bundleName, int32_
         LOGE("Trigger sync parameter is invalid");
         return E_INVAL_ARG;
     }
-    int32_t ret = dataSyncManager_->TriggerStartSync(bundleName, userId, false, SyncTriggerType::APP_TRIGGER);
+    int32_t ret = dataSyncManager_->TriggerStartSync(
+        bundleName, userId, SyncMode::NORMAL, SyncTriggerType::APP_TRIGGER);
     LOGI("End StartSyncInner");
     return ret;
 }
@@ -804,6 +812,11 @@ int32_t CloudSyncService::CleanAllFileCacheInner(const std::string &bundleName)
 {
     LOGI("Begin CleanAllFileCacheInner for bundle: %{public}s", bundleName.c_str());
 
+    if (!DfsuAccessTokenHelper::IsSystemApp()) {
+        LOGE("caller hap is not system hap");
+        return E_PERMISSION_SYSTEM;
+    }
+
     int32_t userId = DfsuAccessTokenHelper::GetUserId();
     if (userId < MIN_USER_ID) {
         LOGE("Get userId failed");
@@ -838,6 +851,11 @@ int32_t CloudSyncService::GetCachedTotalSizeInner(int64_t &totalSize)
 int32_t CloudSyncService::GetCachedTotalSizeInner(const std::string &bundleName, int64_t &totalSize)
 {
     LOGD("Begin GetCachedTotalSizeInner for bundle: %{public}s", bundleName.c_str());
+
+    if (!DfsuAccessTokenHelper::IsSystemApp()) {
+        LOGE("caller hap is not system hap");
+        return E_PERMISSION_SYSTEM;
+    }
 
     int32_t userId = DfsuAccessTokenHelper::GetUserId();
     if (userId < MIN_USER_ID) {
@@ -937,7 +955,8 @@ int32_t CloudSyncService::ChangeAppSwitch(const std::string &accoutId, const std
         string startCondition = "persist.kernel.cloudsync.screen_off_enable_download";
         system::SetParameter(startCondition, "true");
         dataSyncManager_->PeriodicCleanLock();
-        ret = dataSyncManager_->TriggerStartSync(bundleName, callerUserId, false, SyncTriggerType::CLOUD_TRIGGER);
+        ret = dataSyncManager_->TriggerStartSync(
+            bundleName, callerUserId, SyncMode::NORMAL, SyncTriggerType::CLOUD_TRIGGER);
         dataSyncManager_->PeriodicCleanUnlock();
         if (ret != E_OK) {
             LOGE("dataSyncManager Trigger failed, status: %{public}d", status);
@@ -968,7 +987,8 @@ int32_t CloudSyncService::NotifyDataChange(const std::string &accoutId, const st
     RETURN_ON_ERR(CheckPermissions("", true));
 
     auto callerUserId = DfsuAccessTokenHelper::GetUserId();
-    int32_t ret = dataSyncManager_->TriggerStartSync(bundleName, callerUserId, false, SyncTriggerType::CLOUD_TRIGGER);
+    int32_t ret = dataSyncManager_->TriggerStartSync(
+        bundleName, callerUserId, SyncMode::NORMAL, SyncTriggerType::CLOUD_TRIGGER);
     LOGI("End NotifyDataChange");
     return E_OK;
 }
@@ -1015,16 +1035,12 @@ int32_t CloudSyncService::NotifyEventChange(int32_t userId, const std::string &e
     }
 
     bool needResetCursor = NeedResetCursor(extraData);
-    if (needResetCursor && appBundleName.empty()) {
-        LOGI("appBundleName is empty, fallback to com.ohos.photos");
-        appBundleName = "com.ohos.photos";
-    }
     std::thread([this, appBundleName, userId, prepareTraceId, needResetCursor]() {
         if (needResetCursor) {
             LOGI("reset shared album cursor");
             dataSyncManager_->ResetCursor(SHARED_ALBUM_BUNDLE_NAME, userId, true);
         }
-        dataSyncManager_->TriggerStartSync(appBundleName, userId, false, SyncTriggerType::CLOUD_TRIGGER,
+        dataSyncManager_->TriggerStartSync(appBundleName, userId, SyncMode::NORMAL, SyncTriggerType::CLOUD_TRIGGER,
                                            prepareTraceId);
     }).detach();
     LOGI("End NotifyEventChange");
