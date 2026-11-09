@@ -73,6 +73,7 @@ ohos_shared_library("cloudfile_kit") {
     "${distributedfile_path}/frameworks/native/cloud_file_kit_inner/src/sync_rule/screen_status.cpp",
     "${distributedfile_path}/frameworks/native/cloud_file_kit_inner/src/sync_rule/settings_data_manager.cpp",
     "${distributedfile_path}/frameworks/native/cloud_file_kit_inner/src/sync_rule/system_load.cpp",
+    "${distributedfile_path}/frameworks/native/cloud_file_kit_inner/src/sync_rule/net_link_status.cpp",
   ]
 
   sources = [
@@ -249,6 +250,7 @@ ohos_static_library("cloudfile_kit_static") {
     "${distributedfile_path}/frameworks/native/cloud_file_kit_inner/src/sync_rule/screen_status.cpp",
     "${distributedfile_path}/frameworks/native/cloud_file_kit_inner/src/sync_rule/settings_data_manager.cpp",
     "${distributedfile_path}/frameworks/native/cloud_file_kit_inner/src/sync_rule/system_load.cpp",
+    ${distributedfile_path}/frameworks/native/cloud_file_kit_inner/src/sync_rule/net_link_status.cpp",
   ]
 
   sources = [
