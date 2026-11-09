@@ -1218,7 +1218,6 @@ int32_t CloudDiskRdbStore::GetSourcePathFromAttr(const std::string &cloudId, std
         sourcePath = CloudFileUtils::GetRealPath(sandboxPrefix + sourcePath) + "/";
     }
 
-
     return E_OK;
 }
 
