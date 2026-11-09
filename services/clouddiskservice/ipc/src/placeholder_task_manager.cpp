@@ -19,10 +19,13 @@
 #include <cinttypes>
 #include <cerrno>
 #include <climits>
+#include <cstring>
+#include <dirent.h>
 #include <fcntl.h>
 #include <limits>
 #include <memory>
 #include <set>
+#include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -31,6 +34,7 @@
 #include "placeholder_callback_manager.h"
 #include "placeholder_helper.h"
 #include "placeholder_progress_manager.h"
+#include "utils_directory.h"
 #include "utils_log.h"
 
 namespace OHOS::FileManagement::CloudDiskService {
@@ -79,6 +83,72 @@ int32_t ConvertHydrationIoError(int32_t error)
         default:
             return E_TRY_AGAIN;
     }
+}
+
+#ifndef CLOUD_DISK_HYDRATION_TEMP_BASE
+#define CLOUD_DISK_HYDRATION_TEMP_BASE "/data/service/el2"
+#endif
+
+constexpr char HYDRATION_TEMP_DIR_SUFFIX[] = "/clouddiskservice/hydrate_tmp";
+constexpr mode_t HYDRATION_TEMP_DIR_MODE = 0711;
+constexpr mode_t HYDRATION_TEMP_FILE_MODE = 0600;
+constexpr uint64_t HYDRATION_COPY_CHUNK_SIZE = 4 * 1024 * 1024;
+
+std::string GetHydrationTempDir(int32_t userId)
+{
+    return std::string(CLOUD_DISK_HYDRATION_TEMP_BASE) + "/" + std::to_string(userId) + HYDRATION_TEMP_DIR_SUFFIX;
+}
+
+std::string GetHydrationTempPath(int32_t userId, uint64_t deviceId, uint64_t inodeId)
+{
+    return GetHydrationTempDir(userId) + "/" + std::to_string(deviceId) + "_" + std::to_string(inodeId) + ".tmp";
+}
+
+int32_t OpenHydrationTempFile(int32_t userId, uint64_t deviceId, uint64_t inodeId, UniqueFd &tempFd,
+                              std::string &tempPath)
+{
+    std::string tempDir = GetHydrationTempDir(userId);
+    OHOS::Storage::DistributedFile::Utils::ForceCreateDirectory(tempDir, HYDRATION_TEMP_DIR_MODE);
+    tempPath = GetHydrationTempPath(userId, deviceId, inodeId);
+    UniqueFd fd(open(tempPath.c_str(), O_RDWR | O_CREAT | O_TRUNC | O_CLOEXEC, HYDRATION_TEMP_FILE_MODE));
+    if (fd < 0) {
+        int32_t error = errno;
+        LOGE("Open hydration temp file failed, path:%{private}s, errno:%{public}d", tempPath.c_str(), error);
+        return ConvertHydrationIoError(error);
+    }
+    tempFd = std::move(fd);
+    return E_OK;
+}
+
+int32_t CopyHydrationTempToOutput(int32_t tempFd, int32_t outputFd, uint64_t copySize, const std::string &tempPath)
+{
+    if (lseek(tempFd, 0, SEEK_SET) < 0 || lseek(outputFd, 0, SEEK_SET) < 0) {
+        int32_t error = errno;
+        LOGE("Reset offsets before copying hydration temp data failed, path:%{private}s, errno:%{public}d",
+             tempPath.c_str(), error);
+        return ConvertHydrationIoError(error);
+    }
+    uint64_t copiedSize = 0;
+    while (copiedSize < copySize) {
+        size_t chunkSize = static_cast<size_t>(std::min<uint64_t>(HYDRATION_COPY_CHUNK_SIZE, copySize - copiedSize));
+        ssize_t sentSize = sendfile(outputFd, tempFd, nullptr, chunkSize);
+        if (sentSize < 0) {
+            int32_t error = errno;
+            if (error == EINTR) {
+                continue;
+            }
+            LOGE("Copy hydration temp data failed, path:%{private}s, errno:%{public}d", tempPath.c_str(), error);
+            return ConvertHydrationIoError(error);
+        }
+        if (sentSize == 0) {
+            LOGE("Copy hydration temp data ended unexpectedly, path:%{private}s, copied:%{public}" PRIu64
+                 ", expected:%{public}" PRIu64,
+                 tempPath.c_str(), copiedSize, copySize);
+            return E_TRY_AGAIN;
+        }
+        copiedSize += static_cast<uint64_t>(sentSize);
+    }
+    return E_OK;
 }
 
 int32_t WriteHydrationData(int32_t fd, const CallbackExecuteRequest &request)
@@ -649,6 +719,52 @@ bool PlaceholderTaskManager::GetTaskState(const RequestKey &reqKey, PlaceholderT
     return true;
 }
 
+void PlaceholderTaskManager::CleanOrphanHydrationTempFiles(int32_t userId)
+{
+    if (userId < 0) {
+        LOGW("Skip orphan hydration temp cleanup for invalid user");
+        return;
+    }
+    std::string tempDir = GetHydrationTempDir(userId);
+    DIR *dir = opendir(tempDir.c_str());
+    if (dir == nullptr) {
+        int32_t error = errno;
+        if (error != ENOENT) {
+            LOGW("Open hydration temp dir for cleanup failed, dir:%{private}s, errno:%{public}d", tempDir.c_str(),
+                 error);
+        }
+        return;
+    }
+    uint32_t cleanedCount = 0;
+    while (true) {
+        errno = 0;
+        struct dirent *entry = readdir(dir);
+        if (entry == nullptr) {
+            if (errno != 0) {
+                LOGW("Read hydration temp dir for cleanup failed, dir:%{private}s, errno:%{public}d",
+                     tempDir.c_str(), errno);
+            }
+            break;
+        }
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        std::string tempPath = tempDir + "/" + entry->d_name;
+        if (unlink(tempPath.c_str()) < 0 && errno != ENOENT) {
+            LOGW("Remove orphan hydration temp file failed, path:%{private}s, errno:%{public}d", tempPath.c_str(),
+                 errno);
+            continue;
+        }
+        ++cleanedCount;
+    }
+    if (closedir(dir) < 0) {
+        LOGW("Close hydration temp dir failed, errno:%{public}d", errno);
+    }
+    if (cleanedCount > 0) {
+        LOGI("Cleaned orphan hydration temp files, count:%{public}u, dir:%{private}s", cleanedCount, tempDir.c_str());
+    }
+}
+
 std::shared_ptr<PlaceholderTaskRecord> PlaceholderTaskManager::SelectNextTaskLocked()
 {
     std::shared_ptr<PlaceholderTaskRecord> selected;
@@ -722,6 +838,25 @@ void PlaceholderTaskManager::ActivateAndDispatch(const std::shared_ptr<Placehold
         CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
         return;
     }
+    if (task->userId < 0) {
+        LOGW("Cancel pending hydration because user identity is invalid");
+        CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
+        return;
+    }
+    // Hydration data first lands in a service-private temp file so the target file stays
+    // completely untouched while chunks arrive. The temp is attached to the task before
+    // dispatch so every later failure path unlinks it through EraseTaskLocked.
+    std::string tempPath;
+    UniqueFd tempFd;
+    ret = OpenHydrationTempFile(task->userId, task->deviceId, task->inodeId, tempFd, tempPath);
+    if (ret != E_OK) {
+        LOGW("Cancel pending hydration because temp file creation failed, ret:%{public}d", ret);
+        CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
+        return;
+    }
+    task->tempFd = std::move(tempFd);
+    task->tempPath = std::move(tempPath);
+    task->tempSize = 0;
 
     CloudDiskCallbackReqHead reqHead{};
     reqHead.syncFolderPath = {task->syncFolder.data(), task->syncFolder.length()};
@@ -939,12 +1074,19 @@ int32_t PlaceholderTaskManager::ExecuteFetchDataLocked(const std::shared_ptr<Pla
         ScheduleDispatch();
         return E_TRY_AGAIN;
     }
+    if (task->tempFd < 0) {
+        LOGE("Invalid Execute task temp fd");
+        CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
+        ScheduleDispatch();
+        return E_TRY_AGAIN;
+    }
     task->totalSize = request.totalSize;
     task->totalSizeInitialized = true;
-    int32_t ret = WriteHydrationData(task->outputFd, request);
+    int32_t ret = WriteHydrationData(task->tempFd, request);
     if (ret != E_OK) {
         return ret;
     }
+    task->tempSize = std::max(task->tempSize, request.offset + request.size);
     ret = CommitFetchDataLocked(task, request);
     if (ret != E_OK) {
         return ret;
@@ -970,18 +1112,27 @@ int32_t PlaceholderTaskManager::CommitFetchDataLocked(const std::shared_ptr<Plac
     if (!request.isComplete) {
         return EnsurePartialStateLocked(task);
     }
+    // Final delivery: this is the first moment the target file is written. All received
+    // bytes are copied back from the service-private temp file in one shot; a failure
+    // here leaves the task retryable and the temp file intact.
+    int32_t ret = CopyHydrationTempToOutput(task->tempFd, task->outputFd, task->tempSize, task->tempPath);
+    if (ret != E_OK) {
+        LOGE("Copy hydration temp data to target failed, ret:%{public}d, path:%{private}s", ret,
+             task->tempPath.c_str());
+        return ret;
+    }
     if (fsync(task->outputFd) < 0) {
         int32_t error = errno;
         LOGE("Flush completed hydration failed, errno:%{public}d", error);
         return ConvertHydrationIoError(error);
     }
     if (request.size != 0) {
-        int32_t ret = EnsurePartialStateLocked(task);
+        ret = EnsurePartialStateLocked(task);
         if (ret != E_OK) {
             return ret;
         }
     }
-    int32_t ret = SetCompleteStateLocked(task);
+    ret = SetCompleteStateLocked(task);
     if (ret != E_OK) {
         return ret;
     }
@@ -1017,10 +1168,21 @@ void PlaceholderTaskManager::CancelTaskRecordLocked(const std::shared_ptr<Placeh
         reqHead.syncFolderPath = {task->syncFolder.data(), task->syncFolder.length()};
         reqHead.reqKey = {task->reqKey.data(), task->reqKey.size()};
         CloudDiskPathInfo pathInfo{task->filePath.data(), task->filePath.length()};
-        int32_t ret = PlaceholderCallbackManager::GetInstance().DispatchCancelFetchData(
+        int32_t dispatchRet = PlaceholderCallbackManager::GetInstance().DispatchCancelFetchData(
             task->bundleName, task->syncFolderIndex, reqHead, pathInfo);
-        if (ret != E_OK) {
-            LOGW("Dispatch hydration cancellation failed, ret:%{public}d", ret);
+        if (dispatchRet != E_OK) {
+            LOGW("Dispatch hydration cancellation failed, ret:%{public}d", dispatchRet);
+        }
+    }
+    if (reason == PlaceholderTaskCancelReason::USER_REQUEST && task->outputFd >= 0 && task->tempFd >= 0 &&
+        task->tempSize > 0) {
+        // A user cancellation keeps the bytes already received: copy them back so a later
+        // retry resumes from the partially hydrated file. Failure only warns; the task
+        // still ends cancelled and the temp file is removed below.
+        int32_t copyRet = CopyHydrationTempToOutput(task->tempFd, task->outputFd, task->tempSize, task->tempPath);
+        if (copyRet != E_OK) {
+            LOGW("Copy partial hydration data on cancel failed, ret:%{public}d, path:%{private}s", copyRet,
+                 task->tempPath.c_str());
         }
     }
     EraseTaskLocked(task);
@@ -1143,6 +1305,13 @@ void PlaceholderTaskManager::EraseTaskLocked(const std::shared_ptr<PlaceholderTa
     int32_t fd = task->outputFd.Release();
     if (fd >= 0 && close(fd) < 0) {
         LOGE("Close hydration fd failed, errno:%{public}d", errno);
+    }
+    int32_t tempFd = task->tempFd.Release();
+    if (tempFd >= 0 && close(tempFd) < 0) {
+        LOGW("Close hydration temp fd failed, errno:%{public}d", errno);
+    }
+    if (!task->tempPath.empty() && unlink(task->tempPath.c_str()) < 0 && errno != ENOENT) {
+        LOGW("Remove hydration temp file failed, path:%{private}s, errno:%{public}d", task->tempPath.c_str(), errno);
     }
     std::lock_guard<std::mutex> lock(mapMutex_);
     auto item = taskMap_.find(task->reqKey);

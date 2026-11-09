@@ -94,6 +94,11 @@ struct PlaceholderTaskRecord {
     uint64_t deviceId = 0;
     uint64_t inodeId = 0;
     UniqueFd outputFd;
+    // Hydration data first lands in a service-private temp file; tempSize tracks the
+    // highest byte offset received so far. The target file is only touched at the end.
+    UniqueFd tempFd;
+    std::string tempPath;
+    uint64_t tempSize = 0;
     std::atomic<PlaceholderTaskState> state{PlaceholderTaskState::PENDING};
     bool activeSlotHeld = false;
     std::string absolutePath;
@@ -140,6 +145,7 @@ public:
     int32_t
         Execute(const std::string &callerBundleName, uint32_t syncFolderIndex, const CallbackExecuteRequest &request);
     bool GetTaskState(const RequestKey &reqKey, PlaceholderTaskState &state);
+    void CleanOrphanHydrationTempFiles(int32_t userId);
 
 private:
     using TaskKey = std::tuple<uint32_t, std::string, std::string>;

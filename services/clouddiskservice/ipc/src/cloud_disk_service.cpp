@@ -423,6 +423,7 @@ int32_t CloudDiskService::Init(const SystemAbilityOnDemandReason &startReason)
     }
 
     PlaceholderTaskManager::GetInstance().StartScheduler();
+    PlaceholderTaskManager::GetInstance().CleanOrphanHydrationTempFiles(userId);
     AddSystemAbilityListener(COMMON_EVENT_SERVICE_ID);
 
     if (CloudDiskSyncFolder::GetInstance().GetSyncFolderSize() > 0) {
