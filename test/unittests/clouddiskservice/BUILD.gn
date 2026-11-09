@@ -1076,7 +1076,6 @@ group("clouddisk_service_test") {
       ":cloud_disk_service_test",
       ":placeholder_dehydrate_count_test",
       ":service_account_status_listener_test",
-      "fuse:clouddisk_fuse_test",
     ]
   }
 }

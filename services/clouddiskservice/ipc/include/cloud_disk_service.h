@@ -106,7 +106,6 @@ private:
     std::shared_ptr<InitState> initState_;
     int32_t currentUserId_ = -1;
     static sptr<CloudDiskService> instance_;
-    std::mutex lifecycleMutex_;
     void DelayUnloadSa();
     void CancelPendingUnload();
     ffrt::queue unloadQueue_{"clouddiskUnloadQueue"};
@@ -115,10 +114,6 @@ private:
     bool PublishSA();
     int32_t Init(const SystemAbilityOnDemandReason &startReason);
     int32_t WaitForInit();
-#ifdef SUPPORT_CLOUD_DISK_SERVICE
-    void StartFuseForUser(int32_t userId);
-    void StopFuseForServiceExit();
-#endif
     int32_t ResolveOwnedSyncFolder(const std::string &syncFolder,
                                    std::string &bundleName,
                                    uint32_t &syncFolderIndex,
