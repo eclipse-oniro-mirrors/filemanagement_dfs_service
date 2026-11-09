@@ -1782,11 +1782,10 @@ static int32_t ConvertPlaceholderToEmptyFile(const std::string &hmdfsPath,
     }
 
     do {
-        fd = open(hmdfsPath.c_str(), O_RDWR | O_CLOEXEC | O_NOFOLLOW);
-        if (fd < 0) {
+        if ((fd = open(hmdfsPath.c_str(), O_RDWR | O_CLOEXEC | O_NOFOLLOW)) < 0) {
             ret = errno;
             LOGE("open failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(), ret);
-            ret = ConvertTargetErrnoToCloudDiskError(ret);
+            ret = ConvertErrnoToCloudDiskError(ret);
             break;
         }
 
