@@ -23,6 +23,8 @@
       *OHOS::FileManagement::CloudSync::CloudPrefImpl*;
       *OHOS::FileManagement::CloudSync::CloudStatus*;
       *OHOS::FileManagement::CloudSync::DataSyncerRdbStore*;
+      *OHOS::FileManagement::CloudSync::NetworkLinkStatus*;
+      *OHOS::FileManagement::CloudSync::NetworkLinkStatusTypeCallbackImpl*;
       *OHOS::FileManagement::CloudSync::NetworkStatus*;
       *OHOS::FileManagement::CloudSync::ScreenStatus*;
       *OHOS::FileManagement::CloudSync::SettingsDataManager*;
