@@ -121,6 +121,13 @@ ohos_shared_library("cloudfile_kit") {
     "wifi:wifi_sdk",
   ]
 
+  if (dfs_service_feature_enable_netmanager_enhanced) {
+    sources += [
+      "${distributedfile_path}/frameworks/native/cloud_file_kit_inner/src/sync_rule/net_link_status.cpp",
+    ]
+  }
+
+
   if (cloudsync_service_power) {
     external_deps += [ "battery_manager:batterysrv_client" ]
 

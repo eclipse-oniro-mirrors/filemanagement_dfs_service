@@ -53,6 +53,9 @@
 #include "system_load.h"
 #include "task_state_manager.h"
 #include "utils_log.h"
+#ifdef ENABLE_NETMANAGER_ENHANCED
+#include "net_link_status.h"
+#endif
 #include "operation_log_handler.h"
 #include "res_sched_client.h"
 #include "res_type.h"
@@ -231,6 +234,9 @@ void CloudSyncService::OnStart(const SystemAbilityOnDemandReason& startReason)
     AddSystemAbilityListener(POWER_MANAGER_THERMAL_SERVICE_ID);
     AddSystemAbilityListener(COMM_NET_CONN_MANAGER_SYS_ABILITY_ID);
     AddSystemAbilityListener(MEMORY_MANAGER_SA_ID);
+#ifdef ENABLE_NETMANAGER_ENHANCED
+    AddSystemAbilityListener(COMM_NET_ENHANCED_SYS_ABILITY_ID);
+#endif
     umask(DEFAULT_UMASK);
     auto initStartTime = std::chrono::high_resolution_clock::now();
     Init();
@@ -357,6 +363,10 @@ void CloudSyncService::OnAddSystemAbility(int32_t systemAbilityId, const std::st
         pid_t pid = getpid();
         Memory::MemMgrClient::GetInstance().NotifyProcessStatus(pid, 1, 1, FILEMANAGEMENT_CLOUD_SYNC_SERVICE_SA_ID);
         Memory::MemMgrClient::GetInstance().SetCritical(pid, true, FILEMANAGEMENT_CLOUD_SYNC_SERVICE_SA_ID);
+#ifdef ENABLE_NETMANAGER_ENHANCED
+    } else if (systemAbilityId == COMM_NET_ENHANCED_SYS_ABILITY_ID) {
+        NetworkLinkStatus::InitNetwork();
+#endif
     } else {
         LOGE("unexpected");
     }
