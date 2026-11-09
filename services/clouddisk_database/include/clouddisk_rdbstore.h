@@ -121,9 +121,6 @@ public:
     int32_t UpdateDownloadSize(int64_t size);
     int32_t UpdateTotalDownloadSize(int64_t size);
 
-    int32_t CheckParentUploadStatus(const std::string &cloudId, bool &parentUploaded);
-    void OnParentUploadComplete(const std::string &parentCloudId);
-
     static const int32_t BATCH_LIMIT_SIZE = 500;
 
 private:
