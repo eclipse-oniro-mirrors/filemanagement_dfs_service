@@ -24,6 +24,7 @@ uint32_t taskCancelCount = 0;
 uint32_t cancellationRecordClearCount = 0;
 uint32_t progressDrainCount = 0;
 uint32_t progressClearCount = 0;
+uint32_t orphanTempCleanCount = 0;
 PlaceholderTaskCancelReason lastCancelReason = PlaceholderTaskCancelReason::USER_SWITCH;
 } // namespace
 
@@ -35,6 +36,7 @@ void ResetPlaceholderLifecycleCallCounts()
     cancellationRecordClearCount = 0;
     progressDrainCount = 0;
     progressClearCount = 0;
+    orphanTempCleanCount = 0;
     lastCancelReason = PlaceholderTaskCancelReason::USER_SWITCH;
 }
 
@@ -61,6 +63,11 @@ uint32_t GetPlaceholderProgressDrainCount()
 uint32_t GetPlaceholderProgressClearCount()
 {
     return progressClearCount;
+}
+
+uint32_t GetPlaceholderOrphanTempCleanCount()
+{
+    return orphanTempCleanCount;
 }
 
 PlaceholderTaskCancelReason GetLastPlaceholderTaskCancelReason()
@@ -95,6 +102,12 @@ void PlaceholderTaskManager::CancelAllTasks(PlaceholderTaskCancelReason reason)
 void PlaceholderTaskManager::ClearCancellationRecords()
 {
     ++cancellationRecordClearCount;
+}
+
+void PlaceholderTaskManager::CleanOrphanHydrationTempFiles(int32_t userId)
+{
+    (void)userId;
+    ++orphanTempCleanCount;
 }
 
 PlaceholderProgressManager &PlaceholderProgressManager::GetInstance()

@@ -46,6 +46,7 @@ ohos_unittest("cloud_disk_service_static_test") {
     "ipc/placeholder_helper_test.cpp",
     "ipc/PlaceholderTaskManagerTest.cpp",
     "ipc/PlaceholderHydrationCompletionTest.cpp",
+    "${distributedfile_path}/utils/system/src/utils_directory.cpp",
   ]
 
   include_dirs = [
@@ -75,6 +76,7 @@ ohos_unittest("cloud_disk_service_static_test") {
     "googletest:gmock_main",
     "googletest:gtest_main",
     "hilog:libhilog",
+    "hisysevent:libhisysevent",
     "ipc:ipc_single",
     "json:nlohmann_json_static",
     "os_account:os_account_innerkits",
@@ -86,6 +88,7 @@ ohos_unittest("cloud_disk_service_static_test") {
     "LOG_DOMAIN=0xD003900",
     "LOG_TAG=\"CloudDiskService\"",
     "SUPPORT_CLOUD_DISK_SERVICE",
+    "CLOUD_DISK_HYDRATION_TEMP_BASE=\"/data/test\"",
   ]
 
   if (dfs_service_feature_enable_cloud_disk) {
@@ -401,6 +404,7 @@ ohos_unittest("cloud_disk_service_test") {
     "${distributedfile_path}/utils/cloud_disk/src/cloud_file_utils.cpp",
     "${distributedfile_path}/utils/clouddiskservice/src/cloud_disk_service_utils.cpp",
     "${distributedfile_path}/utils/log/src/utils_log.cpp",
+    "${distributedfile_path}/utils/system/src/utils_directory.cpp",
     "${services_path}/clouddiskservice/ipc/src/account_status_listener.cpp",
     "${services_path}/clouddiskservice/ipc/src/cloud_disk_service.cpp",
     "${services_path}/clouddiskservice/ipc/src/cloud_disk_service_callback_manager.cpp",
@@ -437,6 +441,7 @@ ohos_unittest("cloud_disk_service_test") {
     "googletest:gmock_main",
     "googletest:gtest_main",
     "hilog:libhilog",
+    "hisysevent:libhisysevent",
     "ipc:ipc_single",
     "json:nlohmann_json_static",
     "os_account:os_account_innerkits",
@@ -448,6 +453,7 @@ ohos_unittest("cloud_disk_service_test") {
     "private=public",
     "LOG_DOMAIN=0xD003900",
     "LOG_TAG=\"CloudDiskService\"",
+    "CLOUD_DISK_HYDRATION_TEMP_BASE=\"/data/test\"",
   ]
 
   if (dfs_service_feature_enable_cloud_disk) {
@@ -998,6 +1004,7 @@ ohos_unittest("placeholder_dehydrate_count_test") {
     "${services_path}/clouddiskservice/ipc/src/placeholder_progress_manager.cpp",
     "${services_path}/clouddiskservice/ipc/src/cloud_disk_progress_callback_proxy.cpp",
     "ipc/PlaceholderDehydrateCountTest.cpp",
+    "${distributedfile_path}/utils/system/src/utils_directory.cpp",
   ]
 
   include_dirs = [
@@ -1027,6 +1034,7 @@ ohos_unittest("placeholder_dehydrate_count_test") {
     "googletest:gmock_main",
     "googletest:gtest_main",
     "hilog:libhilog",
+    "hisysevent:libhisysevent",
     "ipc:ipc_single",
     "json:nlohmann_json_static",
     "os_account:os_account_innerkits",

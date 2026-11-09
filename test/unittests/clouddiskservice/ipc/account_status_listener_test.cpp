@@ -48,6 +48,7 @@ uint32_t GetPlaceholderTaskCancelCount();
 uint32_t GetPlaceholderCancellationRecordClearCount();
 uint32_t GetPlaceholderProgressDrainCount();
 uint32_t GetPlaceholderProgressClearCount();
+uint32_t GetPlaceholderOrphanTempCleanCount();
 PlaceholderTaskCancelReason GetLastPlaceholderTaskCancelReason();
 
 class AccountStatusSubscriberTest : public testing::Test {
@@ -116,9 +117,12 @@ HWTEST_F(AccountStatusSubscriberTest, OnStateChangedTest001, TestSize.Level1)
         EXPECT_EQ(GetPlaceholderCancellationRecordClearCount(), 1U);
         EXPECT_EQ(GetPlaceholderProgressDrainCount(), 1U);
         EXPECT_EQ(GetPlaceholderProgressClearCount(), 1U);
+        // The previous user id is invalid in SetUp, so only the new user's temp dir is cleaned.
+        EXPECT_EQ(GetPlaceholderOrphanTempCleanCount(), 1U);
         EXPECT_EQ(GetLastPlaceholderTaskCancelReason(), PlaceholderTaskCancelReason::USER_SWITCH);
 #else
         EXPECT_EQ(GetPlaceholderCallbackClearCount(), 0U);
+        EXPECT_EQ(GetPlaceholderOrphanTempCleanCount(), 0U);
 #endif
     } catch (...) {
         EXPECT_TRUE(false);

@@ -106,6 +106,7 @@ public:
         Assistant::mockFdApi = false;
         Assistant::mockPwriteApi = false;
         Assistant::mockFsyncApi = false;
+        Assistant::mockSendfileApi = false;
     }
 
     void TearDown() override
@@ -119,6 +120,7 @@ public:
         Assistant::mockFdApi = false;
         Assistant::mockPwriteApi = false;
         Assistant::mockFsyncApi = false;
+        Assistant::mockSendfileApi = false;
         mock_ = nullptr;
     }
 
@@ -147,6 +149,15 @@ public:
         auto task = manager.taskMap_.at(reqKey);
         int32_t taskFd = outputFd.Get();
         task->outputFd = std::move(outputFd);
+        // Mirror the production activation: a service-private temp file receives all
+        // hydration bytes first. Keep the path on disk; EraseTaskLocked unlinks it.
+        char tempPathTemplate[] = "/data/test/cloud_disk_hydration_tmp_XXXXXX";
+        UniqueFd tempFd(mkstemp(tempPathTemplate));
+        if (tempFd >= 0) {
+            task->tempFd = std::move(tempFd);
+            task->tempPath = tempPathTemplate;
+            task->tempSize = 0;
+        }
         task->fetchDispatched = true;
         task->state = PlaceholderTaskState::IN_PROGRESS;
         manager.MarkTaskActiveLocked(task);
@@ -212,6 +223,7 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationTimestamps_RestoredAtTaskE
     task->savedMtime = {333, 444};
     Assistant::mockPwriteApi = true;
     Assistant::mockFsyncApi = true;
+    Assistant::mockSendfileApi = true;
 
     // Phase 1 flips the partial state (2 reads + 1 write + 1 timestamp restore);
     // phase 2 flips it to fully hydrated (2 reads + 1 write + 1 restore) and the
@@ -225,7 +237,7 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationTimestamps_RestoredAtTaskE
             EXPECT_EQ(times[1].tv_nsec, 444);
             return 0;
         }));
-    EXPECT_CALL(*mock_, Pwrite(taskFd, _, 4, 0)).WillOnce(Return(4));
+    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 0)).WillOnce(Return(4));
     EXPECT_CALL(*mock_, fgetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
         .Times(4)
         .WillRepeatedly(Invoke([](int, const char *, void *value, size_t) {
@@ -241,7 +253,9 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationTimestamps_RestoredAtTaskE
               E_OK);
     EXPECT_EQ(task->state.load(), PlaceholderTaskState::IN_PROGRESS);
 
-    EXPECT_CALL(*mock_, Pwrite(taskFd, _, 4, 4)).WillOnce(Return(4));
+    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 4)).WillOnce(Return(4));
+    // Final delivery copies both chunks (4 + 4 bytes) from the temp file to the target.
+    EXPECT_CALL(*mock_, Sendfile(taskFd, task->tempFd.Get(), _, 8)).WillOnce(Return(8));
     EXPECT_CALL(*mock_, Fsync(taskFd)).WillOnce(Return(0));
 
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
@@ -272,8 +286,10 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationTimestamps_FutimensFail_00
     task->savedMtime = {333, 444};
     Assistant::mockPwriteApi = true;
     Assistant::mockFsyncApi = true;
+    Assistant::mockSendfileApi = true;
 
-    EXPECT_CALL(*mock_, Pwrite(taskFd, _, 4, 0)).WillOnce(Return(4));
+    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 0)).WillOnce(Return(4));
+    EXPECT_CALL(*mock_, Sendfile(taskFd, task->tempFd.Get(), _, 4)).WillOnce(Return(4));
     EXPECT_CALL(*mock_, futimens(taskFd, _))
         .WillRepeatedly(Invoke([](int, const struct timespec *) {
             errno = EIO;
@@ -313,8 +329,10 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationSetStateWriteFail_001, Tes
     ASSERT_GE(taskFd, 0);
     task->totalSize = 4;
     Assistant::mockPwriteApi = true;
+    Assistant::mockSendfileApi = true;
 
-    EXPECT_CALL(*mock_, Pwrite(taskFd, _, 4, 0)).WillOnce(Return(4));
+    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 0)).WillOnce(Return(4));
+    EXPECT_CALL(*mock_, Sendfile(taskFd, task->tempFd.Get(), _, 4)).WillOnce(Return(4));
     EXPECT_CALL(*mock_, fgetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
         .WillRepeatedly(Invoke([](int, const char *, void *value, size_t) {
             *static_cast<uint8_t *>(value) = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);

@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <sys/fanotify.h>
 #include <sys/ioctl.h>
+#include <sys/sendfile.h>
 
 #include "file_utils.h"
 
@@ -106,6 +107,20 @@ int fsync(int fd)
         return -1;
     }
     return realFsync(fd);
+}
+
+ssize_t sendfile(int outFd, int inFd, off_t *offset, size_t count)
+{
+    if (Assistant::mockSendfileApi && Assistant::ins != nullptr) {
+        return Assistant::ins->Sendfile(outFd, inFd, offset, count);
+    }
+    static auto realSendfile =
+        reinterpret_cast<ssize_t (*)(int, int, off_t *, size_t)>(dlsym(RTLD_NEXT, "sendfile"));
+    if (realSendfile == nullptr) {
+        errno = EIO;
+        return -1;
+    }
+    return realSendfile(outFd, inFd, offset, count);
 }
 
 int stat(const char *path, struct stat *buf)
