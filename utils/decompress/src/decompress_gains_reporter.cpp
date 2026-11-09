@@ -200,10 +200,10 @@ static std::string BuildGainsRecord(const FakeDecompressGainsInfo &info)
     record += "bundleName=" + info.bundleName + "\n";
     record += "isSystemApp=" + std::to_string(info.isSystemApp ? 1 : 0) + "\n";
     record += "successSoCount=" + std::to_string(info.successSoCount) + "\n";
-    record += "successSoGains=" + std::to_string(info.successSoGains) + "\n";
+    record += "soGains=" + std::to_string(info.successSoGains) + "\n";
     record += "failedSoCount=" + std::to_string(info.failedSoCount) + "\n";
     record += "successResfileCount=" + std::to_string(info.successResfileCount) + "\n";
-    record += "successResfileGains=" + std::to_string(info.successResfileGains) + "\n";
+    record += "resfileGains=" + std::to_string(info.successResfileGains) + "\n";
     record += "failedResfileCount=" + std::to_string(info.failedResfileCount) + "\n";
     record += "srcFileSystem=" + info.srcFileSystem + "\n";
     record += "userdataSpace=" + std::to_string(info.userdataSpace) + "\n";
@@ -242,13 +242,13 @@ static void ParseGainsInfoLine(const std::string &line, FakeDecompressGainsInfo 
         info.isSystemApp = (val == "1");
     } else if (key == "successSoCount") {
         info.successSoCount = static_cast<uint32_t>(strtoul(val.c_str(), nullptr, DECIMAL_BASE));
-    } else if (key == "successSoGains") {
+    } else if (key == "soGains") {
         info.successSoGains = static_cast<uint64_t>(strtoull(val.c_str(), nullptr, DECIMAL_BASE));
     } else if (key == "failedSoCount") {
         info.failedSoCount = static_cast<uint32_t>(strtoul(val.c_str(), nullptr, DECIMAL_BASE));
     } else if (key == "successResfileCount") {
         info.successResfileCount = static_cast<uint32_t>(strtoul(val.c_str(), nullptr, DECIMAL_BASE));
-    } else if (key == "successResfileGains") {
+    } else if (key == "resfileGains") {
         info.successResfileGains = static_cast<uint64_t>(strtoull(val.c_str(), nullptr, DECIMAL_BASE));
     } else if (key == "failedResfileCount") {
         info.failedResfileCount = static_cast<uint32_t>(strtoul(val.c_str(), nullptr, DECIMAL_BASE));
