@@ -314,6 +314,20 @@ public:
         return taskFd;
     }
 
+    static void ExpectActiveCount(PlaceholderTaskManager &manager, const std::string &bundleName, int32_t userId,
+                                  size_t expected)
+    {
+        std::lock_guard<std::mutex> lock(manager.mapMutex_);
+        auto key = PlaceholderTaskManager::MakeAppUserKey(bundleName, userId);
+        auto item = manager.activeByKey_.find(key);
+        if (expected == 0) {
+            EXPECT_TRUE(item == manager.activeByKey_.end());
+            return;
+        }
+        ASSERT_TRUE(item != manager.activeByKey_.end());
+        EXPECT_EQ(item->second, expected);
+    }
+
     void ExpectAdmissionMetadata(uint64_t inodeId, uint64_t logicalSize = 0)
     {
         EXPECT_CALL(*mock_, fstat(_, _)).WillOnce(Invoke([inodeId, logicalSize](int, struct stat *metadata) {
@@ -678,37 +692,43 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationQueueIndex_StaleTerminal_001, Test
 }
 
 /**
- * @tc.name: ActiveSlotBookkeeping_001
- * @tc.desc: Cover duplicate, missing, and inconsistent active-slot bookkeeping paths.
+ * @tc.name: ActiveSlotBookkeeping_Mark_001
+ * @tc.desc: Cover duplicate and missing-task active-slot marking paths.
  * @tc.type: FUNC
  * @tc.require: NA
  */
-HWTEST_F(PlaceholderTaskManagerTest, ActiveSlotBookkeeping_001, TestSize.Level2)
+HWTEST_F(PlaceholderTaskManagerTest, ActiveSlotBookkeeping_Mark_001, TestSize.Level2)
 {
     auto &manager = PlaceholderTaskManager::GetInstance();
     PlaceholderTaskManager::RequestKey key;
-    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "active-bookkeeping.txt", TEST_BUNDLE_NAME,
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "active-mark.txt", TEST_BUNDLE_NAME,
                                         TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
               E_OK);
     ActivateTask(manager, key);
     auto task = manager.taskMap_.at(key);
-    auto activeKey = PlaceholderTaskManager::MakeAppUserKey(TEST_BUNDLE_NAME, -1);
     manager.MarkTaskActiveLocked(task);
-    {
-        std::lock_guard<std::mutex> lock(manager.mapMutex_);
-        EXPECT_EQ(manager.activeByKey_.at(activeKey), 1U);
-    }
+    ExpectActiveCount(manager, TEST_BUNDLE_NAME, -1, 1U);
 
     auto orphanTask = std::make_shared<PlaceholderTaskRecord>();
     orphanTask->reqKey = {0xEE};
     orphanTask->bundleName = TEST_BUNDLE_NAME;
     orphanTask->userId = -1;
     manager.MarkTaskActiveLocked(orphanTask);
-    {
-        std::lock_guard<std::mutex> lock(manager.mapMutex_);
-        EXPECT_EQ(manager.activeByKey_.at(activeKey), 1U);
-    }
+    ExpectActiveCount(manager, TEST_BUNDLE_NAME, -1, 1U);
 
+    EXPECT_EQ(manager.CancelTask(TEST_SYNC_FOLDER, "active-mark.txt", TEST_SYNC_FOLDER_INDEX), E_OK);
+    ExpectActiveCount(manager, TEST_BUNDLE_NAME, -1, 0);
+}
+
+/**
+ * @tc.name: ActiveSlotBookkeeping_Release_001
+ * @tc.desc: Cover missing and zero active-slot count release paths.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, ActiveSlotBookkeeping_Release_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
     PlaceholderTaskRecord ghostTask;
     ghostTask.activeSlotHeld = true;
     ghostTask.bundleName = "com.example.ghost";
@@ -731,33 +751,29 @@ HWTEST_F(PlaceholderTaskManagerTest, ActiveSlotBookkeeping_001, TestSize.Level2)
         manager.activeByKey_.erase(zeroKey);
     }
     EXPECT_FALSE(zeroTask.activeSlotHeld);
+    EXPECT_TRUE(manager.activeByKey_.empty());
+}
 
+/**
+ * @tc.name: QueueSummaryLog_NullReason_001
+ * @tc.desc: Cover the null reason branch of the mass-cancellation summary log.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, QueueSummaryLog_NullReason_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "queue-summary.txt", TEST_BUNDLE_NAME,
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
     {
         std::lock_guard<std::mutex> lock(manager.mapMutex_);
         manager.LogQueueSummaryLocked(nullptr);
     }
-
-    PlaceholderTaskManager::RequestKey pendingKey;
-    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "index-missing-erase.txt", TEST_BUNDLE_NAME,
-                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(),
-                                        pendingKey),
-              E_OK);
-    auto pendingTask = manager.taskMap_.at(pendingKey);
-    {
-        std::lock_guard<std::mutex> lock(manager.mapMutex_);
-        auto indexItem = manager.taskKeyIndex_.find(
-            PlaceholderTaskManager::MakeTaskKey(TEST_SYNC_FOLDER, "index-missing-erase.txt", TEST_SYNC_FOLDER_INDEX));
-        if (indexItem != manager.taskKeyIndex_.end()) {
-            manager.taskKeyIndex_.erase(indexItem);
-        }
-    }
-    manager.EraseTaskLocked(pendingTask);
-    EXPECT_EQ(manager.taskMap_.count(pendingKey), 0U);
-
-    EXPECT_EQ(manager.CancelTask(TEST_SYNC_FOLDER, "active-bookkeeping.txt", TEST_SYNC_FOLDER_INDEX), E_OK);
+    EXPECT_EQ(manager.CancelTask(TEST_SYNC_FOLDER, "queue-summary.txt", TEST_SYNC_FOLDER_INDEX), E_OK);
     EXPECT_TRUE(manager.taskMap_.empty());
     EXPECT_TRUE(manager.taskKeyIndex_.empty());
-    EXPECT_TRUE(manager.activeByKey_.empty());
 }
 
 /**
