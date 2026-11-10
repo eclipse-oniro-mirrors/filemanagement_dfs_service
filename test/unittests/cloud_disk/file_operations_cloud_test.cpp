@@ -498,8 +498,7 @@ HWTEST_F(FileOperationsCloudTest, OpenTest006, TestSize.Level1)
         struct fuse_file_info fi;
         fi.fh = -1;
 
-        EXPECT_CALL(*insMock, fuse_req_userdata(_)).WillOnce(Return(reinterpret_cast<void*>(&data)))
-                                                   .WillOnce(Return(reinterpret_cast<void*>(&data)));
+        EXPECT_CALL(*insMock, fuse_req_userdata(_)).WillOnce(Return(reinterpret_cast<void*>(&data)));
         EXPECT_CALL(*insMock, fuse_reply_err(_, _)).WillRepeatedly(Return(E_OK));
         fileOperationsCloud_->Open(req, reinterpret_cast<fuse_ino_t>(&ino), &fi);
         EXPECT_TRUE(true);
@@ -528,8 +527,7 @@ HWTEST_F(FileOperationsCloudTest, OpenTest007, TestSize.Level1)
         CloudDiskInode ino;
         struct fuse_file_info fi;
 
-        EXPECT_CALL(*insMock, fuse_req_userdata(_)).WillOnce(Return(reinterpret_cast<void*>(&data)))
-                                                   .WillOnce(Return(reinterpret_cast<void*>(&data)));
+        EXPECT_CALL(*insMock, fuse_req_userdata(_)).WillOnce(Return(reinterpret_cast<void*>(&data)));
         EXPECT_CALL(*insMock, fuse_reply_err(_, _)).WillRepeatedly(Return(E_OK));
         fileOperationsCloud_->Open(req, reinterpret_cast<fuse_ino_t>(&ino), &fi);
         EXPECT_TRUE(true);
