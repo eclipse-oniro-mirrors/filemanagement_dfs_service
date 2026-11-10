@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Huawei Device Co., Ltd.
+ * Copyright (c) 2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -199,7 +199,7 @@ static inline CloudDiskDownloadFileStatInfo SumTwoDownloadFileStat(CloudDiskDown
     }
     return dataOne;
 }
- 
+
 void CloudDiskDownloadFileStat::HandleBundleName(const CloudDiskDownloadFileStatInfo &info)
 {
     if (!info.bundleName.empty() && info.bundleName != stat_.bundleName &&
