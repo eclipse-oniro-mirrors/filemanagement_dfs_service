@@ -136,9 +136,12 @@ ohos_unittest("network_status_test") {
     "${distributedfile_path}/frameworks/native/cloud_file_kit_inner/src/data_sync/data_syncer_rdb_store.cpp",
     "${distributedfile_path}/frameworks/native/cloud_file_kit_inner/src/sync_rule/net_conn_callback_observer.cpp",
     "${distributedfile_path}/frameworks/native/cloud_file_kit_inner/src/sync_rule/network_status.cpp",
+    "${distributedfile_path}/frameworks/native/cloud_file_kit_inner/src/sync_rule/net_link_status.cpp",
     "${distributedfile_path}/test/mock/core_service_client_mock.cpp",
     "${distributedfile_path}/test/mock/cellular_data_client_mock.cpp",
     "${distributedfile_path}/test/mock/net_conn_client_mock.cpp",
+    "${distributedfile_path}/test/unittests/cloudsync_sa/mock/link_status_func_mock.cpp",
+    "net_link_status_test.cpp",
     "network_status_test.cpp",
   ]
 
@@ -151,6 +154,7 @@ ohos_unittest("network_status_test") {
     "${utils_path}/log/include",
     "${innerkits_native_path}/cloudsync_kit_inner",
     "${distributedfile_path}/adapter/cloud_adapter_example/include",
+    "${distributedfile_path}/test/unittests/cloudsync_sa/mock",
   ]
 
   deps = [
