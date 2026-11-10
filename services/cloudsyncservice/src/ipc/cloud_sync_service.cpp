@@ -547,7 +547,7 @@ int32_t CloudSyncService::UnRegisterUploadCallbackInner(const string &callbackId
     ret = GetBundleNameUserInfo(bundleNameUserInfo);
     if (ret != E_OK) {
         return ret;
-    }Ï
+    }
     dataSyncManager_->UnRegisterUploadCallback(targetBundleName, bundleNameUserInfo, callbackId);
     LOGI("End UnRegisterUploadCallbackInner");
     return E_OK;
@@ -1031,6 +1031,10 @@ int32_t CloudSyncService::NotifyEventChange(int32_t userId, const std::string &e
     }
 
     bool needResetCursor = NeedResetCursor(extraData);
+    if (needResetCursor && appBundleName.empty()) {
+        LOGI("appBundleName is empty, fallback to com.ohos.photos");
+        appBundleName = "com.ohos.photos";
+    }
     std::thread([this, appBundleName, userId, prepareTraceId, needResetCursor]() {
         if (needResetCursor) {
             LOGI("reset shared album cursor");
