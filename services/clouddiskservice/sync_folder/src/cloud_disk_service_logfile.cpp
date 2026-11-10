@@ -477,6 +477,7 @@ int32_t CloudDiskServiceLogFile::PraseLog(const uint64_t line, ChangeData &data,
         isEof = true;
         return E_OK;
     } else if (!CheckLineIsValid(line)) {
+        LOGE("PraseLog: line is invalid, currentLine_:%{public}lu, line:%{public}lu", currentLine_.load(), line);
         return E_INVALID_CHANGE_SEQUENCE;
     }
 
@@ -608,12 +609,10 @@ int32_t CloudDiskServiceLogFile::ProduceRenameOldLog(const std::shared_ptr<Cloud
                                                      const std::string &name,
                                                      struct LogGenerateCtx &ctx)
 {
-    LOGD("Begin ProduceRenameOldLog");
     MetaBase mBase(name);
     renamePlaceholderState_ = PLACEHOLDER_STATE_NONE;
     int32_t ret = parentMetaFile->DoLookupPlaceholderByName(mBase, renamePlaceholderState_);
     if (ret != E_OK) {
-        LOGD("lookup placeholder state failed, errno:%{public}d", ret);
         renamePlaceholderState_ = PLACEHOLDER_STATE_NONE;
     }
     LOGI("RenameOld placeholder state, state:%{public}u", renamePlaceholderState_);
@@ -634,7 +633,6 @@ int32_t CloudDiskServiceLogFile::ProduceRenameNewLog(const std::shared_ptr<Cloud
                                                      const std::string &name,
                                                      struct LogGenerateCtx &ctx)
 {
-    LOGD("Begin ProduceRenameNewLog");
     MetaBase mBase(name);
     std::string fullPath = path + "/" + name;
     struct stat childStat;
