@@ -24,7 +24,7 @@ namespace OHOS::FileManagement::CloudFile {
 class MockDataSyncManager : public DataSyncManager {
 public:
     MOCK_METHOD(int32_t, TriggerStartSync,
-                (const std::string &bundleName, const int32_t userId, bool forceFlag,
+                (const std::string &bundleName, const int32_t userId, SyncMode type,
                  SyncTriggerType triggerType, std::string prepareTraceId),
                 (override));
     MOCK_METHOD(int32_t, TriggerStopSync,

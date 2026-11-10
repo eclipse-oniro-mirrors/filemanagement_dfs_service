@@ -28,8 +28,9 @@ public:
     static const std::string DATABASE_NAME;
     static const std::string DATABASE_ROOT_DIR;
     static const std::string DATABASE_RELATIVE_DIR;
+    static const std::string ANON_DATABASE_NAME;
 
-    static constexpr int32_t DATABASE_VERSION = 1;
+    static constexpr int32_t DATABASE_VERSION = 2;
     static constexpr int32_t CONNECT_SIZE = 4;
     static constexpr int64_t RDB_WAL_LIMIT_SIZE = 0x40000000;
 

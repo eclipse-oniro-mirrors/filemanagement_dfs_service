@@ -18,23 +18,36 @@
 
 #include "visibility.h"
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace OHOS {
 namespace FileManagement {
 namespace Decompress {
 
-API_EXPORT bool CreateInnerFile(const std::string &sourcePath,
-                                const std::string &targetPath,
-                                const uint32_t &offset,
-                                const uint32_t &size,
-                                bool isSystemApp);
+enum class FileType {
+    SO_FILE = 1,
+    RESOURCE_FILE = 2,
+};
+struct CreateInnerFileParam {
+    std::string sourcePath;
+    std::string targetPath;
+    uint32_t offset = 0;
+    uint32_t size = 0;
+    bool isSystemApp = false;
+    std::string bundleName;
+    FileType fileType = FileType::SO_FILE;
+    bool generateBuildhash = false;
+};
 
-API_EXPORT bool CheckBundleSupported(const std::string &bundleName, const bool isKeepAlive);
+API_EXPORT bool BundelInstallFinished(const std::string &bundleName);
 
-API_EXPORT bool CheckModuleApiVersionSupported(const std::string &moduleName,
-                                               const uint32_t targetVersion,
-                                               const uint32_t minVersion);
+API_EXPORT bool CreateInnerFile(const CreateInnerFileParam &param);
+
+API_EXPORT bool CheckBundleSupported(const std::string &bundleName,
+                                     const bool isKeepAlive,
+                                     const std::string &hapPath,
+                                     const bool generateBuildhash);
 
 API_EXPORT bool GetSystemFeature();
 

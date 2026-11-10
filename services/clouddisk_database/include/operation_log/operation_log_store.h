@@ -34,31 +34,40 @@ namespace CloudDisk {
 class OperationLogStore {
 public:
     static OperationLogStore& GetInstance();
-    int32_t Init(int32_t userId);
+    int32_t Init(int32_t userId, bool isAnon = false);
     std::shared_ptr<NativeRdb::RdbStore> GetRaw();
+    std::shared_ptr<NativeRdb::RdbStore> GetAnonRaw();
     void Stop();
 
 private:
     OperationLogStore() = default;
     ~OperationLogStore() = default;
 
-    int32_t RdbInit(int32_t userId);
+    int32_t RdbInit(int32_t userId, bool isAnon);
     int32_t CreateDirectory(const std::string& dirPath);
-    bool TryOpenRdbStore(const std::string& customDir, const std::string& databasePath, int32_t& errCode);
+    bool TryOpenRdbStore(const std::string& customDir, const std::string& databasePath, int32_t& errCode,
+        bool isAnon = false);
     int32_t CheckAndCreateDir(const std::string& dirPath);
 
     std::shared_ptr<NativeRdb::RdbStore> rdbStore_;
+    std::shared_ptr<NativeRdb::RdbStore> anonRdbStore_;
     NativeRdb::RdbStoreConfig config_{""};
+    NativeRdb::RdbStoreConfig anonConfig_{""};
     std::mutex mutex_;
     int32_t userId_ = 0;
     //是否已进行数据库初始化
     bool isInited_ = false;
+    bool anonIsInited_ = false;
 };
 
 class OperationLogRdbCallBack : public NativeRdb::RdbOpenCallback {
 public:
+    explicit OperationLogRdbCallBack(bool isAnon = false);
     int32_t OnCreate(NativeRdb::RdbStore &rdbStore) override;
     int32_t OnUpgrade(NativeRdb::RdbStore &rdbStore, int32_t oldVersion, int32_t newVersion) override;
+
+private:
+    bool isAnon_ = false;
 };
 
 } // namespace CloudDisk

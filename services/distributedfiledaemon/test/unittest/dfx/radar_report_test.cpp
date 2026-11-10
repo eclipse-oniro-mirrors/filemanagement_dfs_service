@@ -164,6 +164,9 @@ HWTEST_F(RadarReportAdapterTest, RadarReportAdapterTest_SetUserStatistics_001, T
         RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::FILE_ACCESS_FAIL_CNT));
     EXPECT_NO_FATAL_FAILURE(
         RadarReportAdapter::GetInstance().SetUserStatistics(static_cast<RadarStatisticInfoType>(6)));
+    EXPECT_NO_FATAL_FAILURE(
+        RadarReportAdapter::GetInstance().SetUserStatistics(static_cast<RadarStatisticInfoType>(7)));
+    RadarReportAdapter::GetInstance().opStatistics_.clear();
 #endif
     GTEST_LOG_(INFO) << "RadarReportAdapterTest_SetUserStatistics_001 end";
 }
@@ -177,7 +180,7 @@ HWTEST_F(RadarReportAdapterTest, RadarReportAdapterTest_SetUserStatistics_001, T
 HWTEST_F(RadarReportAdapterTest, RadarReportAdapterTest_ReportDfxStatistics_001, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "RadarReportAdapterTest_ReportDfxStatistics_001 begin";
-    RadarReportAdapter::GetInstance().opStatistics_ = {0, 0, 0, 0, 0, 0};
+    RadarReportAdapter::GetInstance().opStatistics_ = {0, 0, 0, 0, 0, 0, 0, 0};
     RadarReportAdapter::GetInstance().ReportDfxStatistics();
     EXPECT_TRUE(RadarReportAdapter::GetInstance().opStatistics_.empty());
     GTEST_LOG_(INFO) << "RadarReportAdapterTest_ReportDfxStatistics_001 end";
@@ -276,6 +279,59 @@ HWTEST_F(RadarReportAdapterTest, RadarReportAdapterTest_ReportDfxStatistics_002,
     DfsRadarMock::dfsRadarMock = nullptr;
     dfsRadarMock_ = nullptr;
     GTEST_LOG_(INFO) << "RadarReportAdapterTest_ReportDfxStatistics_002 end";
+}
+
+/**
+ * @tc.name: RadarReportAdapterTest_SetUserStatistics_002
+ * @tc.desc: verify SetUserStatistics counts COPY_HMDFS_CNT and COPY_SEND_CNT.
+ * @tc.type: FUNC
+ * @tc.require:
+ */
+HWTEST_F(RadarReportAdapterTest, RadarReportAdapterTest_SetUserStatistics_002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RadarReportAdapterTest_SetUserStatistics_002 begin";
+    RadarReportAdapter::GetInstance().opStatistics_.clear();
+    RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::COPY_HMDFS_CNT);
+    RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::COPY_HMDFS_CNT);
+    RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::COPY_SEND_CNT);
+    EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.hmdfsCopyCount, static_cast<uint32_t>(2));
+    EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.sendFileCount, static_cast<uint32_t>(1));
+    EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.connectSuccCount, static_cast<uint32_t>(0));
+
+    RadarReportAdapter::GetInstance().SetUserStatistics(static_cast<RadarStatisticInfoType>(8));
+    EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.hmdfsCopyCount, static_cast<uint32_t>(2));
+    EXPECT_EQ(RadarReportAdapter::GetInstance().opStatistics_.sendFileCount, static_cast<uint32_t>(1));
+
+    RadarReportAdapter::GetInstance().opStatistics_.clear();
+    EXPECT_TRUE(RadarReportAdapter::GetInstance().opStatistics_.empty());
+    GTEST_LOG_(INFO) << "RadarReportAdapterTest_SetUserStatistics_002 end";
+}
+
+/**
+ * @tc.name: RadarReportAdapterTest_ReportDfxStatistics_003
+ * @tc.desc: verify ReportDfxStatistics reports hmdfsCopyCount and sendFileCount.
+ * @tc.type: FUNC
+ * @tc.require:
+ */
+HWTEST_F(RadarReportAdapterTest, RadarReportAdapterTest_ReportDfxStatistics_003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RadarReportAdapterTest_ReportDfxStatistics_003 begin";
+    dfsRadarMock_ = std::make_shared<DfsRadarMock>();
+    DfsRadarMock::dfsRadarMock = dfsRadarMock_;
+    RadarReportAdapter::GetInstance().opStatistics_.clear();
+    RadarReportAdapter::GetInstance().opStatistics_.hmdfsCopyCount = 2;
+    RadarReportAdapter::GetInstance().opStatistics_.sendFileCount = 1;
+    EXPECT_CALL(*dfsRadarMock_, ReportStatistics(_)).WillOnce(
+        [](const RadarStatisticInfo &radarInfo) {
+            EXPECT_EQ(radarInfo.hmdfsCopyCount, static_cast<uint32_t>(2));
+            EXPECT_EQ(radarInfo.sendFileCount, static_cast<uint32_t>(1));
+            EXPECT_EQ(radarInfo.connectSuccCount, static_cast<uint32_t>(0));
+        });
+    EXPECT_NO_FATAL_FAILURE(RadarReportAdapter::GetInstance().ReportDfxStatistics());
+    EXPECT_TRUE(RadarReportAdapter::GetInstance().opStatistics_.empty());
+    DfsRadarMock::dfsRadarMock = nullptr;
+    dfsRadarMock_ = nullptr;
+    GTEST_LOG_(INFO) << "RadarReportAdapterTest_ReportDfxStatistics_003 end";
 }
 
 /**

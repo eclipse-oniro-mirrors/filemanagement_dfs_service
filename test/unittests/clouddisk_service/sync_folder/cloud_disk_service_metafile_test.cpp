@@ -69,6 +69,33 @@ void CloudDiskServiceMetafileTest::TearDown(void)
     insMock = nullptr;
     GTEST_LOG_(INFO) << "TearDown";
 }
+auto MakeFileContentReader(const std::map<off_t, std::vector<char>> &fileContent)
+{
+    return [&fileContent](int fd, off_t offset, size_t size, void *data) -> int64_t {
+        auto it = fileContent.find(offset);
+        if (it != fileContent.end() && it->second.size() >= size) {
+            if (memcpy_s(data, size, it->second.data(), size) != EOK) {
+                return -1;
+            }
+        } else if (memset_s(data, size, 0, size) != EOK) {
+            return -1;
+        }
+        return DENTRYGROUP_SIZE;
+    };
+}
+
+auto MakeFileContentWriter(std::map<off_t, std::vector<char>> &fileContent)
+{
+    return [&fileContent](int fd, const void *data, off_t offset, size_t size) -> int64_t {
+        std::vector<char> buf(size);
+        if (memcpy_s(buf.data(), size, data, size) != EOK) {
+            return -1;
+        }
+        fileContent[offset] = std::move(buf);
+        return DENTRYGROUP_SIZE;
+    };
+}
+
 
 /**
 * @tc.name: DecodeDentryHeaderTest001
@@ -385,21 +412,8 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoCreateTest006, TestSize.Level1)
     GTEST_LOG_(INFO) << "DoCreateTest006 Start";
     try {
         std::map<off_t, std::vector<char>> fileContent;
-        auto readFileImpl = [&fileContent](int fd, off_t offset, size_t size, void *data) -> int64_t {
-            auto it = fileContent.find(offset);
-            if (it != fileContent.end() && it->second.size() >= size) {
-                memcpy_s(data, size, it->second.data(), size);
-            } else {
-                memset_s(data, size, 0, size);
-            }
-            return DENTRYGROUP_SIZE;
-        };
-        auto writeFileImpl = [&fileContent](int fd, const void *data, off_t offset, size_t size) -> int64_t {
-            std::vector<char> buf(size);
-            memcpy_s(buf.data(), size, data, size);
-            fileContent[offset] = std::move(buf);
-            return DENTRYGROUP_SIZE;
-        };
+        auto readFileImpl = MakeFileContentReader(fileContent);
+        auto writeFileImpl = MakeFileContentWriter(fileContent);
         CloudDiskServiceMetaFile mFile(100, 1, 123);
         mFile.fd_.Reset(1);
         MetaBase base;
@@ -485,21 +499,8 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRemoveTest003, TestSize.Level1)
     GTEST_LOG_(INFO) << "DoRemoveTest003 Start";
     try {
         std::map<off_t, std::vector<char>> fileContent;
-        auto readFileImpl = [&fileContent](int fd, off_t offset, size_t size, void *data) -> int64_t {
-            auto it = fileContent.find(offset);
-            if (it != fileContent.end() && it->second.size() >= size) {
-                memcpy_s(data, size, it->second.data(), size);
-            } else {
-                memset_s(data, size, 0, size);
-            }
-            return DENTRYGROUP_SIZE;
-        };
-        auto writeFileImpl = [&fileContent](int fd, const void *data, off_t offset, size_t size) -> int64_t {
-            std::vector<char> buf(size);
-            memcpy_s(buf.data(), size, data, size);
-            fileContent[offset] = std::move(buf);
-            return DENTRYGROUP_SIZE;
-        };
+        auto readFileImpl = MakeFileContentReader(fileContent);
+        auto writeFileImpl = MakeFileContentWriter(fileContent);
         CloudDiskServiceMetaFile mFile(100, 1, 123);
         mFile.fd_.Reset(1);
         MetaBase base;
@@ -537,15 +538,7 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRemoveTest004, TestSize.Level1)
     try {
         std::map<off_t, std::vector<char>> fileContent;
         int writeCallCount = 0;
-        auto readFileImpl = [&fileContent](int fd, off_t offset, size_t size, void *data) -> int64_t {
-            auto it = fileContent.find(offset);
-            if (it != fileContent.end() && it->second.size() >= size) {
-                memcpy_s(data, size, it->second.data(), size);
-            } else {
-                memset_s(data, size, 0, size);
-            }
-            return DENTRYGROUP_SIZE;
-        };
+        auto readFileImpl = MakeFileContentReader(fileContent);
         auto writeFileImpl = [&fileContent, &writeCallCount](int fd, const void *data, off_t offset,
             size_t size) -> int64_t {
             std::vector<char> buf(size);
@@ -642,21 +635,8 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoFlushTest003, TestSize.Level1)
     GTEST_LOG_(INFO) << "DoFlushTest003 Start";
     try {
         std::map<off_t, std::vector<char>> fileContent;
-        auto readFileImpl = [&fileContent](int fd, off_t offset, size_t size, void *data) -> int64_t {
-            auto it = fileContent.find(offset);
-            if (it != fileContent.end() && it->second.size() >= size) {
-                memcpy_s(data, size, it->second.data(), size);
-            } else {
-                memset_s(data, size, 0, size);
-            }
-            return DENTRYGROUP_SIZE;
-        };
-        auto writeFileImpl = [&fileContent](int fd, const void *data, off_t offset, size_t size) -> int64_t {
-            std::vector<char> buf(size);
-            memcpy_s(buf.data(), size, data, size);
-            fileContent[offset] = std::move(buf);
-            return DENTRYGROUP_SIZE;
-        };
+        auto readFileImpl = MakeFileContentReader(fileContent);
+        auto writeFileImpl = MakeFileContentWriter(fileContent);
         CloudDiskServiceMetaFile mFile(100, 1, 123);
         mFile.fd_.Reset(1);
         MetaBase base;
@@ -696,15 +676,7 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoFlushTest004, TestSize.Level1)
     try {
         std::map<off_t, std::vector<char>> fileContent;
         int writeCallCount = 0;
-        auto readFileImpl = [&fileContent](int fd, off_t offset, size_t size, void *data) -> int64_t {
-            auto it = fileContent.find(offset);
-            if (it != fileContent.end() && it->second.size() >= size) {
-                memcpy_s(data, size, it->second.data(), size);
-            } else {
-                memset_s(data, size, 0, size);
-            }
-            return DENTRYGROUP_SIZE;
-        };
+        auto readFileImpl = MakeFileContentReader(fileContent);
         auto writeFileImpl = [&fileContent, &writeCallCount](int fd, const void *data, off_t offset,
             size_t size) -> int64_t {
             std::vector<char> buf(size);
@@ -801,21 +773,8 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoUpdateTest003, TestSize.Level1)
     GTEST_LOG_(INFO) << "DoUpdateTest003 Start";
     try {
         std::map<off_t, std::vector<char>> fileContent;
-        auto readFileImpl = [&fileContent](int fd, off_t offset, size_t size, void *data) -> int64_t {
-            auto it = fileContent.find(offset);
-            if (it != fileContent.end() && it->second.size() >= size) {
-                memcpy_s(data, size, it->second.data(), size);
-            } else {
-                memset_s(data, size, 0, size);
-            }
-            return DENTRYGROUP_SIZE;
-        };
-        auto writeFileImpl = [&fileContent](int fd, const void *data, off_t offset, size_t size) -> int64_t {
-            std::vector<char> buf(size);
-            memcpy_s(buf.data(), size, data, size);
-            fileContent[offset] = std::move(buf);
-            return DENTRYGROUP_SIZE;
-        };
+        auto readFileImpl = MakeFileContentReader(fileContent);
+        auto writeFileImpl = MakeFileContentWriter(fileContent);
         CloudDiskServiceMetaFile mFile(100, 1, 123);
         mFile.fd_.Reset(1);
         MetaBase base;
@@ -910,7 +869,9 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest001, TestSize.Level1)
         string recordId = "test_id_111";
         unsigned long bidx;
         uint32_t bitPos;
-        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos);
+        uint8_t overwrittenState = 0;
+        (void)overwrittenState;
+        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos, overwrittenState);
         EXPECT_EQ(ret, EINVAL);
     } catch (...) {
         EXPECT_TRUE(false);
@@ -937,7 +898,9 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest002, TestSize.Level1)
         string recordId = "test_id_111";
         unsigned long bidx;
         uint32_t bitPos;
-        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos);
+        uint8_t overwrittenState = 0;
+        (void)overwrittenState;
+        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos, overwrittenState);
         EXPECT_EQ(ret, ENAMETOOLONG);
     } catch (...) {
         EXPECT_TRUE(false);
@@ -963,9 +926,11 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest003, TestSize.Level1)
         string recordId = "test_id_111";
         unsigned long bidx;
         uint32_t bitPos;
+        uint8_t overwrittenState = 0;
+        (void)overwrittenState;
         EXPECT_CALL(*insMock, ReadFile(_, _, _, _)).WillRepeatedly(Return(DENTRYGROUP_SIZE));
         EXPECT_CALL(*insMock, WriteFile(_, _, _, _)).WillOnce(Return(DENTRYGROUP_SIZE));
-        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos);
+        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos, overwrittenState);
         EXPECT_EQ(ret, E_OK);
     } catch (...) {
         EXPECT_TRUE(false);
@@ -991,9 +956,11 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest004, TestSize.Level1)
         string recordId = "test_id_111";
         unsigned long bidx;
         uint32_t bitPos;
+        uint8_t overwrittenState = 0;
+        (void)overwrittenState;
         EXPECT_CALL(*insMock, ReadFile(_, _, _, _)).WillRepeatedly(Return(DENTRYGROUP_SIZE));
         EXPECT_CALL(*insMock, WriteFile(_, _, _, _)).WillOnce(Return(1));
-        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos);
+        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos, overwrittenState);
         EXPECT_EQ(ret, EINVAL);
     } catch (...) {
         EXPECT_TRUE(false);
@@ -1019,14 +986,118 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest005, TestSize.Level1)
         string recordId = "test_id_111";
         unsigned long bidx;
         uint32_t bitPos;
+        uint8_t overwrittenState = 0;
+        (void)overwrittenState;
         EXPECT_CALL(*insMock, ReadFile(_, _, _, _)).WillRepeatedly(Return(1));
-        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos);
+        auto ret = mFile.DoRenameNew(base, recordId, bidx, bitPos, overwrittenState);
         EXPECT_EQ(ret, ENOENT);
     } catch (...) {
         EXPECT_TRUE(false);
         GTEST_LOG_(INFO) << "DoRenameNewTest005 ERROR";
     }
     GTEST_LOG_(INFO) << "DoRenameNewTest005 End";
+}
+
+/**
+* @tc.name: DoRenameNewTest006
+* @tc.desc: Verify DoRenameNew updates an existing valid dentry in place instead of returning EEXIST
+* @tc.type: FUNC
+* @tc.require: NA
+*/
+HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoRenameNewTest006 Start";
+    try {
+        std::map<off_t, std::vector<char>> fileContent;
+        auto readFileImpl = MakeFileContentReader(fileContent);
+        auto writeFileImpl = MakeFileContentWriter(fileContent);
+        CloudDiskServiceMetaFile mFile(USER_ID, INDEX_ID, INODE);
+        mFile.fd_.Reset(1);
+        MetaBase createBase;
+        createBase.name = "test_name";
+        createBase.recordId = "record_123";
+        createBase.atime = 1;
+        createBase.mtime = 1;
+        createBase.size = BASE_SIZE;
+        createBase.mode = BASE_MODE;
+        unsigned long bidx;
+        uint32_t bitPos;
+        uint8_t overwrittenState = 0;
+        (void)overwrittenState;
+        EXPECT_CALL(*insMock, ReadFile(_, _, _, _)).WillRepeatedly(testing::Invoke(readFileImpl));
+        EXPECT_CALL(*insMock, WriteFile(_, _, _, _)).WillRepeatedly(testing::Invoke(writeFileImpl));
+        auto ret = mFile.DoCreate(createBase, bidx, bitPos);
+        EXPECT_EQ(ret, E_OK);
+
+        MetaBase renameBase;
+        renameBase.name = "test_name";
+        renameBase.atime = 200;
+        renameBase.mtime = 300;
+        renameBase.size = BASE_SIZE + 1;
+        renameBase.mode = BASE_MODE;
+        string originalRecordId = "original_id_456";
+        ret = mFile.DoRenameNew(renameBase, originalRecordId, bidx, bitPos, overwrittenState);
+        EXPECT_EQ(ret, E_OK);
+
+        MetaBase lookupBase;
+        lookupBase.name = "test_name";
+        ret = mFile.DoLookupByName(lookupBase);
+        EXPECT_EQ(ret, E_OK);
+        EXPECT_EQ(lookupBase.recordId.substr(0, originalRecordId.length()), originalRecordId);
+        EXPECT_EQ(lookupBase.size, renameBase.size);
+        EXPECT_EQ(lookupBase.mtime, renameBase.mtime);
+        EXPECT_EQ(lookupBase.atime, renameBase.atime);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoRenameNewTest006 ERROR";
+    }
+    GTEST_LOG_(INFO) << "DoRenameNewTest006 End";
+}
+
+/**
+* @tc.name: DoRenameNewTest007
+* @tc.desc: Verify DoRenameNew returns EIO when updating an existing dentry fails to write
+* @tc.type: FUNC
+* @tc.require: NA
+*/
+HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest007, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoRenameNewTest007 Start";
+    try {
+        std::map<off_t, std::vector<char>> fileContent;
+        auto readFileImpl = MakeFileContentReader(fileContent);
+        auto writeFileImpl = MakeFileContentWriter(fileContent);
+        CloudDiskServiceMetaFile mFile(USER_ID, INDEX_ID, INODE);
+        mFile.fd_.Reset(1);
+        MetaBase createBase;
+        createBase.name = "test_name";
+        createBase.recordId = "record_123";
+        createBase.atime = 1;
+        createBase.mtime = 1;
+        createBase.size = BASE_SIZE;
+        createBase.mode = BASE_MODE;
+        unsigned long bidx;
+        uint32_t bitPos;
+        uint8_t overwrittenState = 0;
+        (void)overwrittenState;
+        EXPECT_CALL(*insMock, ReadFile(_, _, _, _)).WillRepeatedly(testing::Invoke(readFileImpl));
+        EXPECT_CALL(*insMock, WriteFile(_, _, _, _)).WillRepeatedly(testing::Invoke(writeFileImpl));
+        auto ret = mFile.DoCreate(createBase, bidx, bitPos);
+        EXPECT_EQ(ret, E_OK);
+
+        MetaBase renameBase;
+        renameBase.name = "test_name";
+        renameBase.size = BASE_SIZE;
+        renameBase.mode = BASE_MODE;
+        string originalRecordId = "original_id_456";
+        EXPECT_CALL(*insMock, WriteFile(_, _, _, _)).WillOnce(Return(1));
+        ret = mFile.DoRenameNew(renameBase, originalRecordId, bidx, bitPos, overwrittenState);
+        EXPECT_EQ(ret, EIO);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoRenameNewTest007 ERROR";
+    }
+    GTEST_LOG_(INFO) << "DoRenameNewTest007 End";
 }
 
 /**

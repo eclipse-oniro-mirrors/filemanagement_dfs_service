@@ -21,8 +21,11 @@
 #include <cstdio>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <sys/file.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/statfs.h>
+#include <sys/vfs.h>
 #include <unistd.h>
 
 int MockOpen(const char *pathname, int flags, ...);
@@ -35,17 +38,37 @@ void *MockDlsym(void *handle, const char *symbol);
 FILE *MockFopen(const char *pathname, const char *mode);
 int MockFclose(FILE *stream);
 ssize_t MockGetline(char **lineptr, size_t *n, FILE *stream);
+char *MockFgets(char *buf, int size, FILE *stream);
+int MockStatfs(const char *path, struct statfs *buf);
+int MockAccess(const char *path, int mode);
+int MockMkdir(const char *path, mode_t mode);
+int MockChown(const char *path, uid_t owner, gid_t group);
+int MockFchown(int fd, uid_t owner, gid_t group);
+int MockFlock(int fd, int operation);
+off_t MockLseek(int fd, off_t offset, int whence);
+int MockFtruncate(int fd, off_t length);
+ssize_t MockWrite(int fd, const void *buf, size_t count);
 
 #define open(...) MockOpen(__VA_ARGS__)
 #define close(...) MockClose(__VA_ARGS__)
 #define ioctl(...) MockIoctl(__VA_ARGS__)
 #define stat(...) MockStat(__VA_ARGS__)
+#define access(...) MockAccess(__VA_ARGS__)
+#define mkdir(...) MockMkdir(__VA_ARGS__)
+#define chown(...) MockChown(__VA_ARGS__)
+#define fchown(...) MockFchown(__VA_ARGS__)
+#define flock(...) MockFlock(__VA_ARGS__)
+#define lseek(...) MockLseek(__VA_ARGS__)
+#define ftruncate(...) MockFtruncate(__VA_ARGS__)
+#define write(...) MockWrite(__VA_ARGS__)
+
 #define realpath(...) MockRealpath(__VA_ARGS__)
 #define dlopen(...) MockDlopen(__VA_ARGS__)
 #define dlsym(...) MockDlsym(__VA_ARGS__)
 #define fopen(...) MockFopen(__VA_ARGS__)
 #define fclose(...) MockFclose(__VA_ARGS__)
 #define getline(...) MockGetline(__VA_ARGS__)
+#define fgets(...) MockFgets(__VA_ARGS__)
 
 #endif // DECOMPRESS_UNIT_TEST
 

@@ -53,6 +53,8 @@ struct State {
     std::vector<std::string> unsupportedList;
     int32_t systemFeatureRet = 0;
     bool systemFeatureValue = false;
+    int32_t crossFsConfigRet = 0;
+    bool crossFsConfigValue = false;
 
     bool statEnabled = false;
     bool statFail = false;
@@ -60,14 +62,53 @@ struct State {
     dev_t statDstDev = 1;
     int statCallCount = 0;
 
+    bool statfsEnabled = false;
+    bool statfsFail = false;
+    unsigned long statfsType = 0xF2F52010; /* HMFS_SUPER_MAGIC */
+    uint64_t statfsFrsize = 0;
+    uint64_t statfsBsize = 4096;
+    uint64_t statfsBlocks = 0;
+    uint64_t statfsBavail = 0;
+
+    bool accessEnabled = false;
+    bool accessFail = false;
+
+    bool mkdirEnabled = false;
+    bool mkdirFail = false;
+
+    bool chownEnabled = false;
+    bool chownFail = false;
+
+    bool fchownEnabled = false;
+    bool fchownFail = false;
+
+    bool flockEnabled = false;
+    bool flockFail = false;
+
+    bool lseekEnabled = false;
+    bool lseekFail = false;
+
+    bool ftruncateEnabled = false;
+    bool ftruncateFail = false;
+
+    bool writeEnabled = false;
+    int writeFailAfterCount = -1;
+    int writeCallCount = 0;
+    int writeIntrBeforeCount = -1;
+
     bool fopenEnabled = false;
     bool fopenSucceed = false;
+    bool fcloseFail = false;
     FILE *fopenHandle = reinterpret_cast<FILE *>(0xDEADBEEF);
 
     bool getlineEnabled = false;
     bool getlineSucceed = false;
     ssize_t getlineRetVal = 1;
     char getlineContent[256] = "1\n";
+
+    bool fgetsEnabled = false;
+    bool fgetsSucceed = true;
+    char fgetsContent[256] = "test_proc\n";
 };
 
 extern State g_mockState;

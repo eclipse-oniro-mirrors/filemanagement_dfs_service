@@ -86,7 +86,11 @@ struct MetaBase {
     uint64_t size{0};
     std::string name{};
     std::string recordId{};
+    uint8_t placeholder{0};
 };
+
+uint8_t GetDentryPlaceholderState(const CloudDiskServiceDentry &dentry);
+void SetDentryPlaceholderState(CloudDiskServiceDentry &dentry, uint8_t placeholderState);
 
 class CloudDiskServiceMetaFile {
 public:
@@ -100,12 +104,18 @@ public:
     int32_t DoFlush(const MetaBase &base, std::string &recordId, unsigned long &bidx, uint32_t &bitPos);
     int32_t DoUpdate(const MetaBase &base, std::string &recordId, unsigned long &bidx, uint32_t &bitPos);
     int32_t DoRenameOld(const MetaBase &base, std::string &recordId, unsigned long &bidx, uint32_t &bitPos);
-    int32_t DoRenameNew(const MetaBase &base, std::string &recordId, unsigned long &bidx, uint32_t &bitPos);
-    int32_t DoRename(MetaBase &metaBase, const std::string &newName,
-        std::shared_ptr<CloudDiskServiceMetaFile> newMetaFile);
+    int32_t DoRenameNew(const MetaBase &base,
+                        std::string &recordId,
+                        unsigned long &bidx,
+                        uint32_t &bitPos,
+                        uint8_t &overwrittenState);
+    int32_t
+        DoRename(MetaBase &metaBase, const std::string &newName, std::shared_ptr<CloudDiskServiceMetaFile> newMetaFile);
     int32_t DoLookupByName(MetaBase &base);
     int32_t DoLookupByRecordId(MetaBase &base, uint8_t revalidate);
     int32_t DoLookupByOffset(MetaBase &base, const unsigned long bidx, const uint32_t bitPos);
+    int32_t DoLookupPlaceholderByName(const MetaBase &base, uint8_t &placeholderState);
+    int32_t DoUpdatePlaceholderState(const MetaBase &base, uint8_t placeholderState);
 
     int32_t DecodeDentryHeader();
     int32_t GenericDentryHeader();
@@ -119,9 +129,16 @@ public:
     int32_t userId_{0};
 
 private:
-    int32_t GetCreateInfo(const MetaBase &base, uint32_t &bitPos, uint32_t &namehash, unsigned long &bidx,
+    int32_t GetCreateInfo(const MetaBase &base,
+                          uint32_t &bitPos,
+                          uint32_t &namehash,
+                          unsigned long &bidx,
                           struct CloudDiskServiceDentryGroup &dentryBlk);
     int32_t HandleFileByFd(unsigned long &endBlock, uint32_t level);
+    int32_t InsertDentry(const MetaBase &base,
+                         const std::string &recordId,
+                         unsigned long &bidx,
+                         uint32_t &bitPos);
     std::mutex mtx_{};
     UniqueFd fd_{};
     std::string cacheFile_{};
@@ -132,12 +149,13 @@ typedef std::pair<MetaFileKey, std::shared_ptr<CloudDiskServiceMetaFile>> MetaFi
 
 class MetaFileMgr {
 public:
-    static MetaFileMgr& GetInstance();
-    std::shared_ptr<CloudDiskServiceMetaFile> GetCloudDiskServiceMetaFile(const int32_t userId,
-        const uint32_t syncFolderIndex, const uint64_t inode);
+    static MetaFileMgr &GetInstance();
+    std::shared_ptr<CloudDiskServiceMetaFile>
+        GetCloudDiskServiceMetaFile(const int32_t userId, const uint32_t syncFolderIndex, const uint64_t inode);
 
     int32_t GetRelativePath(const std::shared_ptr<CloudDiskServiceMetaFile> metaFile, std::string &path);
     void CloudDiskServiceClearAll();
+
 private:
     MetaFileMgr() = default;
     ~MetaFileMgr() = default;

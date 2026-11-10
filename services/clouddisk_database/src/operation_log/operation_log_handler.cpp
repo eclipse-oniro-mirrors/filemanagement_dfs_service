@@ -24,13 +24,18 @@
 #include "operation_log_entry.h"
 #include "operation_log_store.h"
 #include "rdb_errno.h"
+#include "utils_directory.h"
 #include "utils_log.h"
+#include "meta_file.h"
 
 namespace OHOS {
 namespace FileManagement {
 namespace CloudDisk {
 
 using namespace std;
+static const int32_t MAX_FILE_COUNT_PER_DIR = 2;
+static const int32_t OP_TIME_INDEX = 1;
+static const int32_t PROCESS_NAME_INDEX = 2;
 
 OperationLogHandler& OperationLogHandler::GetInstance()
 {
@@ -58,6 +63,11 @@ int32_t OperationLogHandler::Init(int32_t userId)
         return ret;
     }
 
+    int32_t anonRet = OperationLogStore::GetInstance().Init(userId, true);
+    if (anonRet != E_OK) {
+        LOGW("anon operation log rdb init failed, ret = %{public}d, anon db degraded", anonRet);
+    }
+
     isInited_ = true;
     return E_OK;
 }
@@ -74,9 +84,6 @@ void OperationLogHandler::Start()
     }
 
     queue_.Reset();
-    lastCleanTime_ = static_cast<int64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count());
     running_ = true;
     writeThread_ = thread([this]() {
         WriteThreadLoop();
@@ -100,7 +107,6 @@ void OperationLogHandler::Stop()
 
 void OperationLogHandler::WriteThreadLoop()
 {
-    constexpr int64_t CLEAN_INTERVAL_MS = 60 * 60 * 1000;
     while (running_.load()) {
         auto batch = queue_.PopBatch();
         if (batch.empty()) {
@@ -111,14 +117,6 @@ void OperationLogHandler::WriteThreadLoop()
         if (ret != E_OK) {
             LOGE("write batch failed, ret=%{public}d, batchSize=%{public}zu", ret, batch.size());
         }
-
-        int64_t now = static_cast<int64_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count());
-        if (now - lastCleanTime_ > CLEAN_INTERVAL_MS) {
-            CleanOldRecords();
-            lastCleanTime_ = now;
-        }
     }
 
     while (!queue_.IsEmpty()) {
@@ -126,12 +124,15 @@ void OperationLogHandler::WriteThreadLoop()
         if (batch.empty()) {
             continue;
         }
-        WriteBatch(batch);
+        int32_t ret = WriteBatch(batch);
+        if (ret != E_OK) {
+            LOGE("drain write batch failed, ret=%{public}d, batchSize=%{public}zu", ret, batch.size());
+        }
     }
 }
 
-int32_t OperationLogHandler::RecordDelete(int64_t opTime, const string& filePath,
-    int64_t fileInode, int64_t fileUid, const string& processName, int64_t processPid, int64_t processUid)
+int32_t OperationLogHandler::RecordDelete(int64_t opTime, const string& filePath, int64_t fileInode,
+    int64_t fileUid, const string& processName, int64_t processPid, int64_t processUid, const string& cloudId)
 {
     if (!isInited_.load()) {
         LOGE("RecordDelete isInited_ is false");
@@ -154,6 +155,7 @@ int32_t OperationLogHandler::RecordDelete(int64_t opTime, const string& filePath
     entry.processName = processName;
     entry.processPid = processPid;
     entry.processUid = processUid;
+    entry.cloudId = cloudId;
 
     queue_.Push(entry);
     return E_OK;
@@ -161,10 +163,11 @@ int32_t OperationLogHandler::RecordDelete(int64_t opTime, const string& filePath
 
 int32_t OperationLogHandler::WriteBatch(const vector<OperationLogEntry>& batch)
 {
+    int32_t ret = NativeRdb::E_ERROR;
     for (int32_t retry = 0; retry < OperationLogConst::MAX_RETRIES; ++retry) {
-        int32_t ret = DoInsert(batch);
+        ret = DoInsertLegacy(batch);
         if (ret == E_OK) {
-            return E_OK;
+            break;
         }
 
         if (IsRecoverableError(ret)) {
@@ -175,11 +178,58 @@ int32_t OperationLogHandler::WriteBatch(const vector<OperationLogEntry>& batch)
         LOGE("write operation log batch for unrecoverable error failed, ret = %{public}d", ret);
         return ret;
     }
+    if (ret != E_OK) {
+        return NativeRdb::E_ERROR;
+    }
 
-    return NativeRdb::E_ERROR;
+    DoInsertAnon(batch);
+    return E_OK;
 }
 
-int32_t OperationLogHandler::DoInsert(const vector<OperationLogEntry>& batch)
+int32_t OperationLogHandler::DoInsertAnon(const vector<OperationLogEntry>& batch)
+{
+    auto anonStore = OperationLogStore::GetInstance().GetAnonRaw();
+    if (anonStore == nullptr) {
+        LOGW("anon operation log rdb store is null, skip anon write");
+        return E_OK;
+    }
+    int32_t recordCount = 0;
+    int32_t ret = GetRecordCount(recordCount, anonStore, OperationLogColumn::ANON_TABLE_NAME);
+    if (ret != E_OK) {
+        LOGE("get anon operation log count failed, ret = %{public}d", ret);
+    } else if (recordCount >= OperationLogConst::MAX_RECORD_COUNT) {
+        ret = CheckAndCleanRecords(anonStore, OperationLogColumn::ANON_TABLE_NAME);
+        if (ret != E_OK) {
+            LOGE("clean anon operation log records failed, ret = %{public}d", ret);
+        }
+    }
+    int32_t failedCount = 0;
+    for (const auto& entry : batch) {
+        NativeRdb::ValuesBucket values;
+        values.PutLong(OperationLogColumn::OP_TIME, entry.opTime);
+        values.PutInt(OperationLogColumn::OP_TYPE, entry.opType);
+        values.PutString(OperationLogColumn::FILE_PATH, GetAnonyStringLocal(entry.filePath));
+        values.PutLong(OperationLogColumn::FILE_INODE, entry.fileInode);
+        values.PutLong(OperationLogColumn::FILE_UID, entry.fileUid);
+        values.PutString(OperationLogColumn::PROCESS_NAME, entry.processName);
+        values.PutLong(OperationLogColumn::PROCESS_PID, entry.processPid);
+        values.PutLong(OperationLogColumn::PROCESS_UID, entry.processUid);
+        values.PutString(OperationLogColumn::CLOUD_ID, entry.cloudId);
+        int64_t rowId;
+        int32_t insertRet = anonStore->Insert(rowId, OperationLogColumn::ANON_TABLE_NAME, values);
+        if (insertRet != NativeRdb::E_OK) {
+            failedCount++;
+            LOGE("insert anon operation log failed, ret = %{public}d", insertRet);
+        }
+    }
+    if (failedCount > 0) {
+        LOGW("anon operation log write degraded, failed = %{public}d, total = %{public}zu",
+            failedCount, batch.size());
+    }
+    return E_OK;
+}
+
+int32_t OperationLogHandler::DoInsertLegacy(const vector<OperationLogEntry>& batch)
 {
     auto rdbStore = OperationLogStore::GetInstance().GetRaw();
     if (rdbStore == nullptr) {
@@ -206,13 +256,9 @@ int32_t OperationLogHandler::DoInsert(const vector<OperationLogEntry>& batch)
     for (const auto& entry : batch) {
         NativeRdb::ValuesBucket values;
         values.PutLong(OperationLogColumn::OP_TIME, entry.opTime);
-        values.PutInt(OperationLogColumn::OP_TYPE, entry.opType);
         values.PutString(OperationLogColumn::FILE_PATH, entry.filePath);
-        values.PutLong(OperationLogColumn::FILE_INODE, entry.fileInode);
-        values.PutLong(OperationLogColumn::FILE_UID, entry.fileUid);
         values.PutString(OperationLogColumn::PROCESS_NAME, entry.processName);
-        values.PutLong(OperationLogColumn::PROCESS_PID, entry.processPid);
-        values.PutLong(OperationLogColumn::PROCESS_UID, entry.processUid);
+        values.PutString(OperationLogColumn::CLOUD_ID, entry.cloudId);
         int64_t rowId;
         ret = rdbStore->Insert(rowId, OperationLogColumn::TABLE_NAME, values);
         if (ret != NativeRdb::E_OK) {
@@ -223,6 +269,7 @@ int32_t OperationLogHandler::DoInsert(const vector<OperationLogEntry>& batch)
     }
     ret = rdbStore->Commit();
     if (ret != NativeRdb::E_OK) {
+        rdbStore->RollBack();
         LOGE("commit failed, ret = %{public}d", ret);
         return ret;
     }
@@ -230,41 +277,50 @@ int32_t OperationLogHandler::DoInsert(const vector<OperationLogEntry>& batch)
     return E_OK;
 }
 
-int32_t OperationLogHandler::GetRecordCount(int32_t& count)
+int32_t OperationLogHandler::GetRecordCount(int32_t& count, const std::shared_ptr<NativeRdb::RdbStore> &rdbStore,
+    const std::string &tableName)
 {
-    auto rdbStore = OperationLogStore::GetInstance().GetRaw();
-    if (rdbStore == nullptr) {
+    std::shared_ptr<NativeRdb::RdbStore> store = rdbStore;
+    if (store == nullptr) {
+        store = OperationLogStore::GetInstance().GetRaw();
+    }
+    if (store == nullptr) {
         LOGE("operation log rdb store is null");
         return E_RDB;
     }
-    NativeRdb::AbsRdbPredicates predicates(OperationLogColumn::TABLE_NAME);
-    auto resultSet = rdbStore->QueryByStep(predicates, {});
+    NativeRdb::AbsRdbPredicates predicates(tableName);
+    auto resultSet = store->QueryByStep(predicates, {});
     if (resultSet == nullptr) {
-        LOGE("query operation log count failed");
+        LOGE("query operation log count failed, table = %{public}s", tableName.c_str());
         return E_RDB;
     }
     int32_t ret = resultSet->GetRowCount(count);
+    resultSet->Close();
     if (ret != E_OK || count < 0) {
-        LOGE("get operation log count failed, ret = %{public}d", ret);
+        LOGE("get operation log count failed, table = %{public}s, ret = %{public}d", tableName.c_str(), ret);
         return E_RDB;
     }
 
     return E_OK;
 }
 
-int32_t OperationLogHandler::CheckAndCleanRecords()
+int32_t OperationLogHandler::CheckAndCleanRecords(const std::shared_ptr<NativeRdb::RdbStore> &rdbStore,
+    const std::string &tableName)
 {
-    auto rdbStore = OperationLogStore::GetInstance().GetRaw();
-    if (rdbStore == nullptr) {
+    std::shared_ptr<NativeRdb::RdbStore> store = rdbStore;
+    if (store == nullptr) {
+        store = OperationLogStore::GetInstance().GetRaw();
+    }
+    if (store == nullptr) {
         LOGE("operation log rdb store is null");
         return E_RDB;
     }
-    constexpr int64_t DELETE_BATCH_SIZE = 1000;
-    NativeRdb::AbsRdbPredicates queryPredicates(OperationLogColumn::TABLE_NAME);
+    constexpr int64_t DELETE_BATCH_SIZE = 10000;
+    NativeRdb::AbsRdbPredicates queryPredicates(tableName);
     queryPredicates.OrderByAsc(OperationLogColumn::ID)->Limit(DELETE_BATCH_SIZE);
-    auto resultSet = rdbStore->Query(queryPredicates, { OperationLogColumn::ID });
+    auto resultSet = store->Query(queryPredicates, { OperationLogColumn::ID });
     if (resultSet == nullptr) {
-        LOGE("query operation log ids failed");
+        LOGE("query operation log ids failed, table = %{public}s", tableName.c_str());
         return E_RDB;
     }
 
@@ -283,11 +339,11 @@ int32_t OperationLogHandler::CheckAndCleanRecords()
         LOGE("CheckAndCleanRecords ids is null");
         return E_RDB;
     }
-    NativeRdb::AbsRdbPredicates deletePredicates(OperationLogColumn::TABLE_NAME);
+    NativeRdb::AbsRdbPredicates deletePredicates(tableName);
     deletePredicates.In(OperationLogColumn::ID, ids);
 
     int32_t deletedRows = 0;
-    int32_t ret = rdbStore->Delete(deletedRows, deletePredicates);
+    int32_t ret = store->Delete(deletedRows, deletePredicates);
     if (ret != NativeRdb::E_OK) {
         LOGE("clean operation log records failed");
         return ret;
@@ -319,7 +375,53 @@ int32_t OperationLogHandler::CleanOldRecords()
         LOGE("clean old records failed, ret = %{public}d", ret);
         return ret;
     }
+
+    CleanAnonRecords(cutoffTime);
+
     LOGI("clean old records done, deletedRows = %{public}d", deletedRows);
+    return E_OK;
+}
+
+int32_t OperationLogHandler::CleanAnonRecords(int64_t cutoffTime)
+{
+    auto anonStore = OperationLogStore::GetInstance().GetAnonRaw();
+    if (anonStore == nullptr) {
+        return E_OK;
+    }
+    NativeRdb::AbsRdbPredicates anonPredicates(OperationLogColumn::ANON_TABLE_NAME);
+    if (cutoffTime > 0) {
+        anonPredicates.LessThan(OperationLogColumn::OP_TIME, cutoffTime);
+    }
+    int32_t anonDeletedRows = 0;
+    int32_t anonRet = anonStore->Delete(anonDeletedRows, anonPredicates);
+    if (anonRet != NativeRdb::E_OK) {
+        LOGE("clean anon operation log records failed, ret = %{public}d", anonRet);
+        return E_OK;
+    }
+    LOGI("clean anon operation log records done, deletedRows = %{public}d", anonDeletedRows);
+    return E_OK;
+}
+
+int32_t OperationLogHandler::CleanAllRecords()
+{
+    LOGI("CleanAllRecords starts");
+    auto rdbStore = OperationLogStore::GetInstance().GetRaw();
+    if (rdbStore == nullptr) {
+        LOGE("operation log rdb store is null");
+        return E_RDB;
+    }
+
+    NativeRdb::AbsRdbPredicates deletePredicates(OperationLogColumn::TABLE_NAME);
+    int32_t deletedRows = 0;
+    int32_t ret = rdbStore->Delete(deletedRows, deletePredicates);
+    if (ret != NativeRdb::E_OK) {
+        LOGE("clean all operation log records failed, ret = %{public}d", ret);
+        return ret;
+    }
+
+    CleanAnonRecords(0);
+
+    LOGI("CleanAllRecords done, deletedRows = %{public}d", deletedRows);
     return E_OK;
 }
 
@@ -330,6 +432,246 @@ bool OperationLogHandler::IsRecoverableError(int32_t errCode)
            errCode == NativeRdb::E_SQLITE_INTERRUPT ||
            errCode == NativeRdb::E_SQLITE_IOERR ||
            errCode == NativeRdb::E_SQLITE_NOMEM;
+}
+
+std::string OperationLogHandler::GetAnonyStringLocal(const std::string &value)
+{
+    constexpr size_t shortIdLength = 20;
+    constexpr size_t plaintextLength = 4;
+    constexpr size_t minIdLength = 3;
+    std::string res;
+    std::string tmpStr("******");
+    size_t strLen = value.length();
+    if (strLen < minIdLength) {
+        return tmpStr;
+    }
+
+    if (strLen <= shortIdLength) {
+        res += value[0];
+        res += tmpStr;
+        res += value[strLen - 1];
+    } else {
+        res.append(value, 0, plaintextLength);
+        res += tmpStr;
+        res.append(value, strLen - plaintextLength, plaintextLength);
+    }
+    return res;
+}
+
+std::map<std::string, int32_t> OperationLogHandler::QueryDirFileCounts(
+    std::shared_ptr<NativeRdb::RdbStore> rdbStore)
+{
+    std::map<std::string, int32_t> dirCounts;
+    constexpr int32_t BATCH_SIZE = 1000;
+    constexpr int32_t MAX_ITERATIONS = 100;
+    int32_t offset = 0;
+    int32_t iterationCount = 0;
+    while (iterationCount < MAX_ITERATIONS) {
+        NativeRdb::AbsRdbPredicates predicates(OperationLogColumn::TABLE_NAME);
+        predicates.Limit(BATCH_SIZE)->Offset(offset);
+        std::vector<std::string> columns = { OperationLogColumn::FILE_PATH };
+        auto resultSet = rdbStore->Query(predicates, columns);
+        if (resultSet == nullptr) {
+            LOGE("QueryDirFileCounts query failed, offset=%{public}d", offset);
+            break;
+        }
+
+        int32_t rowCount = 0;
+        while (resultSet->GoToNextRow() == E_OK) {
+            std::string filePath;
+            int32_t ret = resultSet->GetString(0, filePath);
+            if (ret != E_OK) {
+                continue;
+            }
+            std::string dir = MetaFile::GetParentDir(filePath);
+            dirCounts[dir]++;
+            rowCount++;
+        }
+        resultSet->Close();
+        if (rowCount < BATCH_SIZE) {
+            break;
+        }
+        offset += BATCH_SIZE;
+        iterationCount++;
+    }
+    return dirCounts;
+}
+
+std::string OperationLogHandler::GetCommonParentDir(const std::vector<std::string> &paths)
+{
+    if (paths.empty()) {
+        return "";
+    }
+    std::string commonPrefix = paths[0];
+    for (size_t j = 1; j < paths.size(); ++j) {
+        const std::string &path = paths[j];
+        size_t i = 0;
+        while (i < commonPrefix.size() && i < path.size() && commonPrefix[i] == path[i]) {
+            i++;
+        }
+        commonPrefix = commonPrefix.substr(0, i);
+    }
+    if (commonPrefix == paths[0]) {
+        return paths[0];
+    }
+    size_t lastSlash = commonPrefix.find_last_of('/');
+    if (lastSlash == std::string::npos) {
+        return "";
+    }
+    if (lastSlash == 0) {
+        return "/";
+    }
+    return commonPrefix.substr(0, lastSlash);
+}
+
+bool OperationLogHandler::ReadFileStatFields(NativeRdb::ResultSet &resultSet, const std::string &dir,
+    OperationLogEntry &entry)
+{
+    int32_t ret = resultSet.GetString(0, entry.filePath);
+    if (ret != E_OK) {
+        return false;
+    }
+    if (MetaFile::GetParentDir(entry.filePath) != dir) {
+        return false;
+    }
+    int32_t opTimeRet = resultSet.GetLong(OP_TIME_INDEX, entry.opTime);
+    if (opTimeRet != E_OK) {
+        return false;
+    }
+    int32_t processNameRet = resultSet.GetString(PROCESS_NAME_INDEX, entry.processName);
+    if (processNameRet != E_OK) {
+        return false;
+    }
+
+    return true;
+}
+
+void OperationLogHandler::AppendStatRecord(std::string &operationInfo, const std::string &dirPath,
+    const std::string &fileName, int64_t opTime, const std::string &processName, int32_t fileCount)
+{
+    std::string record = "[";
+    record += GetAnonyStringLocal(dirPath);
+    record += ",";
+    record += fileName.empty() ? fileName : GetAnonyStringLocal(fileName);
+    record += ",";
+    record += std::to_string(opTime);
+    record += ",";
+    record += processName.empty() ? processName : GetAnonyStringLocal(processName);
+    record += ",";
+    record += std::to_string(fileCount);
+    record += "]";
+    if (!operationInfo.empty()) {
+        operationInfo += ",";
+    }
+    operationInfo += record;
+}
+
+int32_t OperationLogHandler::ReportFileStatsToInfo(
+    std::shared_ptr<NativeRdb::RdbStore> rdbStore, const std::string &dir, std::string &operationInfo)
+{
+    NativeRdb::AbsRdbPredicates predicates(OperationLogColumn::TABLE_NAME);
+    std::string likePattern = dir.empty() ? "/%" : dir + "/%";
+    predicates.Like(OperationLogColumn::FILE_PATH, likePattern);
+    std::vector<std::string> columns = {
+        OperationLogColumn::FILE_PATH, OperationLogColumn::OP_TIME,
+        OperationLogColumn::PROCESS_NAME
+    };
+    auto resultSet = rdbStore->Query(predicates, columns);
+    if (resultSet == nullptr) {
+        return 0;
+    }
+
+    int32_t actualCount = 0;
+    while (resultSet->GoToNextRow() == E_OK) {
+        OperationLogEntry entry;
+        if (!ReadFileStatFields(*resultSet, dir, entry)) {
+            continue;
+        }
+        std::string fileName = MetaFile::GetFileName(entry.filePath);
+        LOGI("GetFileName result, dir=%{public}s, fileNameLen=%{public}zu",
+            GetAnonyStringLocal(dir).c_str(), fileName.size());
+        AppendStatRecord(operationInfo, dir, fileName, entry.opTime, entry.processName, 1);
+        actualCount++;
+    }
+    resultSet->Close();
+    return actualCount;
+}
+ 
+int32_t OperationLogHandler::ReportDirStatsToInfo(
+    std::shared_ptr<NativeRdb::RdbStore> rdbStore, const std::string &dir, std::string &operationInfo)
+{
+    NativeRdb::AbsRdbPredicates predicates(OperationLogColumn::TABLE_NAME);
+    std::string likePattern = dir.empty() ? "/%" : dir + "/%";
+    predicates.Like(OperationLogColumn::FILE_PATH, likePattern);
+    std::vector<std::string> columns = {
+        OperationLogColumn::FILE_PATH
+    };
+    auto resultSet = rdbStore->Query(predicates, columns);
+    if (resultSet == nullptr) {
+        return 0;
+    }
+
+    int32_t fileCount = 0;
+    while (resultSet->GoToNextRow() == E_OK) {
+        std::string filePath;
+        int32_t ret = resultSet->GetString(0, filePath);
+        if (ret != E_OK) {
+            continue;
+        }
+        if (MetaFile::GetParentDir(filePath) != dir) {
+            continue;
+        }
+        fileCount++;
+    }
+    if (fileCount == 0) {
+        resultSet->Close();
+        return 0;
+    }
+    AppendStatRecord(operationInfo, dir, "", 0, "", fileCount);
+    resultSet->Close();
+    return fileCount;
+}
+
+int32_t OperationLogHandler::GetOperationLogStatInfo(std::string &operationInfo)
+{
+    LOGI("GetOperationLogStatInfo starts, inputLen=%{public}zu", operationInfo.length());
+    operationInfo.clear();
+    auto rdbStore = OperationLogStore::GetInstance().GetRaw();
+    if (rdbStore == nullptr) {
+        return E_RDB;
+    }
+
+    auto dirCounts = QueryDirFileCounts(rdbStore);
+    constexpr int32_t MAX_DIR_COUNT_THRESHOLD = 10;
+    if (dirCounts.size() > MAX_DIR_COUNT_THRESHOLD) {
+        int32_t totalCount = 0;
+        std::vector<std::string> paths;
+        paths.reserve(dirCounts.size());
+        for (const auto &kv : dirCounts) {
+            totalCount += kv.second;
+            paths.push_back(kv.first);
+        }
+        std::string commonParent = GetCommonParentDir(paths);
+        LOGI("aggregate into common parent dir, dirCount=%{public}zu, totalFileCount=%{public}d",
+            dirCounts.size(), totalCount);
+        AppendStatRecord(operationInfo, commonParent, "", 0, "", totalCount);
+        return E_OK;
+    }
+    for (const auto &kv : dirCounts) {
+        int32_t expectedCount = kv.second;
+        int32_t actualCount = 0;
+        if (expectedCount < MAX_FILE_COUNT_PER_DIR) {
+            actualCount = ReportFileStatsToInfo(rdbStore, kv.first, operationInfo);
+        } else {
+            actualCount = ReportDirStatsToInfo(rdbStore, kv.first, operationInfo);
+        }
+        if (actualCount != expectedCount) {
+            LOGW("GetOperationLogStatInfo count mismatch, dir=%{public}s, expected=%{public}d + actual=%{public}d",
+                GetAnonyStringLocal(kv.first).c_str(), expectedCount, actualCount);
+        }
+    }
+    LOGI("GetOperationLogStatInfo done, dirs=%{public}zu", dirCounts.size());
+    return E_OK;
 }
 } // namespace CloudDisk
 } // namespace FileManagement

@@ -93,11 +93,10 @@ constexpr mode_t DEFAULT_UMASK = 0002;
 constexpr int32_t BLOCK_INTERVAL_SEND_FILE = 10 * 1000;
 constexpr int32_t DEFAULT_USER_ID = 100;
 constexpr int32_t VALID_MOUNT_NETWORKID_LEN = 16;
-constexpr uint64_t INNER_COPY_LIMIT = 1024 * 1024 * 1024;
 constexpr int32_t ERR_DP_CAN_NOT_FIND = 98566199;
 constexpr int32_t DEFAULT_DP_CANNOTFIND_VALUE = -1;
 constexpr const char* HMDFS_FATH = "/storage/hmdfs/";
-constexpr DfsVersion FILEMANAGER_VERSION = {6, 0, 1};
+constexpr DfsVersion FILEMANAGER_VERSION = {7, 1, 0};
 constexpr int32_t MIN_NETWORKID_LENGTH = 16;
 constexpr int32_t MAX_IPC_THREAD_NUM = 32;
 constexpr size_t MAX_INSTANCE_ID_LEN = 256;
@@ -631,26 +630,21 @@ int32_t Daemon::ChooseCopyMode(const std::string &srcUri, const std::string &dst
         HiAudit::GetInstance().WriteEnd("PrepareSession", EINVAL);
         return EINVAL;
     }
-    if (!DfsuAccessTokenHelper::CheckSrcUriPermission(srcUri) || !CheckPathPermission(destPhysicalPath)) {
+    if (!DfsuAccessTokenHelper::CheckUriPermission(srcUri) || !CheckPathPermission(destPhysicalPath)) {
         LOGE("permission verify failed");
         return EINVAL;
     }
- 
+
     DfsVersion remoteDfsVersion;
     auto ret = DeviceProfileAdapter::GetInstance().GetDfsVersionFromNetworkId(networkId, remoteDfsVersion);
     LOGI("GetRemoteVersion: ret:%{public}d, version:%{public}s", ret, remoteDfsVersion.dump().c_str());
-    uint64_t fileSize = 0;
-    struct stat fileStat;
-    if (stat(srcPhysicalPath.c_str(), &fileStat) == 0) {
-        fileSize = static_cast<uint64_t>(fileStat.st_size);
-    } else {
-        LOGE("Stat srcPhysicalPath failed.");
-    }
     int32_t result = E_OK;
-    if ((ret == FileManagement::ERR_OK) && (remoteDfsVersion.majorVersionNum != 0) && fileSize < INNER_COPY_LIMIT) {
+    if ((ret == FileManagement::ERR_OK) && (remoteDfsVersion.majorVersionNum != 0)) {
         result = InnerCopy(srcUri, dstUri, networkId, listenerCallback, info);
+        RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::COPY_HMDFS_CNT);
     } else {
         result = CopyBaseOnRPC(srcUri, dstUri, networkId, listenerCallback, info);
+        RadarReportAdapter::GetInstance().SetUserStatistics(RadarStatisticInfoType::COPY_SEND_CNT);
     }
     RadarReportAdapter::GetInstance().SetUserStatistics(result == E_OK ? FILE_ACCESS_SUCC_CNT : FILE_ACCESS_FAIL_CNT);
     if (result != E_OK) {

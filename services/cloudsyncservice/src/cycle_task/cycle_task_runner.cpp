@@ -23,12 +23,13 @@
 #include "result_set.h"
 #include "tasks/database_backup_task.h"
 #include "tasks/database_supplement_task.h"
+#include "tasks/decompress_gains_report_task.h"
 #include "tasks/dfs_space_report_task.h"
 #include "tasks/optimize_cache_task.h"
 #include "tasks/optimize_storage_task.h"
 #include "tasks/periodic_check_task.h"
-#include "tasks/periodic_clean_task.h"
 #include "tasks/periodic_chown_task.h"
+#include "tasks/periodic_clean_task.h"
 #include "tasks/report_statistics_task.h"
 #include "tasks/save_subscription_task.h"
 #include "utils_log.h"
@@ -79,6 +80,7 @@ void CycleTaskRunner::InitTasks()
     cycleTasks_.emplace_back(std::make_shared<ReportStatisticsTask>(dataSyncManager_));
     cycleTasks_.emplace_back(std::make_shared<DatabaseBackupTask>(dataSyncManager_));
     cycleTasks_.emplace_back(std::make_shared<DatabaseSupplementTask>(dataSyncManager_));
+    cycleTasks_.emplace_back(std::make_shared<DecompressGainsReportTask>(dataSyncManager_));
     cycleTasks_.emplace_back(std::make_shared<PeriodicChownTask>(dataSyncManager_));
 
     // do periodic check task last
@@ -121,7 +123,7 @@ void CycleTaskRunner::SetRunableBundleNames()
         }
         std::time_t currentTime = std::time(nullptr);
         std::unique_ptr<CloudPrefImpl> cloudPrefImpl =
-            std::make_unique<CloudPrefImpl>(userId_, bundleName,  CycleTask::FILE_PATH);
+            std::make_unique<CloudPrefImpl>(userId_, bundleName, CycleTask::FILE_PATH);
         std::time_t lastCheckTime;
         if (cloudPrefImpl == nullptr) {
             LOGE("cloudPrefImpl is nullptr");
@@ -131,7 +133,7 @@ void CycleTaskRunner::SetRunableBundleNames()
         if (lastCheckTime != 0 && difftime(currentTime, lastCheckTime) < CycleTask::ONE_DAY) {
             continue;
         }
-        bool cloudStatus = CloudStatus::IsCloudStatusOkay(bundleName, userId_);
+        bool cloudStatus = CloudStatus::IsSwitchOn(bundleName, userId_);
         if (!cloudStatus) {
             LOGI(" %{public}s cloud status is not ok, skip task, ret is %{public}d", bundleName.c_str(), ret);
             cloudPrefImpl->SetLong("lastCheckTime", currentTime);
@@ -141,7 +143,6 @@ void CycleTaskRunner::SetRunableBundleNames()
         runnableBundleNames->insert(bundleName);
         LOGI("runable bundleName is %{public}s", bundleName.c_str());
     }
-
     string startCondition = "persist.kernel.cloudsync.screen_off_enable_download";
     if (runnableBundleNames->empty()) {
         LOGW("no runnable bundle names");
@@ -150,7 +151,7 @@ void CycleTaskRunner::SetRunableBundleNames()
         system::SetParameter(startCondition, "true");
     }
 
-    for (auto task_data  : cycleTasks_) {
+    for (auto task_data : cycleTasks_) {
         task_data->SetRunnableBundleNames(runnableBundleNames);
     }
 }

@@ -79,7 +79,7 @@ HWTEST_F(DecompressKitTest, RegisterDecompressInstance_001, TestSize.Level1)
 
 /**
  * @tc.name: HandleConfigUpdate_001
- * @tc.desc: Test DecompressKitImpl HandleConfigUpdate returns true
+ * @tc.desc: Test DecompressKitImpl HandleConfigUpdate returns true (stub)
  * @tc.type: FUNC
  * @tc.require: I5NJ2K
  */

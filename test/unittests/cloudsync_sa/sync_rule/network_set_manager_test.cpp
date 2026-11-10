@@ -114,8 +114,12 @@ HWTEST_F(NetworkSetManagerTest, QueryCellularConnectTest002, TestSize.Level1)
         int32_t userId = 100;
         string bundleName = "com.ohos.photos";
         std::shared_ptr<DataShareHelper> dataShareHelper = std::make_shared<DataShareHelper>();
-        EXPECT_CALL(*dataShareHelperMock_, Creator(_, _, _)).WillOnce(Return(dataShareHelper));
-        EXPECT_CALL(*dataShareHelperMock_, Query(_, _, _, _)).WillOnce(Return(nullptr));
+        const std::string expectedUri = "datashareproxy://" +
+            system::GetParameter("persist.kernel.bundle_name.clouddrive", "") +
+            "/cloud_sp?user=" + std::to_string(userId);
+        EXPECT_CALL(*dataShareHelperMock_, Creator(expectedUri, _, _)).WillOnce(Return(dataShareHelper));
+        EXPECT_CALL(*dataShareHelperMock_, Query(Property(&Uri::ToString, expectedUri), _, _, _))
+            .WillOnce(Return(nullptr));
         
         int32_t ret = networkSetManager_->QueryCellularConnect(userId, bundleName);
         EXPECT_EQ(ret, E_RDB);
@@ -253,7 +257,10 @@ HWTEST_F(NetworkSetManagerTest, UnregisterObserverTest001, TestSize.Level1)
     GTEST_LOG_(INFO) << "UnregisterObserverTest Start";
     try {
         std::shared_ptr<DataShareHelper> dataShareHelper = std::make_shared<DataShareHelper>();
-        EXPECT_CALL(*dataShareHelperMock_, Creator(_, _, _)).WillOnce(Return(dataShareHelper));
+        const std::string expectedUri = "datashareproxy://" +
+            system::GetParameter("persist.kernel.bundle_name.clouddrive", "") +
+            "/cloud_sp?key=useMobileNetworkData";
+        EXPECT_CALL(*dataShareHelperMock_, Creator(expectedUri, _, _)).WillOnce(Return(dataShareHelper));
 
         int32_t userId = 100;
         string bundleName = "com.ohos.photos";
@@ -324,7 +331,12 @@ HWTEST_F(NetworkSetManagerTest, RegisterObserverTest001, TestSize.Level1)
     GTEST_LOG_(INFO) << "RegisterObserverTest Start";
     try {
         std::shared_ptr<DataShareHelper> dataShareHelper = std::make_shared<DataShareHelper>();
-        EXPECT_CALL(*dataShareHelperMock_, Creator(_, _, _)).WillOnce(Return(dataShareHelper));
+        const std::string expectedUri = "datashareproxy://" +
+            system::GetParameter("persist.kernel.bundle_name.clouddrive", "") +
+            "/cloud_sp?key=useMobileNetworkData";
+        EXPECT_CALL(*dataShareHelperMock_, Creator(expectedUri, _, _)).WillOnce(Return(dataShareHelper));
+        EXPECT_CALL(*dataShareHelperMock_, RegisterObserver(Property(&Uri::ToString, expectedUri), _))
+            .WillOnce(Return(E_OK));
 
         int32_t userId = 100;
         string bundleName = "com.ohos.photos";

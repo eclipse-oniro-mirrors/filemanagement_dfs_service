@@ -72,14 +72,19 @@ void CloudDiskServiceCallbackManager::AddCallback(const std::string &bundleName,
 void CloudDiskServiceCallbackManager::OnChangeData(const uint32_t syncFolderIndex,
                                                    const std::vector<ChangeData> &changeData)
 {
-    unique_lock<mutex> lock(callbackMutex_);
-    auto item = callbackIndexMap_.find(syncFolderIndex);
-    if (item == callbackIndexMap_.end() || !item->second) {
-        LOGE("callback is nullptr");
-        return;
+    sptr<ICloudDiskServiceCallback> callback = nullptr;
+    {
+        unique_lock<mutex> lock(callbackMutex_);
+        auto item = callbackIndexMap_.find(syncFolderIndex);
+        if (item == callbackIndexMap_.end() || !item->second) {
+            LOGE("callback is nullptr");
+            return;
+        }
+        callback = item->second;
     }
+
     std::string syncFolderSync;
-    if (!CloudDiskSyncFolder::GetInstance().GetSyncFolderByIndex(item->first, syncFolderSync)) {
+    if (!CloudDiskSyncFolder::GetInstance().GetSyncFolderByIndex(syncFolderIndex, syncFolderSync)) {
         LOGE("Get syncFolder failed");
         return;
     }
@@ -93,7 +98,7 @@ void CloudDiskServiceCallbackManager::OnChangeData(const uint32_t syncFolderInde
         LOGE("Get path failed");
         return;
     }
-    item->second->OnChangeData(sandboxPath, changeData);
+    callback->OnChangeData(sandboxPath, changeData);
 }
 
 bool CloudDiskServiceCallbackManager::RegisterSyncFolderMap(std::string &bundleName,

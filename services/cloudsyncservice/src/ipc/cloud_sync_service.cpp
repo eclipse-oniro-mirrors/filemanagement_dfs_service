@@ -41,6 +41,7 @@
 #include "mem_mgr_client.h"
 #include "net_conn_callback_observer.h"
 #include "network_status.h"
+#include "nlohmann/json.hpp"
 #include "parameters.h"
 #include "periodic_check_task.h"
 #include "plugin_loader.h"
@@ -69,6 +70,7 @@ const std::string CLOUDFILESERVICE_BUNDLENAME = "cloudfileservice";
 const std::string CLOUDDRIVE_KEY = "persist.kernel.bundle_name.clouddrive";
 const std::string ACL_XATTR_ACCESS = "system.posix_acl_access";
 const std::string ACL_XATTR_DEFAULT = "system.posix_acl_default";
+const std::string MEDIALIBRARYDATA_BUNDLENAME = "com.ohos.medialibrary.medialibrarydata";
 const std::uint32_t WEARD_SA_UID = 7500;
 REGISTER_SYSTEM_ABILITY_BY_ID(CloudSyncService, FILEMANAGEMENT_CLOUD_SYNC_SERVICE_SA_ID, false);
 
@@ -102,6 +104,7 @@ void CloudSyncService::PreInit()
     batteryStatusListener_ = make_shared<BatteryStatusListener>(dataSyncManager_);
     screenStatusListener_ = make_shared<ScreenStatusListener>(dataSyncManager_);
     userStatusListener_ = make_shared<UserStatusListener>(dataSyncManager_);
+    networkSignalStrengthListener_ = make_shared<NetworkSignalStrengthListener>(dataSyncManager_);
 }
 
 void CloudSyncService::Init()
@@ -221,6 +224,8 @@ void CloudSyncService::OnStart(const SystemAbilityOnDemandReason& startReason)
         return;
     }
     auto publishSAEndTime = std::chrono::high_resolution_clock::now();
+    AddSystemAbilityListener(WIFI_DEVICE_SYS_ABILITY_ID);
+    AddSystemAbilityListener(TELEPHONY_CORE_SERVICE_SYS_ABILITY_ID);
     AddSystemAbilityListener(COMMON_EVENT_SERVICE_ID);
     AddSystemAbilityListener(SOFTBUS_SERVER_SA_ID);
     AddSystemAbilityListener(POWER_MANAGER_THERMAL_SERVICE_ID);
@@ -230,23 +235,20 @@ void CloudSyncService::OnStart(const SystemAbilityOnDemandReason& startReason)
     auto initStartTime = std::chrono::high_resolution_clock::now();
     Init();
     auto initEndTime = std::chrono::high_resolution_clock::now();
-    auto preInitDurationTime =
-                std::chrono::duration_cast<std::chrono::milliseconds>(preInitEndTime - startTime).count();
+    auto preInitTime = std::chrono::duration_cast<std::chrono::milliseconds>(preInitEndTime - startTime).count();
     auto publishSADurationTime =
                 std::chrono::duration_cast<std::chrono::milliseconds>(publishSAEndTime - preInitEndTime).count();
     auto addListenerDurationTime =
                 std::chrono::duration_cast<std::chrono::milliseconds>(initStartTime - publishSAEndTime).count();
-    auto initDurationTime =
-                std::chrono::duration_cast<std::chrono::milliseconds>(initEndTime - initStartTime).count();
+    auto initDurationTime = std::chrono::duration_cast<std::chrono::milliseconds>(initEndTime - initStartTime).count();
     LOGI("init service successfully, preInit cost:%{public}lld, publishSA cost:%{public}lld, "
          "addListener cost:%{public}lld, init cost:%{public}lld",
-         preInitDurationTime, publishSADurationTime, addListenerDurationTime, initDurationTime);
+         preInitTime, publishSADurationTime, addListenerDurationTime, initDurationTime);
     system::SetParameter(CLOUD_FILE_SERVICE_SA_STATUS_FLAG, CLOUD_FILE_SERVICE_SA_START);
     TaskStateManager::GetInstance().StartTask();
     ReportServiceStart(startReason);
     int32_t initUserId = DfsuAccessTokenHelper::GetUserId();
     int32_t ret = InitOperationLogHandler(initUserId);
-    // 跟随进程生命周期
     ffrt::submit([startReason, this]() {
         SettingsDataManager::InitSettingsDataManager();
         this->HandleStartReason(startReason);
@@ -338,6 +340,7 @@ void CloudSyncService::OnAddSystemAbility(int32_t systemAbilityId, const std::st
         userStatusListener_->Start();
         batteryStatusListener_->Start();
         screenStatusListener_->Start();
+        networkSignalStrengthListener_->Start();
     } else if (systemAbilityId == SOFTBUS_SERVER_SA_ID) {
         auto sessionManager = make_shared<SessionManager>();
         sessionManager->Init();
@@ -413,6 +416,9 @@ static int32_t GetTargetBundleName(string &targetBundleName, string &callerBundl
     }
     if (targetBundleName == "") {
         targetBundleName = callerBundleName;
+    }
+    if (callerBundleName == MEDIALIBRARYDATA_BUNDLENAME) {
+        callerBundleName = targetBundleName;
     }
     if (targetBundleName != callerBundleName &&
         !DfsuAccessTokenHelper::CheckCallerPermission(PERM_CLOUD_SYNC_MANAGER)) {
@@ -628,10 +634,15 @@ int32_t CloudSyncService::RegisterFileSyncCallbackInner(const sptr<IRemoteObject
     return E_OK;
 }
 
-int32_t CloudSyncService::StartSyncInner(bool forceFlag, const string &bundleName)
+int32_t CloudSyncService::StartSyncInner(int32_t type, const string &bundleName)
 {
-    LOGI("Begin StartSyncInner");
+    LOGI("Begin StartSyncInner, type: %{public}d", type);
     RETURN_ON_ERR(CheckPermissions(PERM_CLOUD_SYNC, true));
+
+    if (type < static_cast<int32_t>(SyncMode::NORMAL) || type > static_cast<int32_t>(SyncMode::FORCE_THM)) {
+        LOGE("Invalid sync type: %{public}d", type);
+        return E_INVAL_ARG;
+    }
 
     string targetBundleName = bundleName;
     string callerBundleName = "";
@@ -641,8 +652,9 @@ int32_t CloudSyncService::StartSyncInner(bool forceFlag, const string &bundleNam
         return ret;
     }
     auto callerUserId = DfsuAccessTokenHelper::GetUserId();
-    ret = dataSyncManager_->TriggerStartSync(targetBundleName, callerUserId, forceFlag, SyncTriggerType::APP_TRIGGER);
-    LOGI("End StartSyncInner");
+    ret = dataSyncManager_->TriggerStartSync(
+        targetBundleName, callerUserId, static_cast<SyncMode>(type), SyncTriggerType::APP_TRIGGER);
+    LOGI("End StartSyncInner, ret: %{public}d", ret);
     return ret;
 }
 
@@ -657,7 +669,8 @@ int32_t CloudSyncService::StartFileSyncInner(bool forceFlag, const string &bundl
         return ret;
     }
     auto callerUserId = DfsuAccessTokenHelper::GetUserId();
-    ret = dataSyncManager_->TriggerStartSync(targetBundleName, callerUserId, forceFlag, SyncTriggerType::APP_TRIGGER);
+    SyncMode type = forceFlag ? SyncMode::FORCE : SyncMode::NORMAL;
+    ret = dataSyncManager_->TriggerStartSync(targetBundleName, callerUserId, type, SyncTriggerType::APP_TRIGGER);
     LOGI("End StartFileSyncInner");
     return ret;
 }
@@ -671,7 +684,8 @@ int32_t CloudSyncService::TriggerSyncInner(const std::string &bundleName, int32_
         LOGE("Trigger sync parameter is invalid");
         return E_INVAL_ARG;
     }
-    int32_t ret = dataSyncManager_->TriggerStartSync(bundleName, userId, false, SyncTriggerType::APP_TRIGGER);
+    int32_t ret = dataSyncManager_->TriggerStartSync(
+        bundleName, userId, SyncMode::NORMAL, SyncTriggerType::APP_TRIGGER);
     LOGI("End StartSyncInner");
     return ret;
 }
@@ -937,7 +951,8 @@ int32_t CloudSyncService::ChangeAppSwitch(const std::string &accoutId, const std
         string startCondition = "persist.kernel.cloudsync.screen_off_enable_download";
         system::SetParameter(startCondition, "true");
         dataSyncManager_->PeriodicCleanLock();
-        ret = dataSyncManager_->TriggerStartSync(bundleName, callerUserId, false, SyncTriggerType::CLOUD_TRIGGER);
+        ret = dataSyncManager_->TriggerStartSync(
+            bundleName, callerUserId, SyncMode::NORMAL, SyncTriggerType::CLOUD_TRIGGER);
         dataSyncManager_->PeriodicCleanUnlock();
         if (ret != E_OK) {
             LOGE("dataSyncManager Trigger failed, status: %{public}d", status);
@@ -968,14 +983,37 @@ int32_t CloudSyncService::NotifyDataChange(const std::string &accoutId, const st
     RETURN_ON_ERR(CheckPermissions("", true));
 
     auto callerUserId = DfsuAccessTokenHelper::GetUserId();
-    int32_t ret = dataSyncManager_->TriggerStartSync(bundleName, callerUserId, false, SyncTriggerType::CLOUD_TRIGGER);
+    int32_t ret = dataSyncManager_->TriggerStartSync(
+        bundleName, callerUserId, SyncMode::NORMAL, SyncTriggerType::CLOUD_TRIGGER);
     LOGI("End NotifyDataChange");
     return E_OK;
 }
 
+static bool NeedResetCursor(const std::string &extraData)
+{
+    auto extraDataJson = nlohmann::json::parse(extraData, nullptr, false);
+    if (extraDataJson.is_discarded() || !extraDataJson.contains("data") || !extraDataJson["data"].is_string()) {
+        LOGE("parse extraData failed");
+        return false;
+    }
+
+    auto dataJson = nlohmann::json::parse(extraDataJson["data"].get<std::string>(), nullptr, false);
+    if (dataJson.is_discarded() || !dataJson.contains("body") || !dataJson["body"].is_object()) {
+        LOGE("parse dataJson failed");
+        return false;
+    }
+
+    if (!dataJson["body"].contains("type") || !dataJson["body"]["type"].is_string()) {
+        LOGD("parse body failed");
+        return false;
+    }
+
+    return dataJson["body"]["type"] == "reset_cursor";
+}
+
 int32_t CloudSyncService::NotifyEventChange(int32_t userId, const std::string &eventId, const std::string &extraData)
 {
-    LOGI("Begin NotifyEventChange");
+    LOGI("Begin NotifyEventChange, eventId: %{public}s, extraData: %{public}s", eventId.c_str(), extraData.c_str());
     RETURN_ON_ERR(CheckPermissions(PERM_CLOUD_SYNC_MANAGER, true));
 
     auto instance = CloudFile::CloudFileKit::GetInstance();
@@ -992,8 +1030,13 @@ int32_t CloudSyncService::NotifyEventChange(int32_t userId, const std::string &e
         return E_CLOUD_SDK;
     }
 
-    std::thread([this, appBundleName, userId, prepareTraceId]() {
-        dataSyncManager_->TriggerStartSync(appBundleName, userId, false, SyncTriggerType::CLOUD_TRIGGER,
+    bool needResetCursor = NeedResetCursor(extraData);
+    std::thread([this, appBundleName, userId, prepareTraceId, needResetCursor]() {
+        if (needResetCursor) {
+            LOGI("reset shared album cursor");
+            dataSyncManager_->ResetCursor(SHARED_ALBUM_BUNDLE_NAME, userId, true);
+        }
+        dataSyncManager_->TriggerStartSync(appBundleName, userId, SyncMode::NORMAL, SyncTriggerType::CLOUD_TRIGGER,
                                            prepareTraceId);
     }).detach();
     LOGI("End NotifyEventChange");
@@ -1150,6 +1193,17 @@ ErrCode CloudSyncService::GetDecompressSystemFeature(bool &systemFeature)
     systemFeature = manager.GetSystemFeature();
     
     LOGD("End GetDecompressSystemFeature, feature: %{public}s", systemFeature ? "true" : "false");
+    return E_OK;
+}
+
+ErrCode CloudSyncService::GetDecompressCrossFsConfig(bool &crossFsConfig)
+{
+    LOGD("Begin GetDecompressCrossFsConfig");
+
+    auto &manager = DecompressConfigManager::GetInstance();
+    crossFsConfig = manager.GetCrossFsConfig();
+
+    LOGD("End GetDecompressCrossFsConfig, crossFsConfig: %{public}s", crossFsConfig ? "true" : "false");
     return E_OK;
 }
 

@@ -43,6 +43,7 @@
         "c_utils",
         "cJSON",
         "common_event_service",
+        "config_policy",
         "dataclassification",
         "data_share",
         "device_auth",
@@ -81,7 +82,11 @@
         "libfuse",
         "zlib",
         "user_file_service",
-        "sandbox_manager"
+        "sandbox_manager",
+        "wifi",
+        "cellular_data",
+        "core_service",
+        "bounds_checking_function"
       ],
       "third_party": []
     },

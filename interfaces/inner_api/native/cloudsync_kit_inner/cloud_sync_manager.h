@@ -55,6 +55,14 @@ public:
     virtual int32_t StartSync(const std::string &bundleName = "") = 0;
     virtual int32_t StartFileSync(const std::string &bundleName = "") = 0;
     /**
+     * @brief 按指定模式启动同步
+     *
+     * @param type 同步模式
+     * @param bundleName 应用包名
+     * @return int32_t 同步返回执行结果
+     */
+    virtual int32_t StartSync(SyncMode type, const std::string &bundleName = "") = 0;
+    /**
      * @brief 启动同步
      *
      * @param forceFlag 是否强制继续同步，当前仅支持低电量下暂停后继续上传
@@ -139,6 +147,7 @@ public:
     virtual int32_t CleanAllFileCache(const std::string &bundleName) = 0;
     virtual int32_t GetCachedTotalSize(int64_t &totalSize) = 0;
     virtual int32_t GetCachedTotalSize(const std::string &bundleName, int64_t &totalSize) = 0;
+    virtual int32_t GetRecycleBinSize(int32_t userId, const std::string &bundleName, int64_t &size) = 0;
     virtual int32_t CleanFileCache(const std::string &uri) = 0;
     virtual void CleanGalleryDentryFile() = 0;
     virtual void CleanGalleryDentryFile(const std::string path) = 0;
@@ -257,6 +266,8 @@ public:
     virtual int32_t GetDecompressUnsupportedList(std::vector<std::string> &unsupportedList) = 0;
 
     virtual int32_t GetDecompressSystemFeature(bool &systemFeature) = 0;
+
+    virtual int32_t GetDecompressCrossFsConfig(bool &crossFsConfig) = 0;
 };
 } // namespace OHOS::FileManagement::CloudSync
 

@@ -15,10 +15,12 @@
 #include "periodic_check_task.h"
 
 #include "battery_status.h"
+#include "cloud_sync_common.h"
 #include "parameters.h"
 #include "screen_status.h"
 #include "system_load.h"
 #include "utils_log.h"
+#include "operation_log_handler.h"
 
 namespace OHOS {
 namespace FileManagement {
@@ -39,7 +41,8 @@ int32_t PeriodicCheckTask::RunTaskForBundle(int32_t userId, std::string bundleNa
         LOGI("PeriodicCheckTask::RunTaskForBundle isScreenOn or not charging");
         return E_STOP;
     }
-    int32_t ret = dataSyncManager_->TriggerStartSync(bundleName, userId, false, SyncTriggerType::TASK_TRIGGER);
+    int32_t ret = dataSyncManager_->TriggerStartSync(
+        bundleName, userId, SyncMode::NORMAL, SyncTriggerType::TASK_TRIGGER);
     if (ret != E_OK) {
         LOGE("trigger %{public}s periodic sync failed, ret: %{public}d", bundleName.c_str(), ret);
         return ret;
@@ -48,6 +51,13 @@ int32_t PeriodicCheckTask::RunTaskForBundle(int32_t userId, std::string bundleNa
     ret = dataSyncManager_->UpdateCachedFileSize(bundleName, userId);
     if (ret != E_OK) {
         LOGE("UpdateCachedFileSize failed for %{public}s, ret: %{public}d", bundleName.c_str(), ret);
+    }
+
+    if (bundleName != GALLERY_BUNDLE_NAME && bundleName != HDC_BUNDLE_NAME) {
+        ret = CloudDisk::OperationLogHandler::GetInstance().CleanOldRecords();
+        if (ret != E_OK) {
+            LOGE("OperationLogHandler CleanOldRecords failed for %{public}s, ret: %{public}d", bundleName.c_str(), ret);
+        }
     }
     return ret;
 }

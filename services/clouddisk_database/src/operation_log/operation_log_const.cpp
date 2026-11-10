@@ -22,6 +22,7 @@ namespace CloudDisk {
 const std::string OperationLogConst::DATABASE_NAME = "operation_log.db";
 const std::string OperationLogConst::DATABASE_ROOT_DIR = "/data/service/el2/";
 const std::string OperationLogConst::DATABASE_RELATIVE_DIR = "/hmdfs/cloudfile_manager/clouddisk_operation_log";
+const std::string OperationLogConst::ANON_DATABASE_NAME = "anon_operation_log.db";
 
 } // namespace CloudDisk
 } // namespace FileManagement

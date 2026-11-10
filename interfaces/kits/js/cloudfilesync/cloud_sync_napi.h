@@ -31,6 +31,7 @@
 
 namespace OHOS::FileManagement::CloudSync {
 const int32_t ARGS_ONE = 1;
+const int32_t SYNC_TYPE_FORCE_THM = 0;
 
 struct BundleEntity {
     CallbackInfo callbackInfo;
@@ -71,6 +72,7 @@ public:
     static napi_value Constructor(napi_env env, napi_callback_info info);
 
     static napi_value Start(napi_env env, napi_callback_info info);
+    static napi_value StartWithType(napi_env env, napi_callback_info info);
     static napi_value Stop(napi_env env, napi_callback_info info);
     static napi_value OnCallback(napi_env env, napi_callback_info info);
     static napi_value OffCallback(napi_env env, napi_callback_info info);

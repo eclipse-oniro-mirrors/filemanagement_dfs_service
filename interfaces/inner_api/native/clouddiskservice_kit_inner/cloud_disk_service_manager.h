@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 Huawei Device Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -16,9 +16,12 @@
 #ifndef OHOS_FILEMGMT_CLOUD_DISK_SERVICE_MANAGER_H
 #define OHOS_FILEMGMT_CLOUD_DISK_SERVICE_MANAGER_H
 
+#include <cstdint>
 #include <memory>
 
 #include "cloud_disk_service_callback.h"
+#include "cloud_disk_service_callback_table.h"
+#include "i_cloud_disk_progress_callback.h"
 
 namespace OHOS::FileManagement::CloudDiskService {
 class CloudDiskServiceManager {
@@ -28,6 +31,9 @@ public:
     virtual int32_t RegisterSyncFolderChanges(const std::string &syncFolder,
                                               const std::shared_ptr<CloudDiskServiceCallback> callback) = 0;
     virtual int32_t UnregisterSyncFolderChanges(const std::string &syncFolder) = 0;
+    virtual int32_t RegisterCallbackTable(const std::string &syncFolder,
+                                          const std::shared_ptr<CloudDiskServiceCallbackTable> &callbackTable) = 0;
+    virtual int32_t UnregisterCallbackTable(const std::string &syncFolder) = 0;
     virtual int32_t GetSyncFolderChanges(const std::string &syncFolder,
                                          uint64_t count,
                                          uint64_t startUsn,
@@ -40,17 +46,37 @@ public:
                                       std::vector<ResultList> &resultList) = 0;
     virtual int32_t CreatePlaceholderFile(const std::string &syncFolder,
                                           const std::string &relativePath,
-                                          const PlaceholderInfo &info) = 0;
+                                          const PlaceholderInfo &info,
+                                          const PlaceholderCustomInfo &customInfo) = 0;
     virtual int32_t IsPlaceholderFile(const std::string &syncFolder, const std::string &path,
                                       bool &isPlaceholder) = 0;
     virtual int32_t RegisterSyncFolder(int32_t userId, const std::string &bundleName, const std::string &path) = 0;
     virtual int32_t UnregisterSyncFolder(int32_t userId, const std::string &bundleName, const std::string &path) = 0;
 
     virtual int32_t ConvertPlaceholderToFile(const std::string &syncFolder, const std::string &relativePath) = 0;
+    virtual int32_t MarkFileAsPlaceholder(const std::string &syncFolder, const std::string &relativePath) = 0;
+    virtual int32_t UnmarkPlaceholderFile(const std::string &syncFolder, const std::string &relativePath) = 0;
+    virtual int32_t StartHydration(const std::string &syncFolder, const std::string &relativePath,
+                                   CloudDiskHydratePriority priority) = 0;
+    virtual int32_t CancelHydration(const std::string &syncFolder, const std::string &relativePath) = 0;
+    virtual int32_t Execute(const CallbackExecuteRequest &request) = 0;
+    virtual int32_t DehydrateFile(const std::string &syncFolder, const std::string &relativePath) = 0;
     virtual int32_t UpdatePlaceholder(const std::string &syncFolder, const std::string &relativePath,
-        const PlaceholderInfo &metaData) = 0;
+        const PlaceholderInfo &metaData, const PlaceholderCustomInfo &customInfo) = 0;
+    virtual int32_t GetPlaceholderCustomInfo(const std::string &syncFolder, const std::string &relativePath,
+        PlaceholderCustomInfo &customInfo) = 0;
+
+    virtual int32_t StartHydrationByPath(const std::string &path, int32_t callbackType, int32_t priority,
+        uint64_t accessorId) = 0;
+    virtual int32_t DehydrateFileByPath(const std::string &path) = 0;
+    virtual int32_t RegisterProgressCallback(uint64_t accessorId,
+        const sptr<ICloudDiskProgressCallback> &callback) = 0;
+    virtual int32_t UnregisterProgressCallback(uint64_t accessorId,
+        const sptr<ICloudDiskProgressCallback> &callback) = 0;
 
     virtual int32_t UnregisterForSa(const std::string &path) = 0;
+    virtual int32_t
+        GetPlaceholderState(const std::string &syncFolder, const std::string &relativePath, int32_t &state) = 0;
 };
 } // namespace OHOS::FileManagement::CloudDiskService
 

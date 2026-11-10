@@ -200,6 +200,27 @@ int dirfd(DIR *d)
     return realDirfd(d);
 }
 
+ssize_t getxattr(const char *path, const char *name, void *value, size_t size)
+{
+    if (AssistantMock::IsMockable()) {
+        return Assistant::ins->getxattr(path, name, value, size);
+    }
+
+    static ssize_t (*realGetxattr)(const char *, const char *, void *, size_t) = []() {
+        auto func = (ssize_t (*)(const char *, const char *, void *, size_t))dlsym(RTLD_NEXT, "getxattr");
+        if (!func) {
+            GTEST_LOG_(ERROR) << "Failed to resolve real getxattr: " << dlerror();
+        }
+        return func;
+    }();
+
+    if (!realGetxattr) {
+        return -1;
+    }
+
+    return realGetxattr(path, name, value, size);
+}
+
 int setxattr(const char *path, const char *name, const void *value, size_t size, int flags)
 {
     if (AssistantMock::IsMockable()) {
@@ -324,6 +345,27 @@ int fsetxattr(int fd, const char* name, const void* value, size_t size, int flag
     }
 
     return realFsetxattr(fd, name, value, size, flags);
+}
+
+ssize_t fgetxattr(int fd, const char* name, void* value, size_t size)
+{
+    if (AssistantMock::IsMockable()) {
+        return Assistant::ins->fgetxattr(fd, name, value, size);
+    }
+
+    static ssize_t (*realFgetxattr)(int, const char*, void*, size_t) = []() {
+        auto func = (ssize_t (*)(int, const char*, void*, size_t))dlsym(RTLD_NEXT, "fgetxattr");
+        if (!func) {
+            GTEST_LOG_(ERROR) << "Failed to resolve real fgetxattr: " << dlerror();
+        }
+        return func;
+    }();
+
+    if (!realFgetxattr) {
+        return -1;
+    }
+
+    return realFgetxattr(fd, name, value, size);
 }
 
 int close(int fd)

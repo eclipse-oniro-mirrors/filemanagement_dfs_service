@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
+#include <initializer_list>
 #include <memory>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -254,7 +255,8 @@ HWTEST_F(CloudSyncManagerImplTest, StartSyncTest001, TestSize.Level1)
         EXPECT_CALL(*OsAccountMethodMock_, GetOsAccountLocalIdFromProcess)
             .WillOnce(DoAll(SetArgReferee<0>(userId), Return(E_OK)));
         EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(serviceProxy_));
-        EXPECT_CALL(*serviceProxy_, StartSyncInner(_, _)).WillOnce(Return(E_PERMISSION_DENIED));
+        EXPECT_CALL(*serviceProxy_, StartSyncInner(static_cast<int32_t>(SyncMode::FORCE), bundleName))
+            .WillOnce(Return(E_PERMISSION_DENIED));
         int32_t res = CloudSyncManagerImpl::GetInstance().StartSync(bundleName);
         EXPECT_EQ(res, E_PERMISSION_DENIED);
     } catch (...) {
@@ -284,7 +286,8 @@ HWTEST_F(CloudSyncManagerImplTest, StartSyncTest002, TestSize.Level1)
         EXPECT_CALL(*serviceProxy_, RegisterCallbackInner(_, _, _)).WillOnce(Return(E_OK));
         CloudSyncManagerImpl::GetInstance().isFirstCall_.clear();
         CloudSyncManagerImpl::GetInstance().startSyncPending_ = false;
-        EXPECT_CALL(*serviceProxy_, StartSyncInner(_, _)).WillOnce(Return(E_PERMISSION_DENIED));
+        EXPECT_CALL(*serviceProxy_, StartSyncInner(static_cast<int32_t>(SyncMode::FORCE), ""))
+            .WillOnce(Return(E_PERMISSION_DENIED));
         int32_t res = CloudSyncManagerImpl::GetInstance().StartSync(forceFlag, callback);
         EXPECT_EQ(res, E_PERMISSION_DENIED);
     } catch (...) {
@@ -479,6 +482,52 @@ HWTEST_F(CloudSyncManagerImplTest, StartSyncTest009, TestSize.Level1)
     GTEST_LOG_(INFO) << "StartSyncTest009 End";
 }
 
+/**
+ * @tc.name: StartSyncTest010
+ * @tc.desc: Verify each SyncMode is passed unchanged to the service proxy.
+ * @tc.type: FUNC
+ * @tc.require: I6H5MH
+ */
+HWTEST_F(CloudSyncManagerImplTest, StartSyncTest010, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "StartSyncTest010 Start";
+    try {
+        string bundleName = "com.ohos.photos";
+        int32_t userId = 100;
+        EXPECT_CALL(*OsAccountMethodMock_, GetOsAccountLocalIdFromProcess)
+            .Times(3).WillRepeatedly(DoAll(SetArgReferee<0>(userId), Return(E_OK)));
+        EXPECT_CALL(*proxy_, GetInstance(_)).Times(3).WillRepeatedly(Return(serviceProxy_));
+        for (auto mode : {SyncMode::NORMAL, SyncMode::FORCE, SyncMode::FORCE_THM}) {
+            EXPECT_CALL(*serviceProxy_, StartSyncInner(static_cast<int32_t>(mode), bundleName))
+                .WillOnce(Return(E_PERMISSION_DENIED));
+            int32_t res = CloudSyncManagerImpl::GetInstance().StartSync(mode, bundleName);
+            EXPECT_EQ(res, E_PERMISSION_DENIED);
+        }
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "StartSyncTest010 FAILED";
+    }
+    GTEST_LOG_(INFO) << "StartSyncTest010 End";
+}
+
+/**
+ * @tc.name: StartSyncTest011
+ * @tc.desc: Verify the legacy forceFlag=false overload passes NORMAL to the service proxy.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncManagerImplTest, StartSyncTest011, TestSize.Level1)
+{
+    auto callback = make_shared<CloudSyncCallbackDerived>();
+    int32_t userId = 100;
+    EXPECT_CALL(*OsAccountMethodMock_, GetOsAccountLocalIdFromProcess)
+        .WillOnce(DoAll(SetArgReferee<0>(userId), Return(E_OK)));
+    EXPECT_CALL(*proxy_, GetInstance(_)).WillOnce(Return(serviceProxy_));
+    EXPECT_CALL(*serviceProxy_, StartSyncInner(static_cast<int32_t>(SyncMode::NORMAL), ""))
+        .WillOnce(Return(E_OK));
+
+    EXPECT_EQ(CloudSyncManagerImpl::GetInstance().StartSync(false, callback), E_OK);
+}
 
 /**
  * @tc.name: StartFileSyncTest001

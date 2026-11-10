@@ -13,27 +13,21 @@
  * limitations under the License.
  */
 
-#ifndef OHOS_FILEMGMT_DECOMPRESS_UPDATE_H
-#define OHOS_FILEMGMT_DECOMPRESS_UPDATE_H
+#ifndef OHOS_FILEMGMT_I_CLOUD_DISK_SERVICE_CALLBACK_TABLE_H
+#define OHOS_FILEMGMT_I_CLOUD_DISK_SERVICE_CALLBACK_TABLE_H
 
-namespace OHOS {
-namespace FileManagement {
-namespace Decompress {
+#include "cloud_disk_service_callback_table.h"
+#include "iremote_broker.h"
 
-class DecompressUpdateManager {
+namespace OHOS::FileManagement::CloudDiskService {
+class ICloudDiskServiceCallbackTable : public CloudDiskServiceCallbackTable, public IRemoteBroker {
 public:
-    static DecompressUpdateManager &GetInstance();
-    void HandleDecompressUpdate();
+    enum {
+        SERVICE_CMD_ON_CALLBACK = 0,
+    };
 
-private:
-    DecompressUpdateManager() = default;
-    DecompressUpdateManager(const DecompressUpdateManager&) = delete;
-    DecompressUpdateManager& operator=(const DecompressUpdateManager&) = delete;
+    DECLARE_INTERFACE_DESCRIPTOR(u"OHOS.Filemanagement.Dfs.ICloudDiskServiceCallbackTable")
 };
+} // namespace OHOS::FileManagement::CloudDiskService
 
-
-} // namespace Decompress
-} // namespace FileManagement
-} // namespace OHOS
-
-#endif // OHOS_FILEMGMT_DECOMPRESS_H
+#endif // OHOS_FILEMGMT_I_CLOUD_DISK_SERVICE_CALLBACK_TABLE_H

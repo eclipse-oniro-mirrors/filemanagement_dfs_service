@@ -59,8 +59,14 @@ ohos_shared_library("clouddiskservice_kit_inner") {
   ]
   sources = [
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_common.cpp",
+    "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_progress_callback_client.cpp",
+    "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_progress_callback_stub.cpp",
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_service_callback_client.cpp",
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_service_callback_stub.cpp",
+    "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/" +
+        "cloud_disk_service_callback_table_client.cpp",
+    "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/" +
+        "cloud_disk_service_callback_table_stub.cpp",
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_service_manager.cpp",
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_service_manager_impl.cpp",
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/service_proxy.cpp",
@@ -93,6 +99,10 @@ ohos_shared_library("clouddiskservice_kit_inner") {
     "safwk:system_ability_fwk",
     "samgr:samgr_proxy",
   ]
+
+  if (dfs_service_feature_enable_cloud_disk) {
+    external_deps += [ "user_file_service:cloud_disk_manager_kit" ]
+  }
 
   deps = [
     "${services_path}/clouddiskservice:libcloud_disk_service_proxy",
@@ -122,8 +132,14 @@ ohos_static_library("clouddiskservice_kit_inner_static") {
   ]
   sources = [
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_common.cpp",
+    "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_progress_callback_client.cpp",
+    "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_progress_callback_stub.cpp",
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_service_callback_client.cpp",
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_service_callback_stub.cpp",
+    "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/" +
+        "cloud_disk_service_callback_table_client.cpp",
+    "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/" +
+        "cloud_disk_service_callback_table_stub.cpp",
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_service_manager.cpp",
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_service_manager_impl.cpp",
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/service_proxy.cpp",
@@ -157,6 +173,10 @@ ohos_static_library("clouddiskservice_kit_inner_static") {
     "samgr:samgr_proxy",
   ]
 
+  if (dfs_service_feature_enable_cloud_disk) {
+    external_deps += [ "user_file_service:cloud_disk_manager_kit" ]
+  }
+
   deps = [
     "${services_path}/clouddiskservice:libcloud_disk_service_proxy",
     "${utils_path}:libdistributedfiledentry_static",
@@ -166,4 +186,3 @@ ohos_static_library("clouddiskservice_kit_inner_static") {
   part_name = "dfs_service"
   subsystem_name = "filemanagement"
 }
-

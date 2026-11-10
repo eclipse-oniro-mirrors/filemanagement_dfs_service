@@ -32,7 +32,7 @@ int32_t CloudSyncServiceProxy::RegisterCallbackInner(const sptr<IRemoteObject> &
     return E_OK;
 }
 
-int32_t CloudSyncServiceProxy::StartSyncInner(bool forceFlag, const std::string &bundleName)
+int32_t CloudSyncServiceProxy::StartSyncInner(int32_t type, const std::string &bundleName)
 {
     return E_OK;
 }

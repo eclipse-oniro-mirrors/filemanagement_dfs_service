@@ -76,6 +76,7 @@ int32_t ConvertErrnoToCloudDiskError(int32_t err)
         case EINVAL:
         case EISDIR:
         case ELOOP:
+        case E2BIG:
             return E_INVALID_ARG;
         case ENAMETOOLONG:
             return E_NAME_TOO_LONG;

@@ -30,6 +30,7 @@ public:
     static FsResult<CloudSyncCore *> Constructor();
 
     FsResult<void> DoStart();
+    FsResult<void> DoStartWithType(SyncMode type);
     FsResult<void> DoStop();
     FsResult<void> DoOn(const std::string &event, const std::shared_ptr<CloudSyncCallbackMiddle> callback);
     FsResult<void> DoOff(const std::string &event,

@@ -30,6 +30,7 @@
 #include "cloud_file_utils.h"
 #include "convertor.h"
 #include "file_utils.h"
+#include "placeholder_helper.h"
 #include "utils_directory.h"
 #include "utils_log.h"
 #include "uuid_helper.h"
@@ -43,10 +44,9 @@ const uint64_t CHANGE_DATA_TIMEOUT_MS = 1000;
 
 static std::string GetLogFileByPath(const int32_t userId, const uint32_t syncFolderIndex)
 {
-    std::string rootDir =
-        "/data/service/el2/" + std::to_string(userId) +
-        "/hmdfs/cache/account_cache/dentry_cache/clouddisk_service_cache/" +
-        Convertor::ConvertToHex(syncFolderIndex) + "/";
+    std::string rootDir = "/data/service/el2/" + std::to_string(userId) +
+                          "/hmdfs/cache/account_cache/dentry_cache/clouddisk_service_cache/" +
+                          Convertor::ConvertToHex(syncFolderIndex) + "/";
     Storage::DistributedFile::Utils::ForceCreateDirectory(rootDir, STAT_MODE_DIR);
     return rootDir + LOGFILENAME;
 }
@@ -88,7 +88,7 @@ static int32_t SyncCurrentPage(LogGroup &logGroup, int fd, uint32_t bucket)
 static int32_t FillLogGroup(struct LogGroup &logGroup, const struct LogBlock &logBlock, uint32_t offset)
 {
     if (logGroup.nsl[offset].timestamp != 0) {
-        (void) memset_s(&logGroup, LOGGROUP_SIZE, 0, LOGGROUP_SIZE);
+        (void)memset_s(&logGroup, LOGGROUP_SIZE, 0, LOGGROUP_SIZE);
     }
     auto ret = memcpy_s(&logGroup.nsl[offset], sizeof(struct LogBlock), &logBlock, sizeof(struct LogBlock));
     if (ret != 0) {
@@ -141,8 +141,7 @@ static bool GetReversal(int fd, uint64_t line)
     return reversal;
 }
 
-uint64_t CloudDiskServiceLogFile::GetStartLine()
-    __attribute__((no_sanitize("unsigned-integer-overflow")))
+uint64_t CloudDiskServiceLogFile::GetStartLine() __attribute__((no_sanitize("unsigned-integer-overflow")))
 {
     if (currentLine_ <= LOG_COUNT_MAX && !reversal_) {
         return 0;
@@ -160,11 +159,11 @@ bool CloudDiskServiceLogFile::CheckLineIsValid(const uint64_t line)
     }
     if (!reversal_ || currentLine_ >= LOG_COUNT_MAX) {
         LOGE("CheckLineIsValid failed reversal_ is %{public}d, currentLine_ is %{public}" PRIu64 "",
-            static_cast<int>(reversal_.load()), currentLine_.load());
+             static_cast<int>(reversal_.load()), currentLine_.load());
         return false;
     }
     LOGI("CheckLineIsValid line:%{public}" PRIu64 ",startLine:%{public}" PRIu64 ",currentLine_:%{public}" PRIu64 "",
-        line, startLine, currentLine_.load());
+         line, startLine, currentLine_.load());
     return line >= startLine || line < currentLine_;
 }
 
@@ -201,6 +200,39 @@ int32_t CloudDiskServiceLogFile::ReadLogFile(const uint64_t line, struct LogBloc
     return E_OK;
 }
 
+int32_t CloudDiskServiceLogFile::ReadSuperBlock(struct LogSuperBlock &superBlock)
+{
+    std::lock_guard<std::mutex> lock(fileMtx_);
+    ssize_t size = FileUtils::ReadFile(fd_, 0, LOG_SUPERBLOCK_SIZE, &superBlock);
+    if (size != LOG_SUPERBLOCK_SIZE) {
+        LOGE("ReadSuperBlock failed, size %{public}zd != %{public}d", size, LOG_SUPERBLOCK_SIZE);
+        return -1;
+    }
+    LOGD("ReadSuperBlock success, magic: %{public}u, version: %{public}u, currentLine: %{public}" PRIu64
+         ", reversal: %{public}u",
+         superBlock.magic, superBlock.version, superBlock.currentLine, superBlock.reversal);
+    return E_OK;
+}
+
+int32_t CloudDiskServiceLogFile::WriteSuperBlock()
+{
+    struct LogSuperBlock superBlock;
+    superBlock.magic = LOG_SUPERBLOCK_MAGIC;
+    superBlock.version = LOG_SUPERBLOCK_VERSION;
+    superBlock.currentLine = currentLine_.load();
+    superBlock.reversal = static_cast<uint8_t>(reversal_.load());
+
+    std::lock_guard<std::mutex> lock(fileMtx_);
+    int32_t size = FileUtils::WriteFile(fd_, &superBlock, 0, LOG_SUPERBLOCK_SIZE);
+    if (size != LOG_SUPERBLOCK_SIZE) {
+        LOGE("WriteSuperBlock failed, size %{public}d != %{public}d", size, LOG_SUPERBLOCK_SIZE);
+        return -1;
+    }
+    LOGD("WriteSuperBlock success, currentLine: %{public}" PRIu64 ", reversal: %{public}u",
+         superBlock.currentLine, superBlock.reversal);
+    return E_OK;
+}
+
 int32_t CloudDiskServiceLogFile::OnDataChange()
 {
     std::vector<ChangeData> tmpDatas;
@@ -231,12 +263,27 @@ CloudDiskServiceLogFile::CloudDiskServiceLogFile(const int32_t userId, const uin
     logFilePath_ = GetLogFileByPath(userId_, syncFolderIndex_);
     if (access(logFilePath_.c_str(), F_OK) == 0) {
         fd_ = UniqueFd{open(logFilePath_.c_str(), O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)};
-        currentLine_ = GetCurrentLine(fd_);
-        reversal_ = GetReversal(fd_, currentLine_);
+        struct LogSuperBlock superBlock;
+        if (ReadSuperBlock(superBlock) == E_OK && superBlock.magic == LOG_SUPERBLOCK_MAGIC &&
+            superBlock.version == LOG_SUPERBLOCK_VERSION) {
+            currentLine_ = superBlock.currentLine;
+            reversal_ = static_cast<bool>(superBlock.reversal);
+            LOGI("Load superBlock success, currentLine: %{public}" PRIu64 ", reversal: %{public}d",
+                 currentLine_.load(), reversal_.load());
+        } else {
+            currentLine_ = GetCurrentLine(fd_);
+            reversal_ = GetReversal(fd_, currentLine_);
+            WriteSuperBlock();
+            LOGW("ReadSuperBlock failed or invalid, currentLine: %{public}" PRIu64 ", reversal: %{public}d",
+                currentLine_.load(), reversal_.load());
+        }
     } else {
         fd_ = UniqueFd{open(logFilePath_.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)};
         ftruncate(fd_, LOGGROUP_SIZE * LOGGROUP_MAX + LOGGROUP_HEADER);
         currentLine_ = 0;
+        reversal_ = false;
+        WriteSuperBlock();
+        LOGD("Create new log file and init superBlock, syncFolderIndex: %{public}u", syncFolderIndex_);
     }
 }
 
@@ -245,8 +292,10 @@ void CloudDiskServiceLogFile::SetSyncFolderPath(const std::string &path)
     syncFolderPath_ = path;
 }
 
-int32_t CloudDiskServiceLogFile::GenerateLogBlock(const struct EventInfo &eventInfo, const uint64_t parentInode,
-                                                  const struct LogGenerateCtx &ctx, const std::string &parentRecordId,
+int32_t CloudDiskServiceLogFile::GenerateLogBlock(const struct EventInfo &eventInfo,
+                                                  const uint64_t parentInode,
+                                                  const struct LogGenerateCtx &ctx,
+                                                  const std::string &parentRecordId,
                                                   uint64_t &line)
 {
     struct LogBlock logBlock;
@@ -263,6 +312,11 @@ int32_t CloudDiskServiceLogFile::GenerateLogBlock(const struct EventInfo &eventI
         return -1;
     }
     WriteLogFile(logBlock);
+    if (!reversal_.load() && currentLine_ > LOG_COUNT_MAX) {
+        reversal_ = true;
+        LOGI("Reversal enabled, currentLine: %{public}" PRIu64, currentLine_.load());
+    }
+    WriteSuperBlock();
     line = logBlock.line;
     LOGD("Generate log line:%{public}llu, operationType:%{public}d", line, logBlock.operationType);
     return E_OK;
@@ -271,19 +325,21 @@ int32_t CloudDiskServiceLogFile::GenerateLogBlock(const struct EventInfo &eventI
 void CloudDiskServiceLogFile::GenerateChangeDataForInvalid(const struct EventInfo &eventInfo)
 {
     std::lock_guard<std::mutex> lock(vectorMtx_);
-    struct ChangeData changeData{};
+    struct ChangeData changeData {};
     changeData.operationType = eventInfo.operateType;
     changeData.timeStamp = eventInfo.timestamp;
     changeDatas_.push_back(changeData);
     CloudDiskServiceCallbackManager::GetInstance().OnChangeData(syncFolderIndex_, changeDatas_);
 }
 
-int32_t CloudDiskServiceLogFile::GenerateChangeData(const struct EventInfo &eventInfo, uint64_t line,
-                                                    const std::string &childRecordId, const std::string &parentRecordId)
+int32_t CloudDiskServiceLogFile::GenerateChangeData(const struct EventInfo &eventInfo,
+                                                    uint64_t line,
+                                                    const std::string &childRecordId,
+                                                    const std::string &parentRecordId)
 {
     std::lock_guard<std::mutex> lock(vectorMtx_);
     std::string fullPath = eventInfo.path + "/" + eventInfo.name;
-    struct ChangeData changeData{};
+    struct ChangeData changeData {};
     changeData.updateSequenceNumber = line;
     changeData.fileId = childRecordId;
     changeData.parentFileId = parentRecordId;
@@ -304,9 +360,9 @@ int32_t CloudDiskServiceLogFile::GenerateChangeData(const struct EventInfo &even
     }
 
     changeData.timeStamp = eventInfo.timestamp;
-    LOGD("Generate changedata line:%{public}llu, operationType:%{public}d, size:%{public}zu", line,
-        static_cast<uint8_t>(changeData.operationType), changeDatas_.size());
-    
+    LOGD("Generate changedata line:%{public}" PRIu64 ", operationType:%{public}d, size:%{public}zu", line,
+         static_cast<uint8_t>(changeData.operationType), changeDatas_.size());
+
     if (eventInfo.operateType == OperationType::OH_CLOUD_DISK_CLOSE_MODIFY) {
         if (changeDatas_.size() == MAX_CHANGEDATAS_SIZE - 1) {
             CloudDiskServiceCallbackManager::GetInstance().OnChangeData(syncFolderIndex_, changeDatas_);
@@ -316,7 +372,7 @@ int32_t CloudDiskServiceLogFile::GenerateChangeData(const struct EventInfo &even
         hasUnpairedCloseModify_ = true;
         return E_OK;
     }
-    
+
     if (eventInfo.operateType == OperationType::CLOSE_WRITE && hasUnpairedCloseModify_) {
         hasUnpairedCloseModify_ = false;
     }
@@ -360,7 +416,6 @@ int32_t CloudDiskServiceLogFile::FillChildForDir(const std::string &path, const 
     return E_OK;
 }
 
-
 void CloudDiskServiceLogFile::StartCallback()
 {
     LOGD("StartCallback, %{public}u", syncFolderIndex_);
@@ -392,8 +447,8 @@ int32_t CloudDiskServiceLogFile::ProduceLog(const struct EventInfo &eventInfo)
         }
     }
 
-    auto parentMetaFile = MetaFileMgr::GetInstance().GetCloudDiskServiceMetaFile(userId_, syncFolderIndex_,
-                                                                                 parentStat.st_ino);
+    auto parentMetaFile =
+        MetaFileMgr::GetInstance().GetCloudDiskServiceMetaFile(userId_, syncFolderIndex_, parentStat.st_ino);
 
     struct LogGenerateCtx ctx;
     ret = ProductLogForOperate(parentMetaFile, eventInfo.path, eventInfo.name, ctx, eventInfo.operateType);
@@ -431,8 +486,8 @@ int32_t CloudDiskServiceLogFile::PraseLog(const uint64_t line, ChangeData &data,
         return ret;
     }
 
-    auto parentMetaFile = MetaFileMgr::GetInstance().GetCloudDiskServiceMetaFile(userId_, syncFolderIndex_,
-                                                                                 logBlock.parentInode);
+    auto parentMetaFile =
+        MetaFileMgr::GetInstance().GetCloudDiskServiceMetaFile(userId_, syncFolderIndex_, logBlock.parentInode);
     std::string relativePath;
     ret = MetaFileMgr::GetInstance().GetRelativePath(parentMetaFile, relativePath);
     if (ret != 0) {
@@ -458,16 +513,18 @@ int32_t CloudDiskServiceLogFile::PraseLog(const uint64_t line, ChangeData &data,
 }
 
 int32_t CloudDiskServiceLogFile::ProductLogForOperate(const std::shared_ptr<CloudDiskServiceMetaFile> parentMetaFile,
-                                                      const std::string &path, const std::string &name,
-                                                      struct LogGenerateCtx &ctx, OperationType operationType)
+                                                      const std::string &path,
+                                                      const std::string &name,
+                                                      struct LogGenerateCtx &ctx,
+                                                      OperationType operationType)
 {
     switch (operationType) {
         case OperationType::CREATE:
             return ProduceCreateLog(parentMetaFile, path, name, ctx);
         case OperationType::DELETE:
-            return ProduceUnlinkLog(parentMetaFile, name, ctx);
+            return ProduceUnlinkLog(parentMetaFile, path, name, ctx);
         case OperationType::MOVE_FROM:
-            return ProduceRenameOldLog(parentMetaFile, name, ctx);
+            return ProduceRenameOldLog(parentMetaFile, path, name, ctx);
         case OperationType::MOVE_TO:
             return ProduceRenameNewLog(parentMetaFile, path, name, ctx);
         case OperationType::CLOSE_WRITE:
@@ -481,7 +538,8 @@ int32_t CloudDiskServiceLogFile::ProductLogForOperate(const std::shared_ptr<Clou
 }
 
 int32_t CloudDiskServiceLogFile::ProduceCreateLog(const std::shared_ptr<CloudDiskServiceMetaFile> parentMetaFile,
-                                                  const std::string &path, const std::string &name,
+                                                  const std::string &path,
+                                                  const std::string &name,
                                                   struct LogGenerateCtx &ctx)
 {
     LOGD("Begin ProduceCreateLog");
@@ -497,6 +555,14 @@ int32_t CloudDiskServiceLogFile::ProduceCreateLog(const std::shared_ptr<CloudDis
     mBase.atime = static_cast<uint64_t>(childStat.st_atime);
     mBase.mtime = static_cast<uint64_t>(childStat.st_mtime);
     mBase.size = static_cast<uint64_t>(childStat.st_size);
+    uint8_t placeholderState = PLACEHOLDER_STATE_NONE;
+    std::string fullPath = path + "/" + name;
+    int32_t stateRet = GetFilePlaceholderState(fullPath, placeholderState);
+    if (stateRet != E_OK) {
+        LOGD("get placeholder state failed, errno:%{public}d", stateRet);
+        placeholderState = PLACEHOLDER_STATE_NONE;
+    }
+    mBase.placeholder = placeholderState;
     auto ret = parentMetaFile->DoCreate(mBase, ctx.bidx, ctx.bitPos);
     if (ret != 0) {
         LOGE("create failed");
@@ -515,40 +581,64 @@ int32_t CloudDiskServiceLogFile::ProduceCreateLog(const std::shared_ptr<CloudDis
 }
 
 int32_t CloudDiskServiceLogFile::ProduceUnlinkLog(const std::shared_ptr<CloudDiskServiceMetaFile> parentMetaFile,
-                                                  const std::string &name, struct LogGenerateCtx &ctx)
+                                                  const std::string &path,
+                                                  const std::string &name,
+                                                  struct LogGenerateCtx &ctx)
 {
     LOGD("Begin ProduceUnlinkLog");
     MetaBase mBase(name);
-    auto ret = parentMetaFile->DoRemove(mBase, ctx.recordId, ctx.bidx, ctx.bitPos);
+    uint8_t placeholderState = PLACEHOLDER_STATE_NONE;
+    int32_t ret = parentMetaFile->DoLookupPlaceholderByName(mBase, placeholderState);
+    if (ret != E_OK) {
+        LOGD("lookup placeholder state failed, errno:%{public}d", ret);
+    }
+    ret = parentMetaFile->DoRemove(mBase, ctx.recordId, ctx.bidx, ctx.bitPos);
     if (ret != 0) {
         LOGE("remove failed");
         return -1;
+    }
+    if (IsCountedPlaceholder(placeholderState)) {
+        (void)RefreshAncestorPlaceholderCount(syncFolderPath_, path + "/" + name, -1);
     }
     return E_OK;
 }
 
 int32_t CloudDiskServiceLogFile::ProduceRenameOldLog(const std::shared_ptr<CloudDiskServiceMetaFile> parentMetaFile,
-                                                     const std::string &name, struct LogGenerateCtx &ctx)
+                                                     const std::string &path,
+                                                     const std::string &name,
+                                                     struct LogGenerateCtx &ctx)
 {
     LOGD("Begin ProduceRenameOldLog");
     MetaBase mBase(name);
-    auto ret = parentMetaFile->DoRenameOld(mBase, ctx.recordId, ctx.bidx, ctx.bitPos);
+    renamePlaceholderState_ = PLACEHOLDER_STATE_NONE;
+    int32_t ret = parentMetaFile->DoLookupPlaceholderByName(mBase, renamePlaceholderState_);
+    if (ret != E_OK) {
+        LOGD("lookup placeholder state failed, errno:%{public}d", ret);
+        renamePlaceholderState_ = PLACEHOLDER_STATE_NONE;
+    }
+    LOGI("RenameOld placeholder state, state:%{public}u", renamePlaceholderState_);
+    ret = parentMetaFile->DoRenameOld(mBase, ctx.recordId, ctx.bidx, ctx.bitPos);
     if (ret != 0) {
         LOGE("renameold failed");
         return -1;
     }
     renameRecordId_ = ctx.recordId;
+    if (IsCountedPlaceholder(renamePlaceholderState_)) {
+        (void)RefreshAncestorPlaceholderCount(syncFolderPath_, path + "/" + name, -1);
+    }
     return E_OK;
 }
 
 int32_t CloudDiskServiceLogFile::ProduceRenameNewLog(const std::shared_ptr<CloudDiskServiceMetaFile> parentMetaFile,
-                                                     const std::string &path, const std::string &name,
+                                                     const std::string &path,
+                                                     const std::string &name,
                                                      struct LogGenerateCtx &ctx)
 {
     LOGD("Begin ProduceRenameNewLog");
     MetaBase mBase(name);
+    std::string fullPath = path + "/" + name;
     struct stat childStat;
-    if (stat((path + "/" + name).c_str(), &childStat) != 0) {
+    if (stat(fullPath.c_str(), &childStat) != 0) {
         LOGE("stat child failed for %{public}d", errno);
         return errno;
     }
@@ -556,12 +646,34 @@ int32_t CloudDiskServiceLogFile::ProduceRenameNewLog(const std::shared_ptr<Cloud
     mBase.atime = static_cast<uint64_t>(childStat.st_atime);
     mBase.mtime = static_cast<uint64_t>(childStat.st_mtime);
     mBase.size = static_cast<uint64_t>(childStat.st_size);
-    auto ret = parentMetaFile->DoRenameNew(mBase, renameRecordId_, ctx.bidx, ctx.bitPos);
+    // Read the actual placeholder state from xattr on the new path; the dentry
+    // state captured by ProduceRenameOldLog may be stale (e.g. file was hydrated
+    // after the dentry was written).
+    uint8_t actualState = PLACEHOLDER_STATE_NONE;
+    int32_t stateRet = GetFilePlaceholderState(fullPath, actualState);
+    if (stateRet == E_OK) {
+        renamePlaceholderState_ = actualState;
+    }
+    mBase.placeholder = renamePlaceholderState_;
+    uint8_t overwrittenState = PLACEHOLDER_STATE_NONE;
+    auto ret = parentMetaFile->DoRenameNew(mBase, renameRecordId_, ctx.bidx, ctx.bitPos, overwrittenState);
     if (ret != 0) {
         LOGE("renamenew failed");
         return -1;
     }
     ctx.recordId = renameRecordId_;
+    if (IsCountedPlaceholder(overwrittenState)) {
+        // The overwritten dentry was itself a counted placeholder; offset its
+        // contribution before adding the new one.
+        (void)RefreshAncestorPlaceholderCount(syncFolderPath_, fullPath, -1);
+    }
+    if (IsCountedPlaceholder(renamePlaceholderState_)) {
+        (void)RefreshAncestorPlaceholderCount(syncFolderPath_, fullPath, 1);
+    } else if (IsPlaceholderState(renamePlaceholderState_)) {
+        // A fully hydrated placeholder is not counted, but moving it in still marks the
+        // ancestors as tracked; uninitialized ones become FULLY_HYDRATED instead of NONE.
+        (void)EnsureAncestorPlaceholderState(syncFolderPath_, fullPath);
+    }
 
     if (!S_ISDIR(childStat.st_mode)) {
         return E_OK;
@@ -575,7 +687,8 @@ int32_t CloudDiskServiceLogFile::ProduceRenameNewLog(const std::shared_ptr<Cloud
 }
 
 int32_t CloudDiskServiceLogFile::ProduceCloseAndWriteLog(const std::shared_ptr<CloudDiskServiceMetaFile> parentMetaFile,
-                                                         const std::string &path, const std::string &name,
+                                                         const std::string &path,
+                                                         const std::string &name,
                                                          struct LogGenerateCtx &ctx)
 {
     LOGD("Begin ProduceCloseAndWriteLog");
@@ -598,7 +711,8 @@ int32_t CloudDiskServiceLogFile::ProduceCloseAndWriteLog(const std::shared_ptr<C
 }
 
 int32_t CloudDiskServiceLogFile::ProduceCloseModifyLog(const std::shared_ptr<CloudDiskServiceMetaFile> parentMetaFile,
-                                                       const std::string &path, const std::string &name,
+                                                       const std::string &path,
+                                                       const std::string &name,
                                                        struct LogGenerateCtx &ctx)
 {
     LOGD("Begin ProduceCloseModifyLog");
@@ -620,7 +734,7 @@ int32_t CloudDiskServiceLogFile::ProduceCloseModifyLog(const std::shared_ptr<Clo
     return E_OK;
 }
 
-LogFileMgr& LogFileMgr::GetInstance()
+LogFileMgr &LogFileMgr::GetInstance()
 {
     static LogFileMgr instance_;
     return instance_;
@@ -633,8 +747,11 @@ int32_t LogFileMgr::ProduceRequest(const struct EventInfo &eventInfo)
     return E_OK;
 }
 
-int32_t LogFileMgr::PraseRequest(const int32_t userId, const uint32_t syncFolderIndex, const uint64_t start,
-                                 const uint64_t count, struct ChangesResult &changesResult)
+int32_t LogFileMgr::PraseRequest(const int32_t userId,
+                                 const uint32_t syncFolderIndex,
+                                 const uint64_t start,
+                                 const uint64_t count,
+                                 struct ChangesResult &changesResult)
 {
     int32_t ret = E_OK;
     uint64_t nextUsn = start + count;
@@ -691,10 +808,9 @@ int32_t LogFileMgr::UnRegisterSyncFolder(const int32_t userId, const uint32_t sy
     LogFiles_.erase(key);
     MetaFileMgr::GetInstance().CloudDiskServiceClearAll();
 
-    std::string rootDir =
-        "/data/service/el2/" + std::to_string(userId) +
-        "/hmdfs/cache/account_cache/dentry_cache/clouddisk_service_cache/" +
-        Convertor::ConvertToHex(syncFolderIndex) + "/";
+    std::string rootDir = "/data/service/el2/" + std::to_string(userId) +
+                          "/hmdfs/cache/account_cache/dentry_cache/clouddisk_service_cache/" +
+                          Convertor::ConvertToHex(syncFolderIndex) + "/";
     if (!OHOS::Storage::DistributedFile::Utils::ForceRemoveDirectoryDeepFirst(rootDir)) {
         LOGW("remove photo dentry dir failed, errno: %{public}d", errno);
     }

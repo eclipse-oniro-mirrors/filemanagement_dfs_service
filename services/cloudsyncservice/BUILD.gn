@@ -126,6 +126,7 @@ ohos_shared_library("cloudsync_sa") {
     "${services_path}/cloudfiledaemon/include/cloud_disk",
     "${innerkits_native_path}/cloudsync_kit_inner",
     "${clouddisk_database_path}/include/operation_log",
+    "${utils_path}/decompress/include",
   ]
 
   cycle_task = [
@@ -141,6 +142,7 @@ ohos_shared_library("cloudsync_sa") {
     "src/cycle_task/tasks/save_subscription_task.cpp",
     "src/cycle_task/tasks/database_backup_task.cpp",
     "src/cycle_task/tasks/database_supplement_task.cpp",
+    "src/cycle_task/tasks/decompress_gains_report_task.cpp",
   ]
 
   transport = [
@@ -155,7 +157,6 @@ ohos_shared_library("cloudsync_sa") {
     "${distributedfile_path}/frameworks/native/cloudsync_kit_inner/src/cloud_sync_common.cpp",
     "${distributedfile_path}/utils/system/src/account_utils.cpp",
     "src/decompress_config_manager.cpp",
-    "src/decompress_update.cpp",
     "src/ipc/account_status_listener.cpp",
     "src/ipc/cloud_sync_service.cpp",
     "src/ipc/download_asset_callback_manager.cpp",
@@ -163,6 +164,7 @@ ohos_shared_library("cloudsync_sa") {
     "src/sync_rule/battery_status_listener.cpp",
     "src/sync_rule/screen_status_listener.cpp",
     "src/sync_rule/user_status_listener.cpp",
+    "src/sync_rule/network_signal_strength_listener.cpp",
   ]
 
   sources += cycle_task
@@ -184,6 +186,7 @@ ohos_shared_library("cloudsync_sa") {
     "${utils_path}:libdistributedfiledentry",
     "${utils_path}:libdistributedfileutils",
     "${utils_path}:libdistributedfileutils_lite",
+    "${utils_path}:libdecompress",
   ]
 
   external_deps = [
@@ -262,6 +265,7 @@ ohos_static_library("cloudsync_sa_static") {
     "${clouddisk_database_path}/include/operation_log",
     "${services_path}/cloudfiledaemon/include/cloud_disk",
     "${innerkits_native_path}/cloudsync_kit_inner",
+    "${utils_path}/decompress/include",
   ]
 
   cycle_task = [
@@ -277,6 +281,7 @@ ohos_static_library("cloudsync_sa_static") {
     "src/cycle_task/tasks/save_subscription_task.cpp",
     "src/cycle_task/tasks/database_backup_task.cpp",
     "src/cycle_task/tasks/database_supplement_task.cpp",
+    "src/cycle_task/tasks/decompress_gains_report_task.cpp",
   ]
 
   transport = [
@@ -291,13 +296,13 @@ ohos_static_library("cloudsync_sa_static") {
     "${distributedfile_path}/frameworks/native/cloudsync_kit_inner/src/cloud_sync_common.cpp",
     "${distributedfile_path}/utils/system/src/account_utils.cpp",
     "src/decompress_config_manager.cpp",
-    "src/decompress_update.cpp",
     "src/ipc/cloud_sync_service.cpp",
     "src/ipc/download_asset_callback_manager.cpp",
     "src/ipc/download_asset_callback_proxy.cpp",
     "src/sync_rule/battery_status_listener.cpp",
     "src/sync_rule/screen_status_listener.cpp",
     "src/sync_rule/user_status_listener.cpp",
+    "src/sync_rule/network_signal_strength_listener.cpp",
   ]
 
   sources += cycle_task
@@ -318,6 +323,7 @@ ohos_static_library("cloudsync_sa_static") {
     "${innerkits_native_path}/decompress_kit_inner:decompress_kit",
     "${utils_path}:libdistributedfiledentry",
     "${utils_path}:libdistributedfileutils",
+    "${utils_path}:libdecompress",
   ]
 
   external_deps = [

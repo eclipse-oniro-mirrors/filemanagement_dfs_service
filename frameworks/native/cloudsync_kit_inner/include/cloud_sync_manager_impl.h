@@ -39,6 +39,7 @@ public:
     int32_t UnRegisterCallback(const CallbackInfo &callbackInfo) override;
     int32_t UnRegisterFileSyncCallback(const CallbackInfo &callbackInfo) override;
     int32_t StartSync(const std::string &bundleName = "") override;
+    int32_t StartSync(SyncMode type, const std::string &bundleName = "") override;
     int32_t StartFileSync(const std::string &bundleName = "") override;
     int32_t StartSync(bool forceFlag, const std::shared_ptr<CloudSyncCallback> callback) override;
     int32_t TriggerSync(const std::string &bundleName, const int32_t &userId) override;
@@ -72,6 +73,7 @@ public:
     int32_t CleanAllFileCache(const std::string &bundleName) override;
     int32_t GetCachedTotalSize(int64_t &totalSize) override;
     int32_t GetCachedTotalSize(const std::string &bundleName, int64_t &totalSize) override;
+    int32_t GetRecycleBinSize(int32_t userId, const std::string &bundleName, int64_t &size) override;
     int32_t CleanFileCache(const std::string &uri) override;
     void CleanGalleryDentryFile() override;
     void CleanGalleryDentryFile(const std::string path) override;
@@ -114,6 +116,7 @@ public:
     int32_t ResumeUpload(const std::string &uri) override;
     int32_t GetDecompressUnsupportedList(std::vector<std::string> &unsupportedList) override;
     int32_t GetDecompressSystemFeature(bool &systemFeature) override;
+    int32_t GetDecompressCrossFsConfig(bool &crossFsConfig) override;
     class SystemAbilityStatusChange : public SystemAbilityStatusChangeStub {
     public:
         void OnAddSystemAbility(int32_t systemAbilityId, const std::string &deviceId);

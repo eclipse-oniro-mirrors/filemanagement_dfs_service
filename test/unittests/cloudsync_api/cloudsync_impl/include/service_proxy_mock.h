@@ -38,7 +38,7 @@ public:
         const string &callbackId, const string &bundleName));
     MOCK_METHOD3(RegisterFileSyncCallbackInner, int32_t(const sptr<IRemoteObject> &remoteObject,
         const string &callbackId, const string &bundleName));
-    MOCK_METHOD2(StartSyncInner, int32_t(bool forceFlag, const std::string &bundleName));
+    MOCK_METHOD2(StartSyncInner, int32_t(int32_t type, const std::string &bundleName));
     MOCK_METHOD2(StartFileSyncInner, int32_t(bool forceFlag, const std::string &bundleName));
     MOCK_METHOD2(TriggerSyncInner, int32_t(const std::string &bundleName, int32_t userId));
     MOCK_METHOD2(StopSyncInner, int32_t(const std::string &bundleName, bool forceFlag));
@@ -135,6 +135,7 @@ public:
     MOCK_METHOD1(GetCachedTotalSizeInner, int32_t(int64_t &totalSize));
     MOCK_METHOD1(GetDecompressUnsupportedList, int32_t(std::vector<std::string> &unsupportedList));
     MOCK_METHOD1(GetDecompressSystemFeature, int32_t(bool &systemFeature));
+    MOCK_METHOD1(GetDecompressCrossFsConfig, int32_t(bool &crossFsConfig));
 
 private:
     int32_t StartFileCacheWriteParcel(MessageParcel &data,

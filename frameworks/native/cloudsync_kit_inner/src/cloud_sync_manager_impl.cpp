@@ -27,6 +27,7 @@
 #include "downgrade_download_callback_client.h"
 #include "dfs_error.h"
 #include "iservice_registry.h"
+#include "recycle_size_cache.h"
 #include "service_proxy.h"
 #include "system_ability_definition.h"
 #include "utils_directory.h"
@@ -187,7 +188,14 @@ int32_t CloudSyncManagerImpl::UnRegisterFileSyncCallback(const CallbackInfo &cal
 
 int32_t CloudSyncManagerImpl::StartSync(const std::string &bundleName)
 {
+    return StartSync(SyncMode::FORCE, bundleName);
+}
+
+int32_t CloudSyncManagerImpl::StartSync(SyncMode type, const std::string &bundleName)
+{
+    LOGI("StartSync type: %{public}d", type);
     if (!AccountUtils::IsAccountAvailable()) {
+        LOGE("IsAccountAvailable check failed");
         return E_INVAL_ARG;
     }
     auto CloudSyncServiceProxy = ServiceProxy::GetInstance("StartSync001");
@@ -196,7 +204,7 @@ int32_t CloudSyncManagerImpl::StartSync(const std::string &bundleName)
         return E_SA_LOAD_FAILED;
     }
     SetDeathRecipient(CloudSyncServiceProxy->AsObject());
-    return CloudSyncServiceProxy->StartSyncInner(true, bundleName);
+    return CloudSyncServiceProxy->StartSyncInner(static_cast<int32_t>(type), bundleName);
 }
 
 int32_t CloudSyncManagerImpl::StartFileSync(const std::string &bundleName)
@@ -303,7 +311,8 @@ int32_t CloudSyncManagerImpl::StartSync(bool forceFlag, const std::shared_ptr<Cl
         SetDeathRecipient(CloudSyncServiceProxy->AsObject());
     }
 
-    auto ret = CloudSyncServiceProxy->StartSyncInner(forceFlag, "");
+    auto type = forceFlag ? SyncMode::FORCE : SyncMode::NORMAL;
+    auto ret = CloudSyncServiceProxy->StartSyncInner(static_cast<int32_t>(type), "");
     SetStartSyncPending();
     return ret;
 }
@@ -642,6 +651,20 @@ int32_t CloudSyncManagerImpl::GetDecompressSystemFeature(bool &systemFeature)
     int32_t ret = CloudSyncServiceProxy->GetDecompressSystemFeature(systemFeature);
     LOGI("GetDecompressSystemFeature end, ret %{public}d, feature %{public}s",
         ret, systemFeature ? "true" : "false");
+    return ret;
+}
+
+int32_t CloudSyncManagerImpl::GetDecompressCrossFsConfig(bool &crossFsConfig)
+{
+    LOGI("GetDecompressCrossFsConfig start");
+    auto CloudSyncServiceProxy = ServiceProxy::GetInstance("GetDecompressCrossFsConfig");
+    if (!CloudSyncServiceProxy) {
+        LOGE("proxy is null");
+        return E_SA_LOAD_FAILED;
+    }
+    int32_t ret = CloudSyncServiceProxy->GetDecompressCrossFsConfig(crossFsConfig);
+    LOGI("GetDecompressCrossFsConfig end, ret %{public}d, feature %{public}s",
+        ret, crossFsConfig ? "true" : "false");
     return ret;
 }
 
@@ -1044,6 +1067,16 @@ int32_t CloudSyncManagerImpl::GetCachedTotalSize(const std::string &bundleName, 
     }
     SetDeathRecipient(CloudSyncServiceProxy->AsObject());
     return CloudSyncServiceProxy->GetCachedTotalSizeInner(bundleName, totalSize);
+}
+
+int32_t CloudSyncManagerImpl::GetRecycleBinSize(int32_t userId, const std::string &bundleName, int64_t &size)
+{
+    LOGI("GetRecycleBinSize start, userId:%{public}d, bundle:%{public}s", userId, bundleName.c_str());
+    if (bundleName.empty() || userId < 0) {
+        LOGE("invalid arguments");
+        return E_INVAL_ARG;
+    }
+    return CloudDisk::RecycleSizeCache::GetRecycleBinSize(userId, bundleName, size);
 }
 
 int32_t CloudSyncManagerImpl::CleanFileCache(const std::string &uri)

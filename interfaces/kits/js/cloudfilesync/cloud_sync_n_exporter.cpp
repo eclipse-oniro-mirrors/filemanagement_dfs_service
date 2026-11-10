@@ -17,6 +17,7 @@
 #include "cloud_file_cache_napi.h"
 #include "cloud_file_napi.h"
 #include "cloud_file_version_napi.h"
+#include "cloud_sync_common.h"
 #include "cloud_sync_napi.h"
 #include "file_sync_napi.h"
 #include "gallery_sync_napi.h"
@@ -41,9 +42,22 @@ static void InitState(napi_env env, napi_value exports)
                                      NVal::CreateInt32(env, (int32_t)State::CLOUD_FILE_DOWNLOAD_FAILED).val_),
         DECLARE_NAPI_STATIC_PROPERTY("STOPPED",
                                      NVal::CreateInt32(env, (int32_t)State::CLOUD_FILE_DOWNLOAD_STOPPED).val_),
+        DECLARE_NAPI_STATIC_PROPERTY("MISSING",
+                                     NVal::CreateInt32(env, (int32_t)State::CLOUD_FILE_DOWNLOAD_MISSING).val_),
     };
     napi_define_properties(env, obj, sizeof(desc) / sizeof(desc[0]), desc);
     napi_set_named_property(env, exports, propertyName, obj);
+}
+
+static void InitSyncType(napi_env env, napi_value exports)
+{
+    napi_property_descriptor desc[] = {
+        DECLARE_NAPI_STATIC_PROPERTY("FORCE_THM", NVal::CreateInt32(env, SYNC_TYPE_FORCE_THM).val_),
+    };
+    napi_value obj = nullptr;
+    napi_create_object(env, &obj);
+    napi_define_properties(env, obj, sizeof(desc) / sizeof(desc[0]), desc);
+    napi_set_named_property(env, exports, "SyncType", obj);
 }
 
 /***********************************************
@@ -52,6 +66,7 @@ static void InitState(napi_env env, napi_value exports)
 napi_value CloudSyncExport(napi_env env, napi_value exports)
 {
     InitCloudSyncState(env, exports);
+    InitSyncType(env, exports);
     InitErrorType(env, exports);
     InitDownloadErrorType(env, exports);
     InitState(env, exports);

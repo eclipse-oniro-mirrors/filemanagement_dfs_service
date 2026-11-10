@@ -16,7 +16,8 @@
 #include "decompress_config_manager.h"
 
 #include "nlohmann/json.hpp"
-#include "decompress_update.h"
+#include "decompress_kit.h"
+#include "plugin_loader.h"
 #include "utils_log.h"
 
 #include <fstream>
@@ -40,7 +41,11 @@ void DecompressConfigManager::SetConfigDir(const std::string& configDir)
 
 std::vector<std::string> DecompressConfigManager::GetUnsupportedList()
 {
-    Decompress::DecompressUpdateManager::GetInstance().HandleDecompressUpdate();
+    CloudFile::PluginLoader::GetInstance().LoadDecompressPlugin();
+    auto kitInstance = Decompress::DecompressKit::GetInstance();
+    if (kitInstance != nullptr) {
+        kitInstance->HandleConfigUpdate();
+    }
     std::vector<std::pair<std::string, std::string>> paths = {
         {"Default path", configDir_ + "/" + FAKE_DECOMPRESSION_FILE},
         {"Preset path", sysConfigDir_ + "/" + FAKE_DECOMPRESSION_FILE},
@@ -97,7 +102,11 @@ std::pair<bool, std::vector<std::string>> DecompressConfigManager::ParseUnsuppor
 
 bool DecompressConfigManager::GetSystemFeature()
 {
-    Decompress::DecompressUpdateManager::GetInstance().HandleDecompressUpdate();
+    CloudFile::PluginLoader::GetInstance().LoadDecompressPlugin();
+    auto kitInstance = Decompress::DecompressKit::GetInstance();
+    if (kitInstance != nullptr) {
+        kitInstance->HandleConfigUpdate();
+    }
     std::vector<std::pair<std::string, std::string>> paths = {
         {"Default path", configDir_ + "/" + FAKE_DECOMPRESSION_FILE},
         {"Preset path", sysConfigDir_ + "/" + FAKE_DECOMPRESSION_FILE},
@@ -115,6 +124,32 @@ bool DecompressConfigManager::GetSystemFeature()
 
     LOGD("Loaded system feature: %{public}s", newSystemFeature ? "true" : "false");
     return newSystemFeature;
+}
+
+bool DecompressConfigManager::GetCrossFsConfig()
+{
+    CloudFile::PluginLoader::GetInstance().LoadDecompressPlugin();
+    auto kitInstance = Decompress::DecompressKit::GetInstance();
+    if (kitInstance != nullptr) {
+        kitInstance->HandleConfigUpdate();
+    }
+    std::vector<std::pair<std::string, std::string>> paths = {
+        {"Default path", configDir_ + "/" + FAKE_DECOMPRESSION_FILE},
+        {"Preset path", sysConfigDir_ + "/" + FAKE_DECOMPRESSION_FILE},
+    };
+
+    bool newCrossFsConfig = false;
+    for (const auto &[alias, path] : paths) {
+        auto [isSuccess, crossFsConfig] = ParseCrossFsConfig(path);
+        if (isSuccess) {
+            newCrossFsConfig = crossFsConfig;
+            LOGI("Load CrossFsConfig successfully from: %{public}s", alias.c_str());
+            break;
+        }
+    }
+
+    LOGD("Loaded cross fs config: %{public}s", newCrossFsConfig ? "true" : "false");
+    return newCrossFsConfig;
 }
 
 std::pair<bool, bool> DecompressConfigManager::ParseSystemFeature(const std::string &filePath)
@@ -141,6 +176,32 @@ std::pair<bool, bool> DecompressConfigManager::ParseSystemFeature(const std::str
 
     bool systemFeature = jsonObj["systemFeature"].get<bool>();
     return {true, systemFeature};
+}
+
+std::pair<bool, bool> DecompressConfigManager::ParseCrossFsConfig(const std::string &filePath)
+{
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+        LOGW("Cross fs config file not found: %{public}s", filePath.c_str());
+        return {false, false};
+    }
+
+    std::string content((std::istreambuf_iterator<char>(file)),
+                        std::istreambuf_iterator<char>());
+
+    nlohmann::json jsonObj = nlohmann::json::parse(content, nullptr, false);
+    if (jsonObj.is_discarded()) {
+        LOGE("Failed to parse cross fs config JSON");
+        return {false, false};
+    }
+
+    if (!jsonObj.contains("crossFsConfig") || !jsonObj["crossFsConfig"].is_boolean()) {
+        LOGE("Invalid cross fs config format");
+        return {false, false};
+    }
+
+    bool crossFsConfig = jsonObj["crossFsConfig"].get<bool>();
+    return {true, crossFsConfig};
 }
 
 } // namespace OHOS::FileManagement::CloudSync

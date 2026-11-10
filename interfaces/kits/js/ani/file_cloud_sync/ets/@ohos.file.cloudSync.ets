@@ -40,6 +40,10 @@ export default namespace cloudSync {
         STOPPED = 5,
     };
 
+    export enum SyncType {
+        FORCE_THM = 0,
+    };
+
     export interface SyncProgress {
         state: SyncState;
         error: ErrorType;
@@ -97,6 +101,25 @@ export default namespace cloudSync {
             });
         }
 
+        startWithType(type: SyncType): Promise<void> {
+            return new Promise<void>((resolve: (result: undefined) => void,
+                reject: (e: BusinessError<void>) => void): void => {
+                let promise = taskpool.execute((type: SyncType): int => this.StartWithTypeInner(type), type);
+                promise.then<void, void>((): void => {
+                    resolve(undefined);
+                }, (e: Error): void => {
+                    reject(e as BusinessError<void>);
+                });
+            });
+        }
+
+        startWithType(callback: Callback<void>, type: SyncType): void {
+            this.GallerySyncStartWithType(type);
+            Promise.resolve().then((): void => {
+                callback(undefined);
+            });
+        }
+
         stop(): Promise<void> {
             return new Promise<void>((resolve: (result: undefined) => void,
                 reject: (e: BusinessError<void>) => void): void => {
@@ -119,10 +142,15 @@ export default namespace cloudSync {
         }
 
         native GallerySyncStart(): void;
+        native GallerySyncStartWithType(type: SyncType): void;
         native GallerySyncStop(): void;
 
         StartInner(): int {
             this.GallerySyncStart();
+            return 0;
+        }
+        StartWithTypeInner(type: SyncType): int {
+            this.GallerySyncStartWithType(type);
             return 0;
         }
         StopInner(): int {
@@ -135,7 +163,8 @@ export default namespace cloudSync {
         RUNNING = 0,
         COMPLETED = 1,
         FAILED = 2,
-        STOPPED = 3
+        STOPPED = 3,
+        MISSING = 4
     };
 
     export enum DownloadErrorType {

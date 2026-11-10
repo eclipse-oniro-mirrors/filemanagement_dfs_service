@@ -53,6 +53,7 @@ public:
     virtual int stat(const char* path, struct stat* buf);
     virtual int lstat(const char* path, struct stat* buf);
     virtual int fsetxattr(int fd, const char *name, const void *value, size_t size, int flags);
+    virtual ssize_t fgetxattr(int fd, const char *name, void *value, size_t size);
     virtual int ioctl(int fd, unsigned long request, void *arg) = 0;
 };
 
@@ -82,6 +83,7 @@ public:
     MOCK_METHOD2(stat, int(const char*, struct stat*));
     MOCK_METHOD2(lstat, int(const char*, struct stat*));
     MOCK_METHOD5(fsetxattr, int(int, const char *, const void *, size_t, int));
+    MOCK_METHOD4(fgetxattr, ssize_t(int, const char *, void *, size_t));
     MOCK_METHOD3(ioctl, int(int fd, unsigned long request, void *arg));
 
 public:

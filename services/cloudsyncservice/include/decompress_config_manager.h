@@ -28,6 +28,7 @@ public:
     
     std::vector<std::string> GetUnsupportedList();
     bool GetSystemFeature();
+    bool GetCrossFsConfig();
     
     void SetConfigDir(const std::string& configDir);
 
@@ -37,6 +38,7 @@ private:
 
     std::pair<bool, std::vector<std::string>> ParseUnsupportedList(const std::string &filePath);
     std::pair<bool, bool> ParseSystemFeature(const std::string &filePath);
+    std::pair<bool, bool> ParseCrossFsConfig(const std::string &filePath);
     
     static constexpr const char* SYSTEM_CONFIG_DIR = "/system/etc/decompress_config";
     static constexpr const char* DEFAULT_CONFIG_DIR = "/data/service/el1/public/cloudfile/decompress_config";

@@ -41,6 +41,10 @@ namespace CloudSync {
 using namespace std;
 
 static const std::string PHOTOS_KEY = "persist.kernel.bundle_name.photos";
+static const std::string NEW_CACHE_BASE_PREFIX = "/data/app/el2/";
+static const std::string NEW_CACHE_MID_PATH = "/base/";
+static const std::string NEW_CACHE_HAP_PATH = "/haps/phone_photos/cache";
+static const std::string NEW_CACHE_DIR = "/.video_cache";
 static const std::string PERIODIC_CLEAN_KEY = "clean_dentry_file_once";
 static const std::string GLOBAL_CONFIG_FILE_PATH = "globalConfig.xml";
 static constexpr uint32_t STAT_MODE_DIR = 0771;
@@ -124,6 +128,14 @@ int32_t PeriodicCleanTask::PeriodicCleanTempDir(int32_t userId)
     std::string tmpVideoCache = ".video_cache_tmp_";
     if (CleanTempDir(videoCache, tmpVideoCache) == E_STOP) {
         LOGE("clean temp video_cache stop");
+        return E_STOP;
+    }
+
+    // clean new cache dir temp files
+    std::string newVideoCacheBase = NEW_CACHE_BASE_PREFIX + userIdStr + NEW_CACHE_MID_PATH +
+        photoBundleName + NEW_CACHE_HAP_PATH;
+    if (CleanTempDir(newVideoCacheBase, tmpVideoCache) == E_STOP) {
+        LOGE("clean temp new video_cache stop");
         return E_STOP;
     }
 
@@ -256,6 +268,15 @@ int32_t PeriodicCleanTask::RenameCacheDir(int32_t userId)
     std::string videoCache =
         "/mnt/hmdfs/" + userIdStr + "/account/device_view/local/data/" + photoBundleName + "/.video_cache";
     ret = RenameTempDir(videoCache, "_tmp_" + curTime);
+    if (ret != E_OK) {
+        return E_RENAME_FAIL;
+    }
+
+    // rename new cache dir
+    std::string newVideoCache =
+        NEW_CACHE_BASE_PREFIX + userIdStr + NEW_CACHE_MID_PATH +
+        photoBundleName + NEW_CACHE_HAP_PATH + NEW_CACHE_DIR;
+    ret = RenameTempDir(newVideoCache, "_tmp_" + curTime);
     if (ret != E_OK) {
         return E_RENAME_FAIL;
     }

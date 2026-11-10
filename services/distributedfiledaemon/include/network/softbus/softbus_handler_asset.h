@@ -85,6 +85,8 @@ private:
     int32_t AssetBindCheck(const std::string &dstNetworkId, int32_t userId);
 
     bool IsDir(const std::string &path);
+    bool HasSymlinkInPath(const std::string &filenameWithPath, const std::string &dir);
+    bool WriteZipContentToFile(unzFile unZipFile, const std::string &filenameWithPath);
     std::string ExtractFile(unzFile unZipFile, const std::string &dir);
     std::mutex clientInfoMutex_;
     std::map<int32_t, std::string> clientInfoMap_;

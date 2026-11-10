@@ -15,6 +15,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <initializer_list>
 
 #include "cloud_file_sync_service_interface_code.h"
 #include "cloud_sync_service_stub.h"
@@ -37,7 +38,7 @@ public:
                  int32_t(const sptr<IRemoteObject> &remoteObject, const std::string &bundleName));
     MOCK_METHOD1(UnRegisterCallbackInner, int32_t(const std::string &bundleName));
     MOCK_METHOD1(UnRegisterFileSyncCallbackInner, int32_t(const std::string &bundleName));
-    MOCK_METHOD2(StartSyncInner, int32_t(bool forceFlag, const std::string &bundleName));
+    MOCK_METHOD2(StartSyncInner, int32_t(int32_t type, const std::string &bundleName));
     MOCK_METHOD2(StartFileSyncInner, int32_t(bool forceFlag, const std::string &bundleName));
     MOCK_METHOD2(TriggerSyncInner, int32_t(const std::string &bundleName, const int32_t &userId));
     MOCK_METHOD2(StopSyncInner, int32_t(const std::string &bundleName, bool forceFlag));
@@ -414,7 +415,8 @@ HWTEST_F(CloudSyncServiceStubTest, HandleStartSyncInnerTest, TestSize.Level1)
         string bundleName = "";
         MockService service;
         int32_t userId = 100;
-        EXPECT_CALL(service, StartSyncInner(_, bundleName)).WillOnce(Return(E_OK));
+        EXPECT_CALL(service, StartSyncInner(static_cast<int32_t>(SyncMode::FORCE), bundleName))
+            .WillOnce(Return(E_OK));
         MessageParcel data;
         MessageParcel reply;
         MessageOption option;
@@ -422,8 +424,8 @@ HWTEST_F(CloudSyncServiceStubTest, HandleStartSyncInnerTest, TestSize.Level1)
         EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
         EXPECT_TRUE(data.WriteInterfaceToken(ICloudSyncService::GetDescriptor()));
 
-        bool forceFlag = true;
-        EXPECT_TRUE(data.WriteBool(forceFlag));
+        int32_t type = static_cast<int32_t>(SyncMode::FORCE);
+        EXPECT_TRUE(data.WriteInt32(type));
 
         EXPECT_TRUE(data.WriteString(bundleName));
 
@@ -435,6 +437,31 @@ HWTEST_F(CloudSyncServiceStubTest, HandleStartSyncInnerTest, TestSize.Level1)
         GTEST_LOG_(INFO) << " HandleStartSyncInner ERROR";
     }
     GTEST_LOG_(INFO) << "HandleStartSyncInner End";
+}
+
+/**
+ * @tc.name: HandleStartSyncInnerModeTest
+ * @tc.desc: Verify NORMAL and FORCE_THM are read as int32 values by the IPC stub.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceStubTest, HandleStartSyncInnerModeTest, TestSize.Level1)
+{
+    MockService service;
+    EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).Times(2).WillRepeatedly(Return(true));
+    EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).Times(2).WillRepeatedly(Return(true));
+    for (auto mode : {SyncMode::NORMAL, SyncMode::FORCE_THM}) {
+        MessageParcel data;
+        MessageParcel reply;
+        MessageOption option;
+        EXPECT_TRUE(data.WriteInterfaceToken(ICloudSyncService::GetDescriptor()));
+        EXPECT_TRUE(data.WriteInt32(static_cast<int32_t>(mode)));
+        EXPECT_TRUE(data.WriteString(""));
+        EXPECT_CALL(service, StartSyncInner(static_cast<int32_t>(mode), "")).WillOnce(Return(E_OK));
+        EXPECT_EQ(service.OnRemoteRequest(
+            static_cast<uint32_t>(CloudFileSyncServiceInterfaceCode::SERVICE_CMD_START_SYNC), data, reply, option),
+            E_OK);
+    }
 }
 
 /**

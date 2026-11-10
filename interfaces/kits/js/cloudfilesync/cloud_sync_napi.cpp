@@ -483,8 +483,158 @@ napi_value CloudSyncNapi::Start(napi_env env, napi_callback_info info)
 
     std::string procedureName = "Start";
     std::string taskName = "cloudSync.GallerySync.start";
-    auto asyncWork = GetPromiseOrCallBackWork(env, funcArg, static_cast<size_t>(NARG_CNT::TWO), taskName);
+    auto asyncWork = GetPromiseOrCallBackWork(env, funcArg, static_cast<size_t>(NARG_CNT::ONE), taskName);
     return asyncWork == nullptr ? nullptr : asyncWork->Schedule(procedureName, cbExec, cbComplete).val_;
+}
+
+static bool GetSyncMode(napi_env env, napi_value value, SyncMode &type)
+{
+    NVal arg(env, value);
+    if (!arg.TypeIs(napi_number)) {
+        LOGE("Sync type must be a number");
+        return false;
+    }
+    auto [succ, mode] = arg.ToDouble();
+    if (!succ) {
+        LOGE("Failed to parse sync type");
+        return false;
+    }
+    if (mode != SYNC_TYPE_FORCE_THM) {
+        LOGE("Unsupported sync type");
+        return false;
+    }
+    type = SyncMode::FORCE_THM;
+    return true;
+}
+
+static void DeleteStartWithTypeCallbackRef(napi_env env, napi_ref callbackRef)
+{
+    napi_status status = napi_delete_reference(env, callbackRef);
+    if (status != napi_ok) {
+        LOGE("StartWithType failed to delete callback reference, status: %{public}d", status);
+    }
+}
+
+static void InvokeStartWithTypeCallback(napi_env env, napi_ref callbackRef)
+{
+    napi_handle_scope scope = nullptr;
+    napi_status status = napi_open_handle_scope(env, &scope);
+    if (status != napi_ok || scope == nullptr) {
+        LOGE("StartWithType failed to open callback scope, status: %{public}d", status);
+        DeleteStartWithTypeCallbackRef(env, callbackRef);
+        return;
+    }
+
+    napi_value callback = nullptr;
+    napi_value global = nullptr;
+    status = napi_get_reference_value(env, callbackRef, &callback);
+    if (status == napi_ok && callback != nullptr) {
+        status = napi_get_global(env, &global);
+    }
+    if (status == napi_ok && global != nullptr) {
+        napi_value result = NVal::CreateUndefined(env).val_;
+        napi_value callbackResult = nullptr;
+        status = napi_call_function(env, global, callback, ARGS_ONE, &result, &callbackResult);
+    }
+    if (status != napi_ok || callback == nullptr || global == nullptr) {
+        LOGE("StartWithType failed to invoke callback, status: %{public}d, callback null: %{public}d, "
+            "global null: %{public}d", status, callback == nullptr, global == nullptr);
+    }
+    DeleteStartWithTypeCallbackRef(env, callbackRef);
+    status = napi_close_handle_scope(env, scope);
+    if (status != napi_ok) {
+        LOGE("StartWithType failed to close callback scope, status: %{public}d", status);
+    }
+}
+
+static napi_value StartWithTypeByCallback(napi_env env, napi_value callback, SyncMode type, const string &bundleName)
+{
+    napi_ref callbackRef = nullptr;
+    napi_status status = napi_create_reference(env, callback, 1, &callbackRef);
+    if (status != napi_ok || callbackRef == nullptr) {
+        LOGE("StartWithType failed to create callback reference, status: %{public}d", status);
+        NError(Convert2JsErrNum(E_SERVICE_INNER_ERROR)).ThrowErr(env);
+        return nullptr;
+    }
+
+    // Callback<void> cannot carry a service error, so return it as a synchronous exception.
+    int32_t ret = CloudSyncManager::GetInstance().StartSync(type, bundleName);
+    if (ret != E_OK) {
+        LOGE("StartWithType failed, result: %{public}d", ret);
+        MetricsError("CoreFileKit.cloudSync.Dyn.GallerySync.startWithType.Err", ret);
+        DeleteStartWithTypeCallbackRef(env, callbackRef);
+        NError(Convert2JsErrNum(ret)).ThrowErr(env);
+        return nullptr;
+    }
+
+    auto task = [env, callbackRef]() { InvokeStartWithTypeCallback(env, callbackRef); };
+    status = napi_send_event(env, task, napi_event_priority::napi_eprio_immediate,
+        "cloudSync.GallerySync.startWithType");
+    if (status != napi_ok) {
+        LOGE("StartWithType failed to schedule callback, status: %{public}d", status);
+        DeleteStartWithTypeCallbackRef(env, callbackRef);
+        NError(Convert2JsErrNum(E_SERVICE_INNER_ERROR)).ThrowErr(env);
+        return nullptr;
+    }
+    return NVal::CreateUndefined(env).val_;
+}
+
+static napi_value ScheduleStartWithType(napi_env env, const NFuncArg &funcArg, SyncMode type, const string &bundleName)
+{
+    auto cbExec = [bundleName, type]() -> NError {
+        int32_t ret = CloudSyncManager::GetInstance().StartSync(type, bundleName);
+        if (ret != E_OK) {
+            LOGE("StartWithType failed, result: %{public}d", ret);
+            MetricsError("CoreFileKit.cloudSync.Dyn.GallerySync.startWithType.Err", ret);
+            return NError(Convert2JsErrNum(ret));
+        }
+        return NError(ERRNO_NOERR);
+    };
+
+    auto cbComplete = [](napi_env env, NError err) -> NVal {
+        if (err) {
+            return {env, err.GetNapiErr(env)};
+        }
+        return NVal::CreateUndefined(env);
+    };
+
+    std::string procedureName = "StartWithType";
+    NVal thisVar(env, funcArg.GetThisVar());
+    auto result = NAsyncWorkPromise(env, thisVar).Schedule(procedureName, cbExec, cbComplete);
+    if (result.val_ == nullptr) {
+        LOGE("Failed to schedule StartWithType promise work");
+    }
+    return result.val_;
+}
+
+napi_value CloudSyncNapi::StartWithType(napi_env env, napi_callback_info info)
+{
+    NFuncArg funcArg(env, info);
+    if (!funcArg.InitArgs(NARG_CNT::ONE, NARG_CNT::TWO)) {
+        LOGE("StartWithType requires a sync type and an optional callback");
+        NError(E_PARAMS).ThrowErr(env);
+        return nullptr;
+    }
+    bool hasCallback = funcArg.GetArgc() == NARG_CNT::TWO;
+    if (hasCallback && !NVal(env, funcArg[NARG_POS::FIRST]).TypeIs(napi_function)) {
+        LOGE("StartWithType callback must be a function");
+        NError(E_PARAMS).ThrowErr(env);
+        return nullptr;
+    }
+    napi_value typeArg = funcArg[hasCallback ? NARG_POS::SECOND : NARG_POS::FIRST];
+    SyncMode type = SyncMode::FORCE_THM;
+    if (!GetSyncMode(env, typeArg, type)) {
+        NError(E_PARAMS).ThrowErr(env);
+        return nullptr;
+    }
+
+    LOGI("StartWithType hasCallback: %{public}d, type: %{public}d", hasCallback, type);
+    string bundleName = GetBundleName(env, funcArg);
+    if (hasCallback) {
+        return StartWithTypeByCallback(env, funcArg[NARG_POS::FIRST], type, bundleName);
+    } else {
+        return ScheduleStartWithType(env, funcArg, type, bundleName);
+    }
 }
 
 napi_value CloudSyncNapi::Stop(napi_env env, napi_callback_info info)
@@ -515,7 +665,7 @@ napi_value CloudSyncNapi::Stop(napi_env env, napi_callback_info info)
 
     std::string procedureName = "Stop";
     std::string taskName = "cloudSync.GallerySync.stop";
-    auto asyncWork = GetPromiseOrCallBackWork(env, funcArg, static_cast<size_t>(NARG_CNT::TWO), taskName);
+    auto asyncWork = GetPromiseOrCallBackWork(env, funcArg, static_cast<size_t>(NARG_CNT::ONE), taskName);
     return asyncWork == nullptr ? nullptr : asyncWork->Schedule(procedureName, cbExec, cbComplete).val_;
 }
 
@@ -569,7 +719,7 @@ static bool CheckIsValidUri(Uri uri)
         LOGE("sandboxPath is not equal to realPath");
         return false;
     }
-    if (sandboxPath.find("/data/storage/el2/cloud") != 0) {
+    if (sandboxPath.find("/data/storage/el2/cloud/") != 0) {
         LOGE("not surported uri");
         return false;
     }
@@ -775,6 +925,7 @@ bool CloudSyncNapi::Export()
         NVal::DeclareNapiFunction("on", OnCallback),
         NVal::DeclareNapiFunction("off", OffCallback),
         NVal::DeclareNapiFunction("start", Start),
+        NVal::DeclareNapiFunction("startWithType", StartWithType),
         NVal::DeclareNapiFunction("stop", Stop),
         NVal::DeclareNapiFunction("getCoreFileSyncState", GetCoreFileSyncState),
         NVal::DeclareNapiFunction("getFileSyncState", GetFileSyncState),
@@ -1082,14 +1233,22 @@ napi_value CloudSyncNapi::GetBatchFileSyncState(const napi_env &env, const NFunc
         return nullptr;
     }
 
-    auto [succ, uris, ignore] = arrayVal.ToStringArray();
-    auto ctx = std::make_shared<BatchContext>();
-    ctx->uriList.swap(uris);
-    if (ctx->uriList.size() > GET_FILE_SYNC_MAX) {
+    uint32_t arrayLen = 0;
+    napi_status status = napi_get_array_length(env, arrayVal.val_, &arrayLen);
+    if (status != napi_ok || arrayLen > static_cast<uint32_t>(GET_FILE_SYNC_MAX)) {
         LOGE("The parameter is too long");
         NError(E_PARAMS).ThrowErr(env);
         return nullptr;
     }
+
+    auto [succ, uris, ignore] = arrayVal.ToStringArray();
+    if (!succ) {
+        LOGE("ToStringArray failed");
+        NError(E_PARAMS).ThrowErr(env);
+        return nullptr;
+    }
+    auto ctx = std::make_shared<BatchContext>();
+    ctx->uriList.swap(uris);
 
     auto cbExec = [env, ctx]() ->NError {
         int32_t result = 0;

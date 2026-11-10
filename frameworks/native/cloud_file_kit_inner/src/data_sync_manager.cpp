@@ -25,7 +25,7 @@ using namespace std;
 
 int32_t DataSyncManager::TriggerStartSync(const std::string &bundleName,
                                           const int32_t userId,
-                                          bool forceFlag,
+                                          SyncMode type,
                                           SyncTriggerType triggerType,
                                           std::string prepareTraceId)
 {
@@ -331,6 +331,11 @@ int32_t DataSyncManager::PauseUpload(const BundleNameUserInfo &bundleNameUserInf
 }
 
 int32_t DataSyncManager::ResumeUpload(const BundleNameUserInfo &bundleNameUserInfo, const std::string &uri)
+{
+    return E_OK;
+}
+
+int32_t DataSyncManager::GetDefaultWeakNetConfig()
 {
     return E_OK;
 }

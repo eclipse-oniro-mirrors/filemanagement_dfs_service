@@ -97,7 +97,7 @@ void CloudDiskSyncHelper::OnTriggerSyncCallback(const std::string &bundleName, c
         triggerInfoMap_.erase(keyId);
     }
     LOGI("CloudDiskSyncHelper trigger sync, bundleName: %{public}s, userId: %{public}d",
-         bundleName.c_str(), userId);
+        bundleName.c_str(), userId);
     int32_t ret = CloudSync::CloudSyncManagerLite::GetInstance().TriggerSync(bundleName, userId);
     if (ret != 0) {
         LOGE("CloudSyncManagerLite::TriggerSync err %{public}d", ret);

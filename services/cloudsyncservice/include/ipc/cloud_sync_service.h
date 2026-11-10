@@ -33,6 +33,7 @@
 #include "sync_rule/battery_status_listener.h"
 #include "sync_rule/screen_status_listener.h"
 #include "sync_rule/user_status_listener.h"
+#include "sync_rule/network_signal_strength_listener.h"
 
 namespace OHOS::FileManagement::CloudSync {
 class CloudSyncService final : public SystemAbility, public CloudSyncServiceStub, protected NoCopyable {
@@ -54,7 +55,7 @@ public:
     ErrCode RegisterFileSyncCallbackInner(const sptr<IRemoteObject> &remoteObject,
                                           const std::string &callbackId = "",
                                           const std::string &bundleName = "") override;
-    ErrCode StartSyncInner(bool forceFlag, const std::string &bundleName = "") override;
+    ErrCode StartSyncInner(int32_t type, const std::string &bundleName = "") override;
     ErrCode StartFileSyncInner(bool forceFlag, const std::string &bundleName = "") override;
     ErrCode TriggerSyncInner(const std::string &bundleName, int32_t userId) override;
     ErrCode StopSyncInner(const std::string &bundleName = "", bool forceFlag = false) override;
@@ -144,6 +145,7 @@ public:
     ErrCode ResumeUpload(const std::string &uri) override;
     ErrCode GetDecompressUnsupportedList(std::vector<std::string> &unsupportedList) override;
     ErrCode GetDecompressSystemFeature(bool &systemFeature) override;
+    ErrCode GetDecompressCrossFsConfig(bool &crossFsConfig) override;
 private:
     std::string GetHmdfsPath(const std::string &uri, int32_t userId);
     void OnStart(const SystemAbilityOnDemandReason &startReason) override;
@@ -176,6 +178,7 @@ private:
     std::shared_ptr<UserStatusListener> userStatusListener_;
     std::shared_ptr<BatteryStatusListener> batteryStatusListener_;
     std::shared_ptr<ScreenStatusListener> screenStatusListener_;
+    std::shared_ptr<NetworkSignalStrengthListener> networkSignalStrengthListener_;
     std::shared_ptr<FileTransferManager> fileTransferManager_;
     sptr<SvcDeathRecipient> deathRecipient_;
     static inline std::map<std::string, sptr<OHOS::IRemoteObject>> remoteObjectMap_;

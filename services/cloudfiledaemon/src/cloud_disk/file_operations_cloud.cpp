@@ -36,6 +36,7 @@
 #include "file_operations_helper.h"
 #include "fuse_ioctl.h"
 #include "hitrace_meter.h"
+#include "recycle_size_cache.h"
 #include "securec.h"
 #include "utils_log.h"
 
@@ -983,6 +984,10 @@ static int32_t GetChildInfos(fuse_req_t req, fuse_ino_t ino, vector<CloudDiskFil
     string parentCloudId = inoPtr->cloudId;
 
     DatabaseManager &databaseManager = DatabaseManager::GetInstance();
+    if (!databaseManager.IsBundleCloudSyncEnabled(data->userId, inoPtr->bundleName)) {
+        LOGI("bundle not cloud-enabled, skip readdir rdb: %{public}s", inoPtr->bundleName.c_str());
+        return 0;
+    }
     shared_ptr<CloudDiskRdbStore> rdbStore = databaseManager.GetRdbStore(inoPtr->bundleName, data->userId);
     int32_t err = rdbStore->ReadDir(parentCloudId, childInfos);
     if (err != 0) {
@@ -1571,6 +1576,31 @@ void RDBUnlinkAsync(shared_ptr<CloudDiskRdbStore> rdbStore, const string& cloudI
     ffrt::thread(rdbUnlink).detach();
 }
 
+int32_t TryUnlinkLocalFile(struct CloudDiskFuseData *data, const shared_ptr<CloudDiskInode> &parentInode,
+    const MetaBase &metaBase, const shared_ptr<CloudDiskMetaFile> &metaFile)
+{
+    int32_t isDirectory = S_ISDIR(metaBase.mode);
+    int32_t position = metaBase.position;
+    if (isDirectory != FILE || position == CLOUD) {
+        return 0;
+    }
+    string localPath = CloudFileUtils::GetLocalFilePath(metaBase.cloudId, parentInode->bundleName, data->userId);
+    LOGI("unlink %{public}s", GetAnonyString(localPath).c_str());
+    int32_t ret = unlink(localPath.c_str());
+    if (ret != 0 && errno == ENOENT) {
+        std::string errMsg = "doCloudUnlink, unlink local file ret ENOENT.";
+        CLOUD_FILE_FAULT_REPORT(CloudFileFaultInfo{parentInode->bundleName, CloudFile::FaultOperation::UNLINK,
+            CloudFile::FaultType::WARNING, errno, errMsg});
+    } else if (ret != 0) {
+        CLOUD_FILE_FAULT_REPORT(CloudFile::CloudFileFaultInfo{parentInode->bundleName,
+            CloudFile::FaultOperation::UNLINK, CloudFile::FaultType::FILE, errno,
+            "Failed to unlink cloudId:" + metaBase.cloudId + ", errno: " + std::to_string(errno)});
+        (void)metaFile->DoCreate(metaBase);
+        return errno;
+    }
+    return 0;
+}
+
 int32_t DoCloudUnlink(fuse_req_t req, fuse_ino_t parent, const char *name)
 {
     HITRACE_METER_NAME(HITRACE_TAG_FILEMANAGEMENT, __PRETTY_FUNCTION__);
@@ -1593,8 +1623,6 @@ int32_t DoCloudUnlink(fuse_req_t req, fuse_ino_t parent, const char *name)
         return ret;
     }
     string cloudId = metaBase.cloudId;
-    int32_t isDirectory = S_ISDIR(metaBase.mode);
-    int32_t position = metaBase.position;
     int32_t noUpload = metaBase.noUpload;
     if (int32_t ret = metaFile->DoRemove(metaBase); ret != 0) {
         CLOUD_FILE_FAULT_REPORT(CloudFile::CloudFileFaultInfo{parentInode->bundleName,
@@ -1603,21 +1631,12 @@ int32_t DoCloudUnlink(fuse_req_t req, fuse_ino_t parent, const char *name)
         return ret;
     }
     LOGD("doUnlink, dentry file has been deleted");
-    if (isDirectory == FILE && position != CLOUD) {
-        string localPath = CloudFileUtils::GetLocalFilePath(cloudId, parentInode->bundleName, data->userId);
-        LOGI("unlink %{public}s", GetAnonyString(localPath).c_str());
-        int32_t ret = unlink(localPath.c_str());
-        if (ret != 0 && errno == ENOENT) {
-            std::string errMsg = "doCloudUnlink, unlink local file ret ENOENT.";
-            CLOUD_FILE_FAULT_REPORT(CloudFileFaultInfo{parentInode->bundleName, CloudFile::FaultOperation::UNLINK,
-                CloudFile::FaultType::WARNING, errno, errMsg});
-        } else if (ret != 0) {
-            CLOUD_FILE_FAULT_REPORT(CloudFile::CloudFileFaultInfo{parentInode->bundleName,
-                CloudFile::FaultOperation::UNLINK, CloudFile::FaultType::FILE, errno,
-                "Failed to unlink cloudId:" + cloudId + ", errno: " + std::to_string(errno)});
-            (void)metaFile->DoCreate(metaBase);
-            return errno;
-        }
+    int32_t localRet = TryUnlinkLocalFile(data, parentInode, metaBase, metaFile);
+    if (localRet != 0) {
+        return localRet;
+    }
+    if (parent == RECYCLE_LOCAL_ID) {
+        RecycleSizeCache::DecreaseRecycleBinSize(data->userId, parentInode->bundleName, metaBase);
     }
     RDBUnlinkAsync(rdbStore, cloudId, noUpload);
     return 0;

@@ -26,6 +26,7 @@ public:
     static void CloudSyncOff0(ani_env *env, ani_object object, ani_object fun);
     static void CloudSyncOff1(ani_env *env, ani_object object);
     static void CloudSyncStart(ani_env *env, ani_object object);
+    static void CloudSyncStartWithType(ani_env *env, ani_object object, ani_enum_item type);
     static void CloudSyncStop(ani_env *env, ani_object object);
     static void OptimizeStorage(ani_env *env, ani_class clazz);
     static void StartOptimizeStorage(ani_env *env, ani_class clazz, ani_object optim, ani_object fun);

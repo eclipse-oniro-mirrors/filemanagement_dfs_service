@@ -21,6 +21,7 @@
 #include "datashare_result_set_mock.h"
 #include "dfs_error.h"
 #include "os_account_manager_mock_ext.h"
+#include "parameters.h"
 #include "service_registry_mock.h"
 #include "settings_data_manager.h"
 
@@ -337,8 +338,10 @@ HWTEST_F(SettingsDataManagerTest, QueryParamInSettingsDataTest002, TestSize.Leve
         DataShareResultSetMock::proxy_ = nullptr;
         std::shared_ptr<DataShareHelper> dataShareHelper = std::make_shared<DataShareHelper>();
         std::shared_ptr<DataShareResultSet> resultSet = std::make_shared<DataShareResultSet>();
-        EXPECT_CALL(*dataShareHelperMock_, Creator(_, _, _)).WillOnce(Return(dataShareHelper));
-        EXPECT_CALL(*dataShareHelperMock_, Query(_, _, _, _)).WillOnce(Return(resultSet));
+        const auto expectedUri = SettingsDataManager::GetSettingsDataUri("");
+        EXPECT_CALL(*dataShareHelperMock_, Creator(expectedUri, _, _)).WillOnce(Return(dataShareHelper));
+        EXPECT_CALL(*dataShareHelperMock_, Query(Property(&Uri::ToString, expectedUri), _, _, _))
+            .WillOnce(Return(resultSet));
         std::string key = "";
         std::string value;
         int32_t ret = SettingsDataManager::QueryParamInSettingsData(key, value);
@@ -488,8 +491,10 @@ HWTEST_F(SettingsDataManagerTest, QueryParamInUserSettingsDataTest002, TestSize.
         DataShareResultSetMock::proxy_ = nullptr;
         std::shared_ptr<DataShareHelper> dataShareHelper = std::make_shared<DataShareHelper>();
         std::shared_ptr<DataShareResultSet> resultSet = std::make_shared<DataShareResultSet>();
-        EXPECT_CALL(*dataShareHelperMock_, Creator(_, _, _)).WillOnce(Return(dataShareHelper));
-        EXPECT_CALL(*dataShareHelperMock_, Query(_, _, _, _)).WillOnce(Return(resultSet));
+        const auto expectedUri = SettingsDataManager::GetUserSettingsDataUri("");
+        EXPECT_CALL(*dataShareHelperMock_, Creator(expectedUri, _, _)).WillOnce(Return(dataShareHelper));
+        EXPECT_CALL(*dataShareHelperMock_, Query(Property(&Uri::ToString, expectedUri), _, _, _))
+            .WillOnce(Return(resultSet));
         std::string key = "";
         std::string value;
         int32_t ret = SettingsDataManager::QueryParamInUserSettingsData(key, value);
@@ -1520,8 +1525,10 @@ HWTEST_F(SettingsDataManagerTest, RegisterObserverTest002, TestSize.Level1)
     GTEST_LOG_(INFO) << "RegisterObserverTest002 Start";
     try {
         std::shared_ptr<DataShareHelper> dataShareHelper = std::make_shared<DataShareHelper>();
-        EXPECT_CALL(*dataShareHelperMock_, Creator(_, _, _)).WillOnce(Return(dataShareHelper));
-        EXPECT_CALL(*dataShareHelperMock_, RegisterObserver(_, _)).WillOnce(Return(E_OK));
+        const auto expectedUri = SettingsDataManager::GetSettingsDataUri("");
+        EXPECT_CALL(*dataShareHelperMock_, Creator(expectedUri, _, _)).WillOnce(Return(dataShareHelper));
+        EXPECT_CALL(*dataShareHelperMock_, RegisterObserver(Property(&Uri::ToString, expectedUri), _))
+            .WillOnce(Return(E_OK));
         SettingsDataManager::observerMap_.Clear();
         SettingsDataManager::RegisterObserver("");
         EXPECT_TRUE(!SettingsDataManager::observerMap_.IsEmpty());
@@ -1567,8 +1574,10 @@ HWTEST_F(SettingsDataManagerTest, RegisterObserverTest005, TestSize.Level1)
     GTEST_LOG_(INFO) << "RegisterObserverTest005 Start";
     try {
         std::shared_ptr<DataShareHelper> dataShareHelper = std::make_shared<DataShareHelper>();
-        EXPECT_CALL(*dataShareHelperMock_, Creator(_, _, _)).WillOnce(Return(dataShareHelper));
-        EXPECT_CALL(*dataShareHelperMock_, RegisterObserver(_, _)).WillOnce(Return(E_OK));
+        const auto expectedUri = SettingsDataManager::GetUserSettingsDataUri("");
+        EXPECT_CALL(*dataShareHelperMock_, Creator(expectedUri, _, _)).WillOnce(Return(dataShareHelper));
+        EXPECT_CALL(*dataShareHelperMock_, RegisterObserver(Property(&Uri::ToString, expectedUri), _))
+            .WillOnce(Return(E_OK));
         sptr<SettingsDataObserver> dataObserver(new (std::nothrow) SettingsDataObserver("key"));
         SettingsDataManager::RegisterObserver("", dataObserver);
     } catch (...) {
@@ -1633,8 +1642,9 @@ HWTEST_F(SettingsDataManagerTest, UnregisterDemonObserverTest003, TestSize.Level
     GTEST_LOG_(INFO) << "UnregisterDemonObserverTest003 Start";
     try {
         std::shared_ptr<DataShareHelper> dataShareHelper = std::make_shared<DataShareHelper>();
-        EXPECT_CALL(*dataShareHelperMock_, Creator(_, _, _)).WillOnce(Return(dataShareHelper));
         std::string key = "key1";
+        const auto expectedUri = SettingsDataManager::GetUserSettingsDataUri(key);
+        EXPECT_CALL(*dataShareHelperMock_, Creator(expectedUri, _, _)).WillOnce(Return(dataShareHelper));
         sptr<SettingsDataObserver> dataObserver(new (std::nothrow) SettingsDataObserver(key));
         SettingsDataManager::UnregisterDemonObserver(key, dataObserver);
     } catch (...) {
@@ -1670,8 +1680,9 @@ HWTEST_F(SettingsDataManagerTest, UnregisterObserverTest002, TestSize.Level1)
     GTEST_LOG_(INFO) << "UnregisterObserverTest002 Start";
     try {
         std::shared_ptr<DataShareHelper> dataShareHelper = std::make_shared<DataShareHelper>();
-        EXPECT_CALL(*dataShareHelperMock_, Creator(_, _, _)).WillOnce(Return(dataShareHelper));
         std::string key = "key1";
+        const auto expectedUri = SettingsDataManager::GetSettingsDataUri(key);
+        EXPECT_CALL(*dataShareHelperMock_, Creator(expectedUri, _, _)).WillOnce(Return(dataShareHelper));
         sptr<SettingsDataObserver> dataObserver(new (std::nothrow) SettingsDataObserver(key));
         SettingsDataManager::observerMap_.EnsureInsert(key, dataObserver);
         SettingsDataManager::UnregisterObserver(key);
@@ -1882,5 +1893,26 @@ HWTEST_F(SettingsDataManagerTest, OnUserSwitchedTest002, TestSize.Level1)
     }
 
     GTEST_LOG_(INFO) << "OnUserSwitchedTest002 End";
+}
+
+/**
+ * @tc.name: GetShareAlbumSwitchStatusTest001
+ * @tc.desc: Verify helper creation and query use the same URI with the requested user ID.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(SettingsDataManagerTest, GetShareAlbumSwitchStatusTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetShareAlbumSwitchStatusTest001 Start";
+    constexpr int32_t userId = 100;
+    const std::string expectedUri = "datashareproxy://" +
+        system::GetParameter("persist.kernel.bundle_name.clouddrive", "") +
+        "/sync_switch?user=" + std::to_string(userId);
+    auto dataShareHelper = std::make_shared<DataShareHelper>();
+    EXPECT_CALL(*dataShareHelperMock_, Creator(expectedUri, _, _)).WillOnce(Return(dataShareHelper));
+    EXPECT_CALL(*dataShareHelperMock_, Query(Property(&Uri::ToString, expectedUri), _, _, _))
+        .WillOnce(Return(nullptr));
+    EXPECT_EQ(SettingsDataManager::GetShareAlbumSwitchStatus(userId), SwitchStatus::NONE);
+    GTEST_LOG_(INFO) << "GetShareAlbumSwitchStatusTest001 End";
 }
 }

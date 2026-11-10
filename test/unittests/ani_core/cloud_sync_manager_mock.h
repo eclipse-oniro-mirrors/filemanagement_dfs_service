@@ -33,6 +33,7 @@ public:
     MOCK_METHOD1(UnRegisterCallback, int32_t(const CallbackInfo &callbackInfo));
     MOCK_METHOD1(UnRegisterFileSyncCallback, int32_t(const CallbackInfo &callbackInfo));
     MOCK_METHOD1(StartSync, int32_t(const std::string &bundleName));
+    MOCK_METHOD2(StartSync, int32_t(SyncMode type, const std::string &bundleName));
     MOCK_METHOD1(StartFileSync, int32_t(const std::string &bundleName));
     MOCK_METHOD2(StartSync, int32_t(bool forceFlag, const std::shared_ptr<CloudSyncCallback> callback));
     MOCK_METHOD2(TriggerSync, int32_t(const std::string &bundleName, const int32_t &userId));
@@ -92,6 +93,7 @@ public:
             std::vector<XattrResult> &aclXattrResults));
     MOCK_METHOD1(IsFinishPull, int32_t(bool &finishFlag));
     MOCK_METHOD1(GetDentryFileOccupy, int32_t(int64_t &occupyNum));
+    MOCK_METHOD3(GetRecycleBinSize, int32_t(int32_t userId, const std::string &bundleName, int64_t &size));
     MOCK_METHOD2(GetDowngradeDownloadTaskState, int32_t(const std::vector<std::string> &bundleNames,
             std::vector<DowngradeProgress> &downgradeProgressList));
     MOCK_METHOD2(GetUploadList, int32_t(const std::vector<std::string> &uriVec,
@@ -110,6 +112,7 @@ public:
     MOCK_METHOD1(GetCachedTotalSize, int32_t(int64_t &totalSize));
     MOCK_METHOD1(GetDecompressUnsupportedList, int32_t(std::vector<std::string> &unsupportedList));
     MOCK_METHOD1(GetDecompressSystemFeature, int32_t(bool &systemFeature));
+    MOCK_METHOD1(GetDecompressCrossFsConfig, int32_t(bool &crossFsConfig));
 };
 } // namespace OHOS::FileManagement::CloudSync
 #endif // OHOS_FILEMGMT_CLOUD_SYNC_MANAGER_MOCK

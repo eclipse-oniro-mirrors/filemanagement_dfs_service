@@ -62,6 +62,7 @@
     # C export functions for decompress
     CloudSync_GetDecompressUnsupportedList;
     CloudSync_GetDecompressSystemFeature;
+    CloudSync_GetDecompressCrossFsConfig;
 
   local:
     *;
