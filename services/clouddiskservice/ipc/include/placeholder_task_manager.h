@@ -181,6 +181,9 @@ private:
     void ScheduleDispatch();
     void DispatchLoop();
     void ActivateAndDispatch(const std::shared_ptr<PlaceholderTaskRecord> &task);
+    int32_t PrepareHydrationResourcesLocked(const std::shared_ptr<PlaceholderTaskRecord> &task,
+                                            UniqueFd &outputFd,
+                                            HydrationFileMetadata &metadata);
     void DeadlineLoop();
     void RefreshDeadlineLocked(const std::shared_ptr<PlaceholderTaskRecord> &task);
     int32_t EnsurePartialStateLocked(const std::shared_ptr<PlaceholderTaskRecord> &task);

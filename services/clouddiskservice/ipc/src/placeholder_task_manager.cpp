@@ -736,16 +736,8 @@ void PlaceholderTaskManager::CleanOrphanHydrationTempFiles(int32_t userId)
         return;
     }
     uint32_t cleanedCount = 0;
-    while (true) {
-        errno = 0;
-        struct dirent *entry = readdir(dir);
-        if (entry == nullptr) {
-            if (errno != 0) {
-                LOGW("Read hydration temp dir for cleanup failed, dir:%{private}s, errno:%{public}d",
-                     tempDir.c_str(), errno);
-            }
-            break;
-        }
+    struct dirent *entry = nullptr;
+    for (errno = 0; (entry = readdir(dir)) != nullptr; errno = 0) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
         }
@@ -756,6 +748,9 @@ void PlaceholderTaskManager::CleanOrphanHydrationTempFiles(int32_t userId)
             continue;
         }
         ++cleanedCount;
+    }
+    if (errno != 0) {
+        LOGW("Read hydration temp dir for cleanup failed, dir:%{private}s, errno:%{public}d", tempDir.c_str(), errno);
     }
     if (closedir(dir) < 0) {
         LOGW("Close hydration temp dir failed, errno:%{public}d", errno);
@@ -814,34 +809,25 @@ void PlaceholderTaskManager::DispatchLoop()
     }
 }
 
-void PlaceholderTaskManager::ActivateAndDispatch(const std::shared_ptr<PlaceholderTaskRecord> &task)
+int32_t PlaceholderTaskManager::PrepareHydrationResourcesLocked(const std::shared_ptr<PlaceholderTaskRecord> &task,
+                                                                UniqueFd &outputFd,
+                                                                HydrationFileMetadata &metadata)
 {
-    std::lock_guard<std::mutex> fileLock(GetPlaceholderFileMutex(task->hmdfsPath));
-    std::lock_guard<std::mutex> lock(task->mutex);
-    if (task->state != PlaceholderTaskState::PENDING) {
-        return;
-    }
-
-    UniqueFd outputFd;
-    HydrationFileMetadata metadata;
     int32_t ret = OpenValidatedHydrationFile(task->mountSyncFolder, task->hmdfsPath, outputFd, metadata);
     if (ret != E_OK) {
-        LOGW(
-            "Cancel pending hydration because activation validation failed, "
-            "ret:%{public}d",
-            ret);
+        LOGW("Cancel pending hydration because activation validation failed, ret:%{public}d", ret);
         CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
-        return;
+        return ret;
     }
     if (metadata.deviceId != task->deviceId || metadata.inodeId != task->inodeId) {
         LOGW("Cancel pending hydration because file identity changed");
         CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
-        return;
+        return E_INVALID_ARG;
     }
     if (task->userId < 0) {
         LOGW("Cancel pending hydration because user identity is invalid");
         CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
-        return;
+        return E_INVALID_ARG;
     }
     // Hydration data first lands in a service-private temp file so the target file stays
     // completely untouched while chunks arrive. The temp is attached to the task before
@@ -852,11 +838,28 @@ void PlaceholderTaskManager::ActivateAndDispatch(const std::shared_ptr<Placehold
     if (ret != E_OK) {
         LOGW("Cancel pending hydration because temp file creation failed, ret:%{public}d", ret);
         CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
-        return;
+        return ret;
     }
     task->tempFd = std::move(tempFd);
     task->tempPath = std::move(tempPath);
     task->tempSize = 0;
+    return E_OK;
+}
+
+void PlaceholderTaskManager::ActivateAndDispatch(const std::shared_ptr<PlaceholderTaskRecord> &task)
+{
+    std::lock_guard<std::mutex> fileLock(GetPlaceholderFileMutex(task->hmdfsPath));
+    std::lock_guard<std::mutex> lock(task->mutex);
+    if (task->state != PlaceholderTaskState::PENDING) {
+        return;
+    }
+
+    UniqueFd outputFd;
+    HydrationFileMetadata metadata;
+    int32_t ret = PrepareHydrationResourcesLocked(task, outputFd, metadata);
+    if (ret != E_OK) {
+        return;
+    }
 
     CloudDiskCallbackReqHead reqHead{};
     reqHead.syncFolderPath = {task->syncFolder.data(), task->syncFolder.length()};
