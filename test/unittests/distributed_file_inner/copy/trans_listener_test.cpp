@@ -16,12 +16,10 @@
 #include "dfs_error.h"
 #include <copy/file_copy_manager.h>
 #include <copy/trans_listener.h>
-#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <memory>
-#include <thread>
 
 namespace OHOS::Storage::DistributedFile::Test {
 using namespace OHOS::FileManagement;
