@@ -3115,4 +3115,106 @@ int32_t CloudDiskRdbStore::UpdateTotalDownloadSize(int64_t size)
     }
     return ret;
 }
+
+/**
+ * @brief 检查指定文件的父目录是否已上传完成
+ *
+ * 功能说明：
+ * 1. 查询指定 cloudId 对应的文件的 parentCloudId
+ * 2. 若无父目录或父目录为根目录，视为已上传
+ * 3. 否则查询父目录的 DIRTY_TYPE
+ * 4. 若 DIRTY_TYPE == TYPE_SYNCED，则认为父目录已上传
+ *
+ * @param cloudId 文件的cloudId
+ * @param parentUploaded 输出参数，父目录是否已上传
+ * @return E_OK 成功，其他 失败错误码
+ */
+int32_t CloudDiskRdbStore::CheckParentUploadStatus(const std::string &cloudId, bool &parentUploaded)
+{
+    // 输出参数统一初始化为 false，保证 rdbStore_ 空指针、查询失败等所有错误路径返回时取值确定
+    parentUploaded = false;
+    RDBPTR_IS_NULLPTR(rdbStore_);
+    
+    AbsRdbPredicates predicates = AbsRdbPredicates(FileColumn::FILES_TABLE);
+    predicates.EqualTo(FileColumn::CLOUD_ID, cloudId);
+    auto resultSet = rdbStore_->QueryByStep(predicates, {FileColumn::PARENT_CLOUD_ID});
+    if (resultSet == nullptr) {
+        LOGE("CheckParentUploadStatus query result is null");
+        return E_RDB;
+    }
+    
+    std::string parentCloudId;
+    if (resultSet->GoToNextRow() == E_OK) {
+        CloudDiskRdbUtils::GetString(FileColumn::PARENT_CLOUD_ID, parentCloudId, resultSet);
+    }
+    resultSet->Close();
+
+    // 读取失败时 parentCloudId 保持为空，走空分支按"已上传"处理，避免 DB 异常阻塞上传流程
+    // ROOT_CLOUD_ID 是固定常量标识而 rootId_ 是业务实际根目录标识
+    if (parentCloudId.empty() || parentCloudId == ROOT_CLOUD_ID || parentCloudId == rootId_) {
+        parentUploaded = true;
+        return E_OK;
+    }
+
+    int32_t dirtyType = static_cast<int32_t>(DirtyType::TYPE_SYNCED);
+    int32_t ret = GetDirtyType(parentCloudId, dirtyType);
+    if (ret != E_OK) {
+        // 父目录状态查询失败时返回错误码，调用方因 checkRet != E_OK 不会跳过该记录
+        // （保守放行，上传失败由既有重试机制兜底，避免状态查询异常导致永久等待）
+        parentUploaded = false;
+        return ret;
+    }
+
+    parentUploaded = (dirtyType == static_cast<int32_t>(DirtyType::TYPE_SYNCED));
+    return E_OK;
+}
+
+/**
+ * @brief 父目录上传完成，触发等待子文件的补充上传
+ *
+ * 功能说明：
+ * 当父目录上传成功后，调用此方法查找等待该父目录的所有子文件/子目录
+ * 若存在等待的子文件，触发同步进行补充上传
+ *
+ * 使用场景：
+ * 在云盘同步服务中，父目录上传成功后调用此方法，确保子文件能被及时上传
+ *
+ * @param parentCloudId 已完成上传的父目录cloudId
+ */
+void CloudDiskRdbStore::OnParentUploadComplete(const std::string &parentCloudId)
+{
+    // RDBPTR_IS_NULLPTR 宏内嵌 return E_RDB，不适用于 void 函数，此处手写空指针保护
+    if (rdbStore_ == nullptr) {
+        LOGE("OnParentUploadComplete rdbStore_ is nullptr");
+        return;
+    }
+    LOGI("Parent upload completed: %{public}s, trigger children upload",
+         GetAnonyString(parentCloudId).c_str());
+
+    AbsRdbPredicates predicates = AbsRdbPredicates(FileColumn::FILES_TABLE);
+    predicates.EqualTo(FileColumn::PARENT_CLOUD_ID, parentCloudId);
+    predicates.NotEqualTo(FileColumn::DIRTY_TYPE,
+        std::to_string(static_cast<int32_t>(DirtyType::TYPE_SYNCED)));
+    predicates.NotEqualTo(FileColumn::DIRTY_TYPE,
+        std::to_string(static_cast<int32_t>(DirtyType::TYPE_DELETED)));
+
+    std::vector<std::string> columns = {FileColumn::CLOUD_ID};
+    auto resultSet = rdbStore_->QueryByStep(predicates, columns);
+    if (resultSet == nullptr) {
+        LOGE("OnParentUploadComplete query result is null");
+        return;
+    }
+
+    size_t childCount = 0;
+    while (resultSet->GoToNextRow() == E_OK) {
+        childCount++;
+    }
+    resultSet->Close();
+
+    if (childCount > 0) {
+        LOGI("Trigger %{public}zu children upload for parent %{public}s",
+             childCount, GetAnonyString(parentCloudId).c_str());
+        CloudDiskSyncHelper::GetInstance().RegisterTriggerSync(bundleName_, userId_);
+    }
+}
 }
