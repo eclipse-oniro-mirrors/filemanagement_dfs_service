@@ -15,6 +15,7 @@
 
 #include "copy/trans_listener.h"
 
+#include <chrono>
 #include <dirent.h>
 #include <filesystem>
 #include <random>
@@ -59,13 +60,19 @@ TransListener::~TransListener()
     RmTmpDir();
 }
 
-int32_t TransListener::WaitForCopyResult()
+int32_t TransListener::WaitForCopyResult(std::chrono::milliseconds timeout)
 {
     LOGI("WaitForCopyResult.");
     std::unique_lock<std::mutex> lock(cvMutex_);
-    cv_.wait(lock, [this]() {
+    bool finished = cv_.wait_for(lock, timeout, [this]() {
         return copyEvent_.copyResult == DFS_SUCCESS || copyEvent_.copyResult == DFS_FAILED;
     });
+    if (!finished) {
+        LOGE("WaitForCopyResult timeout.");
+        copyEvent_.copyResult = DFS_FAILED;
+        copyEvent_.errorCode = FileManagement::E_IPCSS;
+        return DFS_FAILED;
+    }
     return copyEvent_.copyResult;
 }
 

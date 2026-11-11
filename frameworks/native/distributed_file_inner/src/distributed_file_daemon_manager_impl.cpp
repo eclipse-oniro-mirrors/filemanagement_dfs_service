@@ -15,6 +15,8 @@
 
 #include "distributed_file_daemon_manager_impl.h"
 
+#include <chrono>
+
 #include "asset/asset_adapter_sa_client.h"
 #include "copy/file_copy_manager.h"
 #include "copy/file_size_utils.h"
@@ -34,6 +36,8 @@ namespace Storage {
 namespace DistributedFile {
 using namespace OHOS::Storage;
 using namespace OHOS::FileManagement;
+constexpr int32_t E_CONNECTION_FAILED = 13900045;
+constexpr auto OPEN_P2P_WAIT_TIMEOUT = std::chrono::seconds(30);
 DistributedFileDaemonManagerImpl &DistributedFileDaemonManagerImpl::GetInstance()
 {
     static DistributedFileDaemonManagerImpl instance;
@@ -82,7 +86,10 @@ int32_t DistributedFileDaemonManagerImpl::OpenP2PConnectionEx(const std::string 
         LOGE("proxy is null.");
         return OHOS::FileManagement::E_SA_LOAD_FAILED;
     }
-    openP2PConnectionExSem_.acquire();
+    if (!openP2PConnectionExSem_.try_acquire_for(OPEN_P2P_WAIT_TIMEOUT)) {
+        LOGE("OpenP2PConnectionEx wait semaphore timeout.");
+        return E_CONNECTION_FAILED;
+    }
     int32_t res = distributedFileDaemonProxy->OpenP2PConnectionEx(networkId, remoteReverseObj);
     openP2PConnectionExSem_.release();
     return res;

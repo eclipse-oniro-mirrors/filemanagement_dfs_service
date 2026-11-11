@@ -17,6 +17,7 @@
 
 #include <sstream>
 
+#include "copy/file_copy_manager.h"
 #include "copy/ipc_wrapper.h"
 #include "dfs_error.h"
 #include "ipc/distributed_file_daemon_ipc_interface_code.h"
@@ -60,8 +61,12 @@ static int32_t ReadUriInfoFromResult(const std::vector<std::string> &result,
 void DistributedFileDaemonProxy::OnRemoteSaDied(const wptr<IRemoteObject> &remote)
 {
     LOGI("dfs service death");
-    unique_lock<mutex> lock(proxyMutex_);
-    daemonProxy_ = nullptr;
+    {
+        unique_lock<mutex> lock(proxyMutex_);
+        daemonProxy_ = nullptr;
+    }
+    // Settle pending copy promises instead of leaving them pending forever.
+    FileCopyManager::GetInstance().NotifyDaemonDied();
 }
 
 void DistributedFileDaemonProxy::DaemonDeathRecipient::SetDeathRecipient(RemoteDiedHandler handler)

@@ -16,6 +16,7 @@
 #ifndef DISTRIBUTED_TRANS_LISTENER_H
 #define DISTRIBUTED_TRANS_LISTENER_H
 
+#include <chrono>
 #include <condition_variable>
 
 #include "file_trans_listener_stub.h"
@@ -42,7 +43,7 @@ public:
     int32_t OnFinished(const std::string &sessionName) override;
     int32_t OnFailed(const std::string &sessionName, int32_t errorCode) override;
 
-    int32_t WaitForCopyResult();
+    int32_t WaitForCopyResult(std::chrono::milliseconds timeout = std::chrono::minutes(5));
     int32_t CopyToSandBox(const std::string &srcUri);
     std::string GetNetworkIdFromUri(const std::string &uri);
     int32_t Cancel(const std::string &srcUri, const std::string &destUri);
