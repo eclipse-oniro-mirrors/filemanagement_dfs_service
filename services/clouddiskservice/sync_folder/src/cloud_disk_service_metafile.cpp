@@ -560,22 +560,6 @@ int32_t CloudDiskServiceMetaFile::DoRenameOld(const MetaBase &base,
     return E_OK;
 }
 
-static int32_t CheckRenameNewArgs(int fd, const MetaBase &base)
-{
-    if (fd < 0) {
-        LOGE("bad metafile fd");
-        return EINVAL;
-    }
-
-    // validate the length of name, maximum length is 52*8 byte
-    uint32_t slots = GetDentrySlots(base.name.length());
-    if (slots > DENTRY_PER_GROUP) {
-        LOGE("name is too long");
-        return ENAMETOOLONG;
-    }
-    return E_OK;
-}
-
 int32_t CloudDiskServiceMetaFile::InsertDentry(const MetaBase &base,
                                                const std::string &recordId,
                                                unsigned long &bidx,
@@ -596,6 +580,22 @@ int32_t CloudDiskServiceMetaFile::InsertDentry(const MetaBase &base,
     if (size != DENTRYGROUP_SIZE) {
         LOGD("WriteFile failed, size %d != %d", size, DENTRYGROUP_SIZE);
         return EINVAL;
+    }
+    return E_OK;
+}
+
+static int32_t CheckRenameNewArgs(int fd, const MetaBase &base)
+{
+    if (fd < 0) {
+        LOGE("bad metafile fd");
+        return EINVAL;
+    }
+
+    // validate the length of name, maximum length is 52*8 byte
+    uint32_t slots = GetDentrySlots(base.name.length());
+    if (slots > DENTRY_PER_GROUP) {
+        LOGE("name is too long");
+        return ENAMETOOLONG;
     }
     return E_OK;
 }

@@ -918,7 +918,7 @@ CloudDisk_ErrorCode OH_CloudDisk_UnregisterCallbackTable(const CloudDisk_SyncFol
  *
  * @param syncFolder [in] Indicates the sync folder with placeholder support.
  * @return Returns {@link CLOUD_DISK_OK} if the operation is successful;
- *     <br> returns an error code defined in {@link cloud_disk_error_code.h} otherwise.
+ *     <br> returns an error code defined in {@link CloudDisk_ErrorCode} otherwise.
  * @since 26.0.1
  */
 CloudDisk_ErrorCode OH_CloudDisk_RegisterSyncFolderEx(const OH_CloudDisk_SyncFolderEx *syncFolder);

@@ -39,8 +39,8 @@ using namespace std;
 constexpr int32_t MIN_USER_ID = 100;
 constexpr int32_t MAX_FILE_CACHE_NUM = 400;
 constexpr int32_t MAX_DENTRY_FILE_SIZE = 500;
+constexpr uint32_t BASE_USER_RANGE = 200000;
 constexpr int32_t MAX_PROGRESS_QUERY_NUM = 100;
-constexpr int32_t BASE_USER_RANGE = 200000;
 const string CLOUDSYNC_MEDIA_CALLBACK_ID = "cloudSyncMediaCallbackId";
 static const std::string GLOBAL_CONFIG_FILE_PATH = "globalConfig.xml";
 static const std::string SUM_OCCUPY_FLAG = "SumOccupyFlag";
@@ -663,7 +663,7 @@ int32_t CloudSyncManagerImpl::GetDecompressCrossFsConfig(bool &crossFsConfig)
         return E_SA_LOAD_FAILED;
     }
     int32_t ret = CloudSyncServiceProxy->GetDecompressCrossFsConfig(crossFsConfig);
-    LOGI("GetDecompressCrossFsConfig end, ret %{public}d, feature %{public}s",
+    LOGI("GetDecompressCrossFsConfig end, ret %{public}d, crossFsConfig %{public}s",
         ret, crossFsConfig ? "true" : "false");
     return ret;
 }
@@ -1337,7 +1337,7 @@ static int64_t ReadConfigFile(const std::string &configFilePath)
 
 int32_t CloudSyncManagerImpl::GetDentryFileOccupy(int64_t &occupyNum)
 {
-    int32_t userId = getuid() / BASE_USER_RANGE;
+    uint32_t userId = getuid() / BASE_USER_RANGE;
     std::string dentryFileConfigPath = "/data/service/el2/" + std::to_string(userId) +
         "/hmdfs/cache/account_cache/" + GLOBAL_CONFIG_FILE_PATH;
     occupyNum = ReadConfigFile(dentryFileConfigPath);

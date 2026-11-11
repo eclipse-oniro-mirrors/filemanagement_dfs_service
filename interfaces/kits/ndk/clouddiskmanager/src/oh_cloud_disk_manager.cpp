@@ -697,7 +697,7 @@ CloudDisk_ErrorCode OH_CloudDisk_ConvertPlaceholderToFile(const CloudDisk_SyncFo
     }
 
     if (!IsValidPathInfo(relativePathInfo.value, relativePathInfo.length)) {
-        LOGE("Invalid argument, pathInfo is invalid");
+        LOGE("Invalid argument, relativePathInfo is invalid");
         return CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG;
     }
 

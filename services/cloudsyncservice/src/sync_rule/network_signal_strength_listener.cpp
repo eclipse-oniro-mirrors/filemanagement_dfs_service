@@ -57,7 +57,7 @@ void NetworkSignalStrengthSubscriber::OnReceiveEvent(const EventFwk::CommonEvent
         LOGI("cellular data signalStrength = %{public}d", signalStrength);
         if (signalStrength < SIGNAL_LEVEL_MIN || signalStrength > SIGNAL_LEVEL_MAX ||
             signalStrength == NetworkStatus::GetCellularSignalStrengthLevel()) {
-            LOGD("Invaild cellular signal level or not changed, signalStrength = %{public}d", signalStrength);
+            LOGD("Invalid cellular signal level or not changed, signalStrength = %{public}d", signalStrength);
             return;
         }
         NetworkStatus::SetCellularSignalStrength(signalStrength);
@@ -74,7 +74,7 @@ void NetworkSignalStrengthSubscriber::OnReceiveEvent(const EventFwk::CommonEvent
         LOGI("wifi data signalStrength = %{public}d", signalStrength);
         if (signalStrength < SIGNAL_LEVEL_MIN || signalStrength > SIGNAL_LEVEL_MAX ||
             signalStrength == NetworkStatus::GetWifiSignalStrengthLevel()) {
-            LOGE("Invaild wifi signal level or not changed, signalStrength = %{public}d", signalStrength);
+            LOGE("Invalid wifi signal level or not changed, signalStrength = %{public}d", signalStrength);
             return;
         }
         NetworkStatus::SetWifiSignalStrength(signalStrength);
