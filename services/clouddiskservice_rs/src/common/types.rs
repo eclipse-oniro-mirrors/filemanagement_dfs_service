@@ -24,8 +24,9 @@ pub(crate) struct FileSyncState {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ChangeData {
     pub update_sequence_number: u64,
-    pub file_id: String,
-    pub parent_file_id: String,
+    // C++ std::string stores the UUID's 16 raw bytes, including NUL/non-UTF-8 bytes.
+    pub file_id: Vec<u8>,
+    pub parent_file_id: Vec<u8>,
     pub relative_path: String,
     pub operation_type: u8,
     pub size: u64,

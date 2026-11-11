@@ -67,3 +67,13 @@ pub(crate) const E_HYDRATION_TASK_LIMIT_REACHED: i32 = 34_400_034;
 pub(crate) const E_NOT_SUPPORTED: i32 = 801;
 pub(crate) const E_PERMISSION_DENIED: i32 = 201;
 pub(crate) const E_PERMISSION_SYSTEM: i32 = 202;
+
+// Per-file ErrorReason values from cloud_disk_common.h. These are carried in
+// FailedList/ResultList; they are not the interface's CloudDiskServiceErrCode.
+pub(crate) mod error_reason {
+    pub(crate) const INVALID_ARGUMENT: i32 = 0;
+    pub(crate) const NO_SUCH_FILE: i32 = 1;
+    pub(crate) const NO_SPACE_LEFT: i32 = 2;
+    pub(crate) const OUT_OF_RANGE: i32 = 3;
+    pub(crate) const NO_SYNC_STATE: i32 = 4;
+}

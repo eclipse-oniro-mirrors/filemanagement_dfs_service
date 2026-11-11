@@ -13,31 +13,120 @@
 
 import("//build/ohos.gni")
 
+rust_cxx("clouddiskservice_ffi_cxx_gen") {
+  sources = [
+    "src/ffi/account.rs",
+    "src/ffi/ffrt.rs",
+    "src/ffi/sync_folder_manager.rs",
+    "src/ffi/utils.rs",
+  ]
+}
+
+ohos_static_library("clouddiskservice_ffi") {
+  sanitize = {
+    integer_overflow = true
+    ubsan = true
+    boundary_sanitize = true
+    cfi = true
+    cfi_cross_dso = true
+    cfi_vcall_icall_only = true
+    debug = false
+  }
+
+  sources = [
+    "cxx/src/account_status_listener.cpp",
+    "cxx/src/ffrt_bridge.cpp",
+    "cxx/src/sync_folder_manager.cpp",
+    "cxx/src/utils.cpp",
+  ]
+  sources += get_target_outputs(":clouddiskservice_ffi_cxx_gen")
+  include_dirs = [
+    "cxx/include",
+    "${target_gen_dir}/src/ffi",
+  ]
+  deps = [ ":clouddiskservice_ffi_cxx_gen" ]
+  external_deps = [
+    "access_token:libaccesstoken_sdk",
+    "c_utils:utils",
+    "ffrt:libffrt",
+    "ipc:ipc_single",
+    "os_account:os_account_innerkits",
+    "rust_cxx:cxx_cppdeps",
+    "user_file_service:cloud_disk_manager_kit",
+  ]
+  subsystem_name = "filemanagement"
+  part_name = "dfs_service"
+}
+
 # Independent server framework: no dependency on either C++ service sources
 # or the reference clouddiskservice_rust implementation.
 ohos_rust_shared_library("clouddiskservice_sa_rs") {
+  sanitize = {
+    integer_overflow = true
+    ubsan = true
+    boundary_sanitize = true
+    cfi = true
+    cfi_cross_dso = true
+    cfi_vcall_icall_only = true
+    debug = false
+  }
+
   sources = [
+    "src/account_status_listener.rs",
     "src/common/error_codes.rs",
     "src/common/mod.rs",
     "src/common/parcel.rs",
     "src/common/types.rs",
+    "src/ffi/account.rs",
+    "src/ffi/ffrt.rs",
+    "src/ffi/mod.rs",
+    "src/ffi/sync_folder_manager.rs",
+    "src/ffi/utils.rs",
     "src/framework/ability.rs",
+    "src/framework/callback_proxy.rs",
     "src/framework/interface.rs",
     "src/framework/mod.rs",
     "src/framework/stub.rs",
     "src/lib.rs",
     "src/logging.rs",
+    "src/monitor/fanotify.rs",
+    "src/monitor/mod.rs",
+    "src/placeholder/callback_manager.rs",
+    "src/placeholder/mod.rs",
+    "src/placeholder/progress_manager.rs",
+    "src/placeholder/task_manager.rs",
     "src/service.rs",
+    "src/sync_folder_manager/cleanup.rs",
+    "src/sync_folder_manager/hash.rs",
+    "src/sync_folder_manager/mod.rs",
+    "src/sync_folder_manager/path_utils.rs",
+    "src/sync_folder_manager/sync_folder.rs",
+    "src/sync_folder_service/cache.rs",
+    "src/sync_folder_service/callback_manager.rs",
+    "src/sync_folder_service/file_state.rs",
+    "src/sync_folder_service/history.rs",
+    "src/sync_folder_service/log_file.rs",
+    "src/sync_folder_service/metafile.rs",
+    "src/sync_folder_service/mod.rs",
   ]
   crate_root = "src/lib.rs"
   crate_name = "clouddiskservice_sa_rs"
   edition = "2021"
   output_extension = "z.so"
 
+  deps = [ ":clouddiskservice_ffi" ]
   external_deps = [
+    "access_token:libaccesstoken_sdk",
+    "e2fsprogs:libext2_uuid",
+    "ffrt:libffrt",
     "hilog:hilog_rust",
     "ipc:ipc_rust",
+    "os_account:os_account_innerkits",
+    "rust_cxx:lib",
+    "rust_libc:lib",
     "safwk:system_ability_fwk_rust",
+    "samgr:samgr_rust",
+    "user_file_service:cloud_disk_manager_kit",
   ]
   subsystem_name = "filemanagement"
   part_name = "dfs_service"

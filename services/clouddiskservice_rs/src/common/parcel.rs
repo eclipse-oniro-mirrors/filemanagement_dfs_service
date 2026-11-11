@@ -15,7 +15,8 @@
 
 //! Parcelable layouts from frameworks/native/clouddiskservice_kit_inner/src/
 //! cloud_disk_common.cpp. Method arguments use UTF-16; strings inside these
-//! objects use C++ WriteString (UTF-8). Each WriteParcelable adds an i32 marker,
+//! objects use C++ WriteString (raw bytes for UUIDs, UTF-8 for paths).
+//! Each WriteParcelable adds an i32 marker,
 //! whereas ChangeData items nested in ChangesResult have no individual marker.
 
 use ipc::parcel::{Deserialize, MsgParcel, Serialize};
@@ -74,9 +75,58 @@ macro_rules! parcelable {
 fields!(FileSyncState, path: String, state: i32);
 parcelable!(FileSyncState);
 
-fields!(ChangeData, update_sequence_number: u64, file_id: String,
-    parent_file_id: String, relative_path: String, operation_type: u8,
-    size: u64, mtime: u64, time_stamp: u64);
+impl ParcelFields for ChangeData {
+    fn write_fields(&self, parcel: &mut MsgParcel) -> IpcResult<()> {
+        parcel.write(&self.update_sequence_number)?;
+        write_byte_string(parcel, &self.file_id)?;
+        write_byte_string(parcel, &self.parent_file_id)?;
+        parcel.write(&self.relative_path)?;
+        parcel.write(&self.operation_type)?;
+        parcel.write(&self.size)?;
+        parcel.write(&self.mtime)?;
+        parcel.write(&self.time_stamp)
+    }
+
+    fn read_fields(parcel: &mut MsgParcel) -> IpcResult<Self> {
+        Ok(Self {
+            update_sequence_number: parcel.read()?,
+            file_id: read_byte_string(parcel)?,
+            parent_file_id: read_byte_string(parcel)?,
+            relative_path: parcel.read()?,
+            operation_type: parcel.read()?,
+            size: parcel.read()?,
+            mtime: parcel.read()?,
+            time_stamp: parcel.read()?,
+        })
+    }
+}
+parcelable!(ChangeData);
+
+// C++ WriteString: byte length, raw bytes, NUL terminator, then 4-byte padding.
+// Vec<u8>'s standard codec would use a different layout.
+fn write_byte_string(parcel: &mut MsgParcel, value: &[u8]) -> IpcResult<()> {
+    let length = i32::try_from(value.len()).map_err(|_| INVALID)?;
+    if length == i32::MAX {
+        return Err(INVALID);
+    }
+    parcel.write(&length)?;
+    let mut terminated = Vec::with_capacity(value.len() + 1);
+    terminated.extend_from_slice(value);
+    terminated.push(0);
+    parcel.write_buffer(&terminated)
+}
+
+fn read_byte_string(parcel: &mut MsgParcel) -> IpcResult<Vec<u8>> {
+    let length = parcel.read::<i32>()?;
+    if length < 0 || length == i32::MAX || length as usize + 1 > parcel.readable() {
+        return Err(INVALID);
+    }
+    let mut value = parcel.read_buffer(length as usize + 1)?;
+    if value.pop() != Some(0) {
+        return Err(INVALID);
+    }
+    Ok(value)
+}
 
 impl ParcelFields for ChangesResult {
     fn write_fields(&self, parcel: &mut MsgParcel) -> IpcResult<()> {
