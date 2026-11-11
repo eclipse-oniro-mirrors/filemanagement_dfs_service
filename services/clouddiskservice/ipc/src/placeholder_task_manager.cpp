@@ -120,37 +120,6 @@ int32_t OpenHydrationTempFile(int32_t userId, uint64_t deviceId, uint64_t inodeI
     return E_OK;
 }
 
-int32_t CopyHydrationTempToOutput(int32_t tempFd, int32_t outputFd, uint64_t copySize, const std::string &tempPath)
-{
-    if (lseek(tempFd, 0, SEEK_SET) < 0 || lseek(outputFd, 0, SEEK_SET) < 0) {
-        int32_t error = errno;
-        LOGE("Reset offsets before copying hydration temp data failed, path:%{private}s, errno:%{public}d",
-             tempPath.c_str(), error);
-        return ConvertHydrationIoError(error);
-    }
-    uint64_t copiedSize = 0;
-    while (copiedSize < copySize) {
-        size_t chunkSize = static_cast<size_t>(std::min<uint64_t>(HYDRATION_COPY_CHUNK_SIZE, copySize - copiedSize));
-        ssize_t sentSize = sendfile(outputFd, tempFd, nullptr, chunkSize);
-        if (sentSize < 0) {
-            int32_t error = errno;
-            if (error == EINTR) {
-                continue;
-            }
-            LOGE("Copy hydration temp data failed, path:%{private}s, errno:%{public}d", tempPath.c_str(), error);
-            return ConvertHydrationIoError(error);
-        }
-        if (sentSize == 0) {
-            LOGE("Copy hydration temp data ended unexpectedly, path:%{private}s, copied:%{public}" PRIu64
-                 ", expected:%{public}" PRIu64,
-                 tempPath.c_str(), copiedSize, copySize);
-            return E_TRY_AGAIN;
-        }
-        copiedSize += static_cast<uint64_t>(sentSize);
-    }
-    return E_OK;
-}
-
 int32_t WriteHydrationData(int32_t fd, const CallbackExecuteRequest &request)
 {
     size_t writtenSize = 0;
@@ -190,6 +159,46 @@ void RestoreHydrationTimestamps(const std::shared_ptr<PlaceholderTaskRecord> &ta
         LOGW("Restore hydration timestamps failed, path:%{private}s, errno:%{public}d", task->hmdfsPath.c_str(),
             errno);
     }
+}
+
+// Copies the received bytes from the service-private temp file back to the target.
+// This is the only operation during hydration that can move the target's timestamps;
+// exits that may have written bytes restore the snapshot so a partial copy never
+// leaks an mtime bump.
+int32_t CopyHydrationTempToOutput(const std::shared_ptr<PlaceholderTaskRecord> &task)
+{
+    if (lseek(task->tempFd, 0, SEEK_SET) < 0 || lseek(task->outputFd, 0, SEEK_SET) < 0) {
+        int32_t error = errno;
+        LOGE("Reset offsets before copying hydration temp data failed, path:%{private}s, errno:%{public}d",
+             task->tempPath.c_str(), error);
+        return ConvertHydrationIoError(error);
+    }
+    uint64_t copiedSize = 0;
+    while (copiedSize < task->tempSize) {
+        size_t chunkSize =
+            static_cast<size_t>(std::min<uint64_t>(HYDRATION_COPY_CHUNK_SIZE, task->tempSize - copiedSize));
+        ssize_t sentSize = sendfile(task->outputFd, task->tempFd, nullptr, chunkSize);
+        if (sentSize < 0) {
+            int32_t error = errno;
+            if (error == EINTR) {
+                continue;
+            }
+            LOGE("Copy hydration temp data failed, path:%{private}s, errno:%{public}d", task->tempPath.c_str(),
+                 error);
+            RestoreHydrationTimestamps(task);
+            return ConvertHydrationIoError(error);
+        }
+        if (sentSize == 0) {
+            LOGE("Copy hydration temp data ended unexpectedly, path:%{private}s, copied:%{public}" PRIu64
+                 ", expected:%{public}" PRIu64,
+                 task->tempPath.c_str(), copiedSize, task->tempSize);
+            RestoreHydrationTimestamps(task);
+            return E_TRY_AGAIN;
+        }
+        copiedSize += static_cast<uint64_t>(sentSize);
+    }
+    RestoreHydrationTimestamps(task);
+    return E_OK;
 }
 
 bool ShouldNotifyCancellation(PlaceholderTaskCancelReason reason)
@@ -829,6 +838,18 @@ int32_t PlaceholderTaskManager::PrepareHydrationResourcesLocked(const std::share
         CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
         return E_INVALID_ARG;
     }
+    // The file flips to PARTIALLY_HYDRATED at activation: hydration is committed to and
+    // observers see the in-progress state from task start. setxattr never moves
+    // atime/mtime, so the state change needs no timestamp restore. A later temp file
+    // creation failure intentionally leaves the PARTIALLY state behind; the next read
+    // simply re-hydrates.
+    task->outputFd = std::move(outputFd);
+    ret = EnsurePartialStateLocked(task);
+    if (ret != E_OK) {
+        LOGW("Cancel pending hydration because partial state transition failed, ret:%{public}d", ret);
+        CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
+        return ret;
+    }
     // Hydration data first lands in a service-private temp file so the target file stays
     // completely untouched while chunks arrive. The temp is attached to the task before
     // dispatch so every later failure path unlinks it through EraseTaskLocked.
@@ -872,10 +893,10 @@ void PlaceholderTaskManager::ActivateAndDispatch(const std::shared_ptr<Placehold
         CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::DISPATCH_FAILED);
         return;
     }
-    task->outputFd = std::move(outputFd);
     task->totalSize = metadata.logicalSize;
-    // Snapshot timestamps before any hydration write so they can be restored after every
-    // written chunk; hydration itself must not change the file's atime/mtime.
+    // Snapshot timestamps at activation so the copy-back can restore them; the copy is
+    // the only operation that moves the target's timestamps, with the task-end restore
+    // in EraseTaskLocked as a catch-all. Hydration itself must not change atime/mtime.
     task->savedAtime = metadata.savedAtime;
     task->savedMtime = metadata.savedMtime;
     task->timestampsSaved = true;
@@ -944,9 +965,6 @@ void PlaceholderTaskManager::RefreshDeadlineLocked(const std::shared_ptr<Placeho
 
 int32_t PlaceholderTaskManager::EnsurePartialStateLocked(const std::shared_ptr<PlaceholderTaskRecord> &task)
 {
-    if (task->hasPartialState) {
-        return E_OK;
-    }
     uint8_t placeholderState = PLACEHOLDER_STATE_NONE;
     int32_t ret = GetFilePlaceholderState(task->outputFd, placeholderState);
     if (ret != E_OK) {
@@ -976,11 +994,7 @@ int32_t PlaceholderTaskManager::EnsurePartialStateLocked(const std::shared_ptr<P
             LOGE("Unexpected old hydration state, state:%{public}u", oldState);
             return E_TRY_AGAIN;
         }
-        // The xattr write above may trigger frontend re-reads; keep the timestamps at
-        // the snapshot values so observers do not see hydration-time jumps.
-        RestoreHydrationTimestamps(task);
     }
-    task->hasPartialState = true;
     return E_OK;
 }
 
@@ -1014,9 +1028,6 @@ int32_t PlaceholderTaskManager::SetCompleteStateLocked(const std::shared_ptr<Pla
         LOGE("Unexpected old hydration state before completion, state:%{public}u", oldState);
         return E_TRY_AGAIN;
     }
-    // The xattr write above may trigger frontend re-reads; keep the timestamps at
-    // the snapshot values so observers do not see hydration-time jumps.
-    RestoreHydrationTimestamps(task);
     return E_OK;
 }
 
@@ -1113,12 +1124,13 @@ int32_t PlaceholderTaskManager::CommitFetchDataLocked(const std::shared_ptr<Plac
                                                       const CallbackExecuteRequest &request)
 {
     if (!request.isComplete) {
-        return EnsurePartialStateLocked(task);
+        return E_OK;
     }
     // Final delivery: this is the first moment the target file is written. All received
-    // bytes are copied back from the service-private temp file in one shot; a failure
-    // here leaves the task retryable and the temp file intact.
-    int32_t ret = CopyHydrationTempToOutput(task->tempFd, task->outputFd, task->tempSize, task->tempPath);
+    // bytes are copied back from the service-private temp file in one shot; the copy
+    // restores the snapshot timestamps on all of its exits, and a failure here leaves
+    // the task retryable with the temp file intact.
+    int32_t ret = CopyHydrationTempToOutput(task);
     if (ret != E_OK) {
         LOGE("Copy hydration temp data to target failed, ret:%{public}d, path:%{private}s", ret,
              task->tempPath.c_str());
@@ -1128,12 +1140,6 @@ int32_t PlaceholderTaskManager::CommitFetchDataLocked(const std::shared_ptr<Plac
         int32_t error = errno;
         LOGE("Flush completed hydration failed, errno:%{public}d", error);
         return ConvertHydrationIoError(error);
-    }
-    if (request.size != 0) {
-        ret = EnsurePartialStateLocked(task);
-        if (ret != E_OK) {
-            return ret;
-        }
     }
     ret = SetCompleteStateLocked(task);
     if (ret != E_OK) {
@@ -1180,9 +1186,9 @@ void PlaceholderTaskManager::CancelTaskRecordLocked(const std::shared_ptr<Placeh
     if (reason == PlaceholderTaskCancelReason::USER_REQUEST && task->outputFd >= 0 && task->tempFd >= 0 &&
         task->tempSize > 0) {
         // A user cancellation keeps the bytes already received: copy them back so a later
-        // retry resumes from the partially hydrated file. Failure only warns; the task
-        // still ends cancelled and the temp file is removed below.
-        int32_t copyRet = CopyHydrationTempToOutput(task->tempFd, task->outputFd, task->tempSize, task->tempPath);
+        // retry resumes from the partially hydrated file. The copy restores the snapshot
+        // timestamps itself; failure only warns and the task still ends cancelled below.
+        int32_t copyRet = CopyHydrationTempToOutput(task);
         if (copyRet != E_OK) {
             LOGW("Copy partial hydration data on cancel failed, ret:%{public}d, path:%{private}s", copyRet,
                  task->tempPath.c_str());
@@ -1302,8 +1308,9 @@ void PlaceholderTaskManager::NotifyProgressLocked(const std::shared_ptr<Placehol
 
 void PlaceholderTaskManager::EraseTaskLocked(const std::shared_ptr<PlaceholderTaskRecord> &task)
 {
-    // The task ends here: restore the snapshot timestamps once, right before the hydration
-    // fd closes. Chunk writes during hydration do not touch the timestamps any more.
+    // The task ends here: restore the snapshot timestamps once more right before the
+    // hydration fd closes, as a catch-all for paths without a copy-back (the copy
+    // restores on its own exits). PENDING tasks saved no snapshot, so this is a no-op.
     RestoreHydrationTimestamps(task);
     int32_t fd = task->outputFd.Release();
     if (fd >= 0 && close(fd) < 0) {

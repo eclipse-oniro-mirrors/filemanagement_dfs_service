@@ -126,7 +126,8 @@ public:
 
     void ExpectStateTransitions(int32_t taskFd, uint8_t &stateByte)
     {
-        constexpr int32_t stateUpdateCount = 2;                    // Partially hydrated, then fully hydrated.
+        // The partial flip happens at activation; the completion path only flips to fully hydrated.
+        constexpr int32_t stateUpdateCount = 1;                    // Fully hydrated.
         constexpr int32_t stateReadCount = stateUpdateCount * 2;   // Get + Set per update.
         EXPECT_CALL(*mock_, fgetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
             .Times(stateReadCount)
@@ -201,13 +202,13 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationComplete_FullDelivery_001,
 }
 
 /**
- * @tc.name: HydrationTimestamps_RestoredAtTaskEnd_001
- * @tc.desc: Every xattr state write and the final task end restore timestamps to the snapshot;
- *           frontend re-reads triggered by xattr writes never observe hydration-time jumps.
+ * @tc.name: HydrationTimestamps_RestoredAtCopyBack_001
+ * @tc.desc: Chunk receive performs zero state writes and zero restores; the copy-back
+ *           restores the snapshot on its own exit and the task end adds a catch-all.
  * @tc.type: FUNC
  * @tc.require: NA
  */
-HWTEST_F(PlaceholderHydrationCompletionTest, HydrationTimestamps_RestoredAtTaskEnd_001, TestSize.Level1)
+HWTEST_F(PlaceholderHydrationCompletionTest, HydrationTimestamps_RestoredAtCopyBack_001, TestSize.Level1)
 {
     auto &manager = PlaceholderTaskManager::GetInstance();
     PlaceholderTaskManager::RequestKey key;
@@ -225,11 +226,33 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationTimestamps_RestoredAtTaskE
     Assistant::mockFsyncApi = true;
     Assistant::mockSendfileApi = true;
 
-    // Phase 1 flips the partial state (2 reads + 1 write + 1 timestamp restore);
-    // phase 2 flips it to fully hydrated (2 reads + 1 write + 1 restore) and the
-    // task end adds one more restore: 3 restores in total, all with snapshot values.
+    // Phase 1: a partial chunk lands in the temp file only; the target is untouched,
+    // so no state flip and no timestamp restore may happen.
+    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 0)).WillOnce(Return(4));
+    EXPECT_CALL(*mock_, fgetxattr(_, _, _, _)).Times(0);
+    EXPECT_CALL(*mock_, fsetxattr(_, _, _, _, _)).Times(0);
+    EXPECT_CALL(*mock_, futimens(_, _)).Times(0);
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 0, {1, 2, 3, 4}, 8, false)),
+              E_OK);
+    EXPECT_EQ(task->state.load(), PlaceholderTaskState::IN_PROGRESS);
+
+    // Phase 2: the copy-back is the only operation that moves the timestamps; it restores
+    // on its own exit and the task end adds one catch-all restore.
+    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 4)).WillOnce(Return(4));
+    EXPECT_CALL(*mock_, Sendfile(taskFd, task->tempFd.Get(), _, 8)).WillOnce(Return(8));
+    EXPECT_CALL(*mock_, Fsync(taskFd)).WillOnce(Return(0));
+    EXPECT_CALL(*mock_, fgetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+        .Times(2)
+        .WillRepeatedly(Invoke([](int, const char *, void *value, size_t) {
+            *static_cast<uint8_t *>(value) = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
+            return static_cast<ssize_t>(sizeof(uint8_t));
+        }));
+    EXPECT_CALL(*mock_, fsetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+        .Times(1)
+        .WillRepeatedly(Return(0));
     EXPECT_CALL(*mock_, futimens(taskFd, _))
-        .Times(3)
+        .Times(2)
         .WillRepeatedly(Invoke([](int, const struct timespec *times) {
             EXPECT_EQ(times[0].tv_sec, 111);
             EXPECT_EQ(times[0].tv_nsec, 222);
@@ -237,26 +260,6 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationTimestamps_RestoredAtTaskE
             EXPECT_EQ(times[1].tv_nsec, 444);
             return 0;
         }));
-    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 0)).WillOnce(Return(4));
-    EXPECT_CALL(*mock_, fgetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
-        .Times(4)
-        .WillRepeatedly(Invoke([](int, const char *, void *value, size_t) {
-            *static_cast<uint8_t *>(value) = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
-            return static_cast<ssize_t>(sizeof(uint8_t));
-        }));
-    EXPECT_CALL(*mock_, fsetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
-        .Times(2)
-        .WillRepeatedly(Return(0));
-
-    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
-                              MakeRequest(key, 0, {1, 2, 3, 4}, 8, false)),
-              E_OK);
-    EXPECT_EQ(task->state.load(), PlaceholderTaskState::IN_PROGRESS);
-
-    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 4)).WillOnce(Return(4));
-    // Final delivery copies both chunks (4 + 4 bytes) from the temp file to the target.
-    EXPECT_CALL(*mock_, Sendfile(taskFd, task->tempFd.Get(), _, 8)).WillOnce(Return(8));
-    EXPECT_CALL(*mock_, Fsync(taskFd)).WillOnce(Return(0));
 
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
                               MakeRequest(key, 4, {5, 6, 7, 8}, 8, true)),

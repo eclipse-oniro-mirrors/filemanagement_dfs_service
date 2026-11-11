@@ -108,7 +108,6 @@ struct PlaceholderTaskRecord {
     bool terminalProgressSent = false;
     uint64_t totalSize = 0;
     bool totalSizeInitialized = false;
-    bool hasPartialState = false;
     bool fetchDispatched = false;
     bool cancelCallbackAttempted = false;
     uint64_t createSeq = 0;

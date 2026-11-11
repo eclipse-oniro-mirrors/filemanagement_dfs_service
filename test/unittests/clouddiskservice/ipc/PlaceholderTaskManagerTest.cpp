@@ -305,7 +305,8 @@ public:
 
     void ExpectStateTransitions(int32_t taskFd, uint8_t &stateByte)
     {
-        constexpr int32_t STATE_UPDATE_COUNT = 2;                    // Partially hydrated, then fully hydrated.
+        // The partial flip happens at activation; the completion path only flips to fully hydrated.
+        constexpr int32_t STATE_UPDATE_COUNT = 1;                    // Fully hydrated.
         constexpr int32_t STATE_READ_COUNT = STATE_UPDATE_COUNT * 2; // Get + Set per update.
         EXPECT_CALL(*mock_, fgetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
             .Times(STATE_READ_COUNT)
@@ -390,11 +391,19 @@ public:
                 metadata->st_size = static_cast<off_t>(activationSize);
                 return 0;
             }));
+        // Validation reads the state once. When activation proceeds, the partial-state
+        // flip at activation adds one more read plus the old-state read inside the set.
+        const bool activationProceeds = admissionInode == activationInode;
         EXPECT_CALL(*mock_, fgetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
-            .WillOnce(Invoke([](int, const char *, void *value, size_t) {
+            .Times(activationProceeds ? 3 : 1)
+            .WillRepeatedly(Invoke([](int, const char *, void *value, size_t) {
                 *static_cast<uint8_t *>(value) = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
                 return static_cast<ssize_t>(sizeof(uint8_t));
             }));
+        if (activationProceeds) {
+            EXPECT_CALL(*mock_, fsetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+                .WillOnce(Return(0));
+        }
     }
 
     static void CheckCompletedProgress(const sptr<TaskProgressRecorder> &observer)
@@ -1166,7 +1175,9 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_002, TestSize.Level1)
     std::vector<uint8_t> firstBlock{1, 2, 3};
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, MakeRequest(reqKey, 0, firstBlock, 6, false)),
               E_OK);
-    EXPECT_EQ(GetPlaceholderStateFromFileSyncState(stateByte), PLACEHOLDER_STATE_PARTIALLY_HYDRATED);
+    // The partial flip belongs to activation; the synthetic activation above skipped it,
+    // so a received chunk leaves the state untouched.
+    EXPECT_EQ(GetPlaceholderStateFromFileSyncState(stateByte), PLACEHOLDER_STATE_UNHYDRATED);
     EXPECT_EQ(GetSyncStateFromFileSyncState(stateByte), 1);
     std::vector<uint8_t> finalBlock{4, 5, 6};
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, MakeRequest(reqKey, 3, finalBlock, 6, true)),
@@ -1429,7 +1440,6 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_128KiB_001, TestSize.Level1)
               E_OK);
     auto task = manager.taskMap_.at(key);
     ActivateTask(manager, key);
-    task->hasPartialState = true;
     task->totalSize = MAX_EXECUTE_DATA_SIZE + 1;
     Assistant::mockPwriteApi = true;
     std::vector<uint8_t> data(MAX_EXECUTE_DATA_SIZE, 1);
@@ -1480,7 +1490,6 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_005, TestSize.Level2)
               E_OK);
     auto task = manager.taskMap_.at(key);
     ActivateTask(manager, key);
-    task->hasPartialState = true;
     task->totalSize = 3;
     Assistant::mockPwriteApi = true;
     auto request = MakeRequest(key, 0, {1, 2, 3}, 3, false);
@@ -1516,88 +1525,6 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_005, TestSize.Level2)
     EXPECT_EQ(task->state.load(), PlaceholderTaskState::IN_PROGRESS);
 }
 
-/**
- * @tc.name: Execute_006
- * @tc.desc: State persistence failure keeps the task and fd available for a retry.
- * @tc.type: RELI
- * @tc.require: NA
- */
-HWTEST_F(PlaceholderTaskManagerTest, Execute_006, TestSize.Level2)
-{
-    auto &manager = PlaceholderTaskManager::GetInstance();
-    UniqueFd fd = OpenTaskFd();
-    ASSERT_GE(fd.Get(), 0);
-    PlaceholderTaskManager::RequestKey key;
-    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
-                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, std::move(fd), key),
-              E_OK);
-    int32_t taskFd = ActivateTask(manager, key);
-    auto task = manager.taskMap_.at(key);
-    task->totalSize = 1;
-    Assistant::mockPwriteApi = true;
-    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 1, 0)).WillOnce(Return(1));
-    EXPECT_CALL(*mock_, fgetxattr(taskFd, _, _, _)).WillOnce(Invoke([](int, const char *, void *, size_t) {
-        errno = EIO;
-        return -1;
-    }));
-    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, MakeRequest(key, 0, {1}, 1, false)),
-              E_TRY_AGAIN);
-    EXPECT_GE(fcntl(taskFd, F_GETFD), 0);
-    PlaceholderTaskState state;
-    ASSERT_TRUE(manager.GetTaskState(key, state));
-    EXPECT_EQ(state, PlaceholderTaskState::IN_PROGRESS);
-}
-
-/**
- * @tc.name: Execute_008
- * @tc.desc: Keep tasks retryable when stored, partial or completed placeholder-state persistence fails.
- * @tc.type: RELI
- * @tc.require: NA
- */
-HWTEST_F(PlaceholderTaskManagerTest, Execute_008, TestSize.Level2)
-{
-    auto &manager = PlaceholderTaskManager::GetInstance();
-    Assistant::mockPwriteApi = true;
-    const auto runFailure = [this, &manager](const std::string &filePath, bool complete, const auto &expectStateCalls) {
-        PlaceholderTaskManager::RequestKey key;
-        ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, filePath, TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
-                                            CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
-                  E_OK);
-        auto task = manager.taskMap_.at(key);
-        ActivateTask(manager, key);
-        task->totalSize = 1;
-        EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 1, 0)).WillOnce(Return(1));
-        expectStateCalls(task);
-        auto request = MakeRequest(key, 0, {1}, 1, complete);
-        request.filePath = filePath;
-        EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, request), E_TRY_AGAIN);
-        PlaceholderTaskState state;
-        ASSERT_TRUE(manager.GetTaskState(key, state));
-        EXPECT_EQ(state, PlaceholderTaskState::IN_PROGRESS);
-        Mock::VerifyAndClearExpectations(mock_.get());
-    };
-
-    runFailure("invalid-state.txt", false, [this](const std::shared_ptr<PlaceholderTaskRecord> &task) {
-        EXPECT_CALL(*mock_, fgetxattr(task->outputFd.Get(), _, _, _))
-            .WillOnce(Invoke([](int, const char *, void *value, size_t size) {
-                *static_cast<uint8_t *>(value) = MakeFileSyncState(PLACEHOLDER_STATE_NONE, 0);
-                return static_cast<ssize_t>(size);
-            }));
-    });
-    runFailure("partial-state.txt", false, [this](const std::shared_ptr<PlaceholderTaskRecord> &task) {
-        EXPECT_CALL(*mock_, fgetxattr(task->outputFd.Get(), _, _, _))
-            .Times(2)
-            .WillRepeatedly(Invoke([](int, const char *, void *value, size_t size) {
-                *static_cast<uint8_t *>(value) = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
-                return static_cast<ssize_t>(size);
-            }));
-        EXPECT_CALL(*mock_, fsetxattr(task->outputFd.Get(), _, _, _, _))
-            .WillOnce(Invoke([](int, const char *, const void *, size_t, int) {
-                errno = EINVAL;
-                return -1;
-            }));
-    });
-}
 
 /**
  * @tc.name: Execute_014
@@ -1616,7 +1543,6 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_014, TestSize.Level2)
     ActivateTask(manager, key);
     Assistant::mockPwriteApi = true;
     Assistant::mockSendfileApi = true;
-    task->hasPartialState = true;
     task->totalSize = 1;
     EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 1, 0)).WillOnce(Return(1));
     EXPECT_CALL(*mock_, Sendfile(task->outputFd.Get(), task->tempFd.Get(), _, 1)).WillOnce(Return(1));
@@ -1636,42 +1562,6 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_014, TestSize.Level2)
     EXPECT_EQ(state, PlaceholderTaskState::IN_PROGRESS);
 }
 
-/**
- * @tc.name: Execute_009
- * @tc.desc: Preserve an active task while reporting corrupt persisted placeholder state precisely.
- * @tc.type: RELI
- * @tc.require: NA
- */
-HWTEST_F(PlaceholderTaskManagerTest, Execute_009, TestSize.Level2)
-{
-    auto &manager = PlaceholderTaskManager::GetInstance();
-    PlaceholderTaskManager::RequestKey key;
-    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
-                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
-              E_OK);
-    auto task = manager.taskMap_.at(key);
-    ActivateTask(manager, key);
-    task->totalSize = 1;
-    Assistant::mockPwriteApi = true;
-    auto request = MakeRequest(key, 0, {1}, 1, false);
-
-    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 1, 0)).WillOnce(Return(1));
-    EXPECT_CALL(*mock_, fgetxattr(task->outputFd.Get(), _, _, _))
-        .WillOnce(Invoke([](int, const char *, void *value, size_t size) {
-            *static_cast<uint8_t *>(value) = MakeFileSyncState(PLACEHOLDER_STATE_FULLY_HYDRATED + 1, 0);
-            return static_cast<ssize_t>(size);
-        }));
-    EXPECT_CALL(*mock_, fsetxattr(_, _, _, _, _)).Times(0);
-    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, request), E_INVALID_PLACEHOLDER_STATE);
-    EXPECT_EQ(task->state.load(), PlaceholderTaskState::IN_PROGRESS);
-
-    Mock::VerifyAndClearExpectations(mock_.get());
-    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 1, 0)).WillOnce(Return(1));
-    EXPECT_CALL(*mock_, fgetxattr(task->outputFd.Get(), _, _, _)).WillOnce(Return(0));
-    EXPECT_CALL(*mock_, fsetxattr(_, _, _, _, _)).Times(0);
-    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, request), E_INVALID_PLACEHOLDER_STATE);
-    EXPECT_EQ(task->state.load(), PlaceholderTaskState::IN_PROGRESS);
-}
 
 /**
  * @tc.name: Execute_007
@@ -1694,7 +1584,6 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_007, TestSize.Level1)
     auto secondTask = manager.taskMap_.at(secondKey);
     ActivateTask(manager, firstKey);
     ActivateTask(manager, secondKey);
-    firstTask->hasPartialState = secondTask->hasPartialState = true;
     firstTask->totalSize = secondTask->totalSize = 1;
     Assistant::mockPwriteApi = true;
     ExecuteWriteBarrier barrier;
@@ -1752,7 +1641,6 @@ HWTEST_F(PlaceholderTaskManagerTest, ProgressMetadata_001, TestSize.Level2)
     EXPECT_EQ(task->totalSize, 20u);
     EXPECT_EQ(task->cachedSize, 0u);
     ActivateTask(manager, key);
-    task->hasPartialState = true;
     task->totalSize = 5;
     Assistant::mockPwriteApi = true;
     Assistant::mockSendfileApi = true;
@@ -2133,6 +2021,47 @@ HWTEST_F(PlaceholderTaskManagerTest, ActivateAndDispatch_002, TestSize.Level2)
 }
 
 /**
+ * @tc.name: ActivateAndDispatch_003
+ * @tc.desc: Cancel activation when the partial-state transition at activation fails.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, ActivateAndDispatch_003, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    HydrationTestFile file;
+    ASSERT_TRUE(file.IsValid());
+    EXPECT_CALL(*mock_, fstat(_, _))
+        .Times(2)
+        .WillRepeatedly(Invoke([](int, struct stat *metadata) {
+            metadata->st_dev = static_cast<dev_t>(TEST_DEVICE_ID);
+            metadata->st_ino = static_cast<ino_t>(TEST_INODE_ID);
+            metadata->st_mode = S_IFREG | S_IRUSR | S_IWUSR;
+            metadata->st_size = 0;
+            return 0;
+        }));
+    EXPECT_CALL(*mock_, fgetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+        .Times(3)
+        .WillRepeatedly(Invoke([](int, const char *, void *value, size_t) {
+            *static_cast<uint8_t *>(value) = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
+            return static_cast<ssize_t>(sizeof(uint8_t));
+        }));
+    EXPECT_CALL(*mock_, fsetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+        .WillOnce(Invoke([](int, const char *, const void *, size_t, int) {
+            errno = EINVAL;
+            return -1;
+        }));
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, file.DuplicateFd(), key,
+                                        {100, "", file.GetPath(), TEST_TEMP_ROOT}),
+              E_OK);
+    manager.ActivateAndDispatch(manager.taskMap_.at(key));
+    EXPECT_EQ(manager.taskMap_.count(key), 0U);
+    EXPECT_EQ(manager.cancellationRecordMap_.count(key), 1U);
+}
+
+/**
  * @tc.name: CancelTasksBySyncFolder_001
  * @tc.desc: Cancel only matching queued and active tasks, then cancel all remaining tasks without cancellation records.
  * @tc.type: FUNC
@@ -2263,20 +2192,12 @@ HWTEST_F(PlaceholderTaskManagerTest, EnsurePartialStateLocked_001, TestSize.Leve
               E_OK);
     auto task = manager.taskMap_.at(key);
     ActivateTask(manager, key);
-    task->hasPartialState = true;
-    EXPECT_CALL(*mock_, fgetxattr(_, _, _, _)).Times(0);
-    EXPECT_EQ(manager.EnsurePartialStateLocked(task), E_OK);
-    Mock::VerifyAndClearExpectations(mock_.get());
-
-    task->hasPartialState = false;
     EXPECT_CALL(*mock_, fgetxattr(task->outputFd.Get(), _, _, _))
         .WillOnce(Invoke(ReturnPlaceholderState(PLACEHOLDER_STATE_PARTIALLY_HYDRATED)));
     EXPECT_CALL(*mock_, fsetxattr(_, _, _, _, _)).Times(0);
     EXPECT_EQ(manager.EnsurePartialStateLocked(task), E_OK);
-    EXPECT_TRUE(task->hasPartialState);
     Mock::VerifyAndClearExpectations(mock_.get());
 
-    task->hasPartialState = false;
     EXPECT_CALL(*mock_, fgetxattr(task->outputFd.Get(), _, _, _))
         .WillOnce(Invoke(ReturnPlaceholderState(PLACEHOLDER_STATE_FULLY_HYDRATED)));
     EXPECT_EQ(manager.EnsurePartialStateLocked(task), E_TRY_AGAIN);
@@ -2334,7 +2255,6 @@ HWTEST_F(PlaceholderTaskManagerTest, EnsurePartialStateLocked_002, TestSize.Leve
         .WillOnce(Invoke(ReturnPlaceholderState(PLACEHOLDER_STATE_PARTIALLY_HYDRATED)));
     EXPECT_CALL(*mock_, fsetxattr(task->outputFd.Get(), _, _, _, _)).WillOnce(Return(0));
     EXPECT_EQ(manager.EnsurePartialStateLocked(task), E_OK);
-    EXPECT_TRUE(task->hasPartialState);
 }
 
 /**
@@ -2417,7 +2337,6 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_011, TestSize.Level2)
     auto task = manager.taskMap_.at(key);
     int32_t taskFd = ActivateTask(manager, key);
     ASSERT_GE(taskFd, 0);
-    task->hasPartialState = true;
     task->totalSize = 1;
     Assistant::mockPwriteApi = true;
     Assistant::mockFsyncApi = true;
@@ -2609,7 +2528,6 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_012, TestSize.Level1)
               E_OK);
     auto task = manager.taskMap_.at(key);
     ActivateTask(manager, key);
-    task->hasPartialState = true;
     task->totalSize = 2;
     const auto expiredDeadline = std::chrono::steady_clock::now() - std::chrono::seconds(1);
     {
@@ -2833,7 +2751,6 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TargetUntouchedWhileReceiving
     int32_t targetFd = ActivateTask(manager, key, file.DuplicateFd());
     ASSERT_GE(targetFd, 0);
     auto task = manager.taskMap_.at(key);
-    task->hasPartialState = true;
     task->totalSize = 8;
     DelegateRealFstat();
     struct stat before {};
@@ -2926,19 +2843,21 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_UserCancelCopiesReceivedBytes
     int32_t targetFd = ActivateTask(manager, key, file.DuplicateFd());
     ASSERT_GE(targetFd, 0);
     auto task = manager.taskMap_.at(key);
-    task->hasPartialState = true;
     task->totalSize = 8;
     task->timestampsSaved = true;
     task->savedAtime = {111, 222};
     task->savedMtime = {333, 444};
     UniqueFd verifyFd = file.DuplicateFd();
-    EXPECT_CALL(*mock_, futimens(targetFd, _)).WillOnce(Invoke([](int, const struct timespec *times) {
-        EXPECT_EQ(times[0].tv_sec, 111);
-        EXPECT_EQ(times[0].tv_nsec, 222);
-        EXPECT_EQ(times[1].tv_sec, 333);
-        EXPECT_EQ(times[1].tv_nsec, 444);
-        return 0;
-    }));
+    // The partial copy-back restores on its own exit and EraseTaskLocked adds the catch-all.
+    EXPECT_CALL(*mock_, futimens(targetFd, _))
+        .Times(2)
+        .WillRepeatedly(Invoke([](int, const struct timespec *times) {
+            EXPECT_EQ(times[0].tv_sec, 111);
+            EXPECT_EQ(times[0].tv_nsec, 222);
+            EXPECT_EQ(times[1].tv_sec, 333);
+            EXPECT_EQ(times[1].tv_nsec, 444);
+            return 0;
+        }));
 
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
                               MakeRequest(key, 0, {1, 2, 3, 4}, 8, false)),
@@ -2976,7 +2895,6 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TimeoutCancelKeepsTargetUntou
     int32_t targetFd = ActivateTask(manager, key, file.DuplicateFd());
     ASSERT_GE(targetFd, 0);
     auto task = manager.taskMap_.at(key);
-    task->hasPartialState = true;
     task->totalSize = 8;
     UniqueFd verifyFd = file.DuplicateFd();
 
@@ -3094,7 +3012,6 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_CopyFailureKeepsTaskRetryable
     int32_t targetFd = ActivateTask(manager, key, file.DuplicateFd());
     ASSERT_GE(targetFd, 0);
     auto task = manager.taskMap_.at(key);
-    task->hasPartialState = true;
     task->totalSize = 4;
     Assistant::mockPwriteApi = true;
     Assistant::mockSendfileApi = true;
