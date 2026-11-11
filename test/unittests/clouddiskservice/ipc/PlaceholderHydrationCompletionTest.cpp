@@ -149,6 +149,7 @@ public:
         task->outputFd = std::move(outputFd);
         task->fetchDispatched = true;
         task->state = PlaceholderTaskState::IN_PROGRESS;
+        manager.MarkTaskActiveLocked(task);
         manager.NotifyProgressLocked(task);
         return taskFd;
     }
@@ -184,6 +185,8 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationComplete_FullDelivery_001,
               E_OK);
     EXPECT_EQ(GetPlaceholderStateFromFileSyncState(stateByte), PLACEHOLDER_STATE_FULLY_HYDRATED);
     EXPECT_TRUE(WaitTaskErased(manager, key));
+    EXPECT_TRUE(manager.taskKeyIndex_.empty());
+    EXPECT_TRUE(manager.activeByKey_.empty());
 }
 
 /**

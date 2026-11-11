@@ -262,7 +262,8 @@ typedef enum CloudDisk_ErrorCode {
      */
     OH_CLOUD_DISK_INVALID_PLACEHOLDER_STATE = 34400033,
     /**
-     * @brief The number of pending placeholder hydration tasks has reached the limit.
+     * @brief Reserved. Pending placeholder hydration tasks have no hard limit,
+     * so the service no longer returns this code.
      *
      * @since 26.0.1
      */

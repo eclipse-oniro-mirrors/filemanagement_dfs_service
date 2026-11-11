@@ -19,6 +19,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <cstdint>
 #include <ctime>
 #include <deque>
@@ -26,6 +27,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "cloud_disk_common.h"
@@ -35,19 +37,8 @@
 #include "unique_fd.h"
 
 #ifndef CLOUD_DISK_MAX_ACTIVE_TASKS_PER_APP
+// Maximum concurrently IN_PROGRESS hydration tasks per (bundleName, userId).
 #define CLOUD_DISK_MAX_ACTIVE_TASKS_PER_APP 5U
-#endif
-
-#ifndef CLOUD_DISK_MAX_ACTIVE_TASKS_GLOBAL
-#define CLOUD_DISK_MAX_ACTIVE_TASKS_GLOBAL 10U
-#endif
-
-#ifndef CLOUD_DISK_MAX_PENDING_TASKS_PER_APP
-#define CLOUD_DISK_MAX_PENDING_TASKS_PER_APP 20U
-#endif
-
-#ifndef CLOUD_DISK_MAX_PENDING_TASKS_GLOBAL
-#define CLOUD_DISK_MAX_PENDING_TASKS_GLOBAL 40U
 #endif
 
 namespace OHOS::FileManagement::CloudDiskService {
@@ -104,6 +95,7 @@ struct PlaceholderTaskRecord {
     uint64_t inodeId = 0;
     UniqueFd outputFd;
     std::atomic<PlaceholderTaskState> state{PlaceholderTaskState::PENDING};
+    bool activeSlotHeld = false;
     std::string absolutePath;
     int32_t userId = -1;
     HydrateProgressOwner owner {};
@@ -150,6 +142,9 @@ public:
     bool GetTaskState(const RequestKey &reqKey, PlaceholderTaskState &state);
 
 private:
+    using TaskKey = std::tuple<uint32_t, std::string, std::string>;
+    using AppUserKey = std::tuple<std::string, int32_t>;
+
     struct CancelledTaskRecord {
         RequestKey reqKey;
         std::string syncFolder;
@@ -160,12 +155,19 @@ private:
         uint64_t createSeq = 0;
     };
 
+    static TaskKey MakeTaskKey(const std::string &syncFolder,
+                               const std::string &filePath,
+                               uint32_t syncFolderIndex);
+    static AppUserKey MakeAppUserKey(const std::string &bundleName, int32_t userId);
+    size_t GetActiveCountLocked(const std::string &bundleName, int32_t userId) const;
+    void MarkTaskActiveLocked(const std::shared_ptr<PlaceholderTaskRecord> &task);
+    void ReleaseActiveSlotLocked(PlaceholderTaskRecord &task);
+    void LogQueueSummaryLocked(const char *reason);
     void NotifyProgressLocked(const std::shared_ptr<PlaceholderTaskRecord> &task,
         const HydrateProgressOwner &recipient = {});
     RequestKey GenerateRequestKeyLocked();
     int32_t PrepareHydrateTaskLocked(const std::string &syncFolder,
                                      const std::string &filePath,
-                                     const std::string &bundleName,
                                      uint32_t syncFolderIndex,
                                      RequestKey &reqKey);
     std::shared_ptr<PlaceholderTaskRecord> FindTask(const RequestKey &reqKey);
@@ -191,6 +193,10 @@ private:
     void EraseTaskLocked(const std::shared_ptr<PlaceholderTaskRecord> &task);
 
     std::map<RequestKey, std::shared_ptr<PlaceholderTaskRecord>> taskMap_;
+    // Every PENDING/IN_PROGRESS task in taskMap_ must have exactly one entry here.
+    std::map<TaskKey, RequestKey> taskKeyIndex_;
+    // IN_PROGRESS task count per (bundleName, userId); zero entries are removed.
+    std::map<AppUserKey, size_t> activeByKey_;
     std::map<RequestKey, CancelledTaskRecord> cancellationRecordMap_;
     std::deque<std::pair<RequestKey, uint64_t>> cancellationOrder_;
     std::map<RequestKey, std::chrono::steady_clock::time_point> deadlineMap_;

@@ -1884,7 +1884,7 @@ static int32_t CreateHydrationTask(const PlaceholderStatePathContext &context,
                                    CloudDiskHydratePriority priority,
                                    const HydrateProgressOwner &owner = {})
 {
-    LOGI("Begin, path:%{private}s, syncFolderIndex:%{private}u, priority:%{public}d", context.hmdfsPath.c_str(),
+    LOGD("Begin, path:%{private}s, syncFolderIndex:%{private}u, priority:%{public}d", context.hmdfsPath.c_str(),
          context.syncFolderIndex, static_cast<int32_t>(priority));
     std::lock_guard<std::mutex> lock(GetPlaceholderFileMutex(context.hmdfsPath));
     auto &taskManager = PlaceholderTaskManager::GetInstance();
@@ -1907,7 +1907,7 @@ static int32_t CreateHydrationTask(const PlaceholderStatePathContext &context,
             std::move(validationFd), reqKey,
             {context.userId, context.absolutePath, context.hmdfsPath, context.mntSyncFolder, owner});
     });
-    LOGI("Hydration task accepted, userId:%{private}d, syncFolderIndex:%{private}u, ret:%{public}d", context.userId,
+    LOGD("Hydration task accepted, userId:%{private}d, syncFolderIndex:%{private}u, ret:%{public}d", context.userId,
          context.syncFolderIndex, ret);
     return ret;
 }
@@ -2151,7 +2151,7 @@ static int32_t ResolveSystemAccessorPath(const std::string &path,
 static int32_t StartSystemAccessorHydration(const std::string &path, int32_t callbackType, int32_t priority,
     const HydrateProgressOwner &owner)
 {
-    LOGI("Begin, path:%{private}s, callbackType:%{public}d, priority:%{public}d", path.c_str(), callbackType, priority);
+    LOGD("Begin, path:%{private}s, callbackType:%{public}d, priority:%{public}d", path.c_str(), callbackType, priority);
     if (callbackType < static_cast<int32_t>(CloudDiskCallbackType::FETCH_DATA) ||
         callbackType > static_cast<int32_t>(CloudDiskCallbackType::CANCEL_FETCH_DATA) ||
         priority < static_cast<int32_t>(CLOUD_DISK_HYDRATE_PRIORITY_LOW) ||
@@ -2178,7 +2178,7 @@ static int32_t StartSystemAccessorHydration(const std::string &path, int32_t cal
     } else {
         ret = CreateHydrationTask(context, relativePath, static_cast<CloudDiskHydratePriority>(priority), owner);
     }
-    LOGI("Hydration by path  request finished, isCancellation: %{public}d, ret:%{public}d", isCancellation, ret);
+    LOGD("Hydration by path request finished, isCancellation: %{public}d, ret:%{public}d", isCancellation, ret);
     return ret;
 }
 

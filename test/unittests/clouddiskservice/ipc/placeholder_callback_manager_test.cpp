@@ -277,6 +277,7 @@ HWTEST_F(PlaceholderCallbackManagerTest, OnRemoteDied_001, TestSize.Level2)
                                       CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, UniqueFd(dup(STDOUT_FILENO)), otherKey),
               E_OK);
     tasks.taskMap_.at(secondKey)->state = PlaceholderTaskState::IN_PROGRESS;
+    tasks.MarkTaskActiveLocked(tasks.taskMap_.at(secondKey));
     const void *remoteKey = callback->AsObject().GetRefPtr();
     callbacks.OnRemoteDied(remoteKey);
     EXPECT_FALSE(callbacks.IsCallbackRegistered(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX));
