@@ -36,7 +36,7 @@ ohos_unittest("cloud_disk_service_static_test_new") {
     "${services_path}/clouddiskservice/ipc/src/cloud_disk_progress_callback_proxy.cpp",
     "${services_path}/clouddiskservice/ipc/src/placeholder_helper.cpp",
     "${distributedfile_path}/test/unittests/clouddisk_service/ipc/cloud_disk_service_static_test.cpp",
-    "${distributedfile_path}/utils/system/src/utils_directory.cpp",
+    "${distributedfile_path}/test/unittests/clouddiskservice/mock/utils_directory_stub.cpp",
   ]
 
   include_dirs = [
@@ -70,7 +70,6 @@ ohos_unittest("cloud_disk_service_static_test_new") {
     "ipc:ipc_single",
     "ability_runtime:ability_manager",
     "os_account:os_account_innerkits",
-    "hisysevent:libhisysevent",
   ]
 
   defines = [

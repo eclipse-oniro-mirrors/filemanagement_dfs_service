@@ -260,9 +260,10 @@ public:
         if (stat(TEST_TEMP_ROOT.c_str(), &st) != 0) {
             mkdir(TEST_TEMP_ROOT.c_str(), S_IRWXU | S_IRWXG | S_IRWXO);
         }
-        // Real-activation tests run the production ActivateAndDispatch temp layout.
-        // ForceCreateDirectory's access() probe is answered by the mock as "exists", so
-        // the directory itself has to be created here beforehand (mkdir is not mocked).
+        // Real-activation tests run the production ActivateAndDispatch temp layout through the
+        // utils_directory stub (mock/utils_directory_stub.cpp), whose access() probe is answered
+        // by the mock as "exists", so the directory itself has to be created here beforehand
+        // (mkdir is not mocked).
         size_t tempDirOffset = 0;
         while (tempDirOffset != std::string::npos) {
             tempDirOffset = TEST_HYDRATION_TEMP_DIR.find('/', tempDirOffset + 1);
