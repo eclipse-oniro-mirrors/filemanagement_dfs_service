@@ -38,6 +38,8 @@ public:
 
     static sptr<IDaemon> GetInstance();
     static void InvaildInstance();
+    using DaemonDiedHandler = std::function<void()>;
+    static void SetDaemonDiedHandler(DaemonDiedHandler handler);
 
     int32_t ConnectDfs(const std::string &networkId) override;
     int32_t DisconnectDfs(const std::string &networkId) override;
@@ -101,6 +103,7 @@ private:
     static inline sptr<IDaemon> daemonProxy_;
     static inline BrokerDelegator<DistributedFileDaemonProxy> delegator_;
     static inline sptr<DaemonDeathRecipient> deathRecipient_;
+    static inline DaemonDiedHandler daemonDiedHandler_{ nullptr };
 };
 
 } // namespace DistributedFile

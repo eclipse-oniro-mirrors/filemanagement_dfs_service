@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "copy/file_copy_manager.h"
 #include "copy/ipc_wrapper.h"
 #include "dfs_error.h"  // NOLINT(build/include_subdir)
 #include "ipc/distributed_file_daemon_ipc_interface_code.h"
@@ -65,12 +64,23 @@ static int32_t ReadUriInfoFromResult(const std::vector<std::string> &result,
 void DistributedFileDaemonProxy::OnRemoteSaDied(const wptr<IRemoteObject> &remote)
 {
     LOGI("dfs service death");
+    DaemonDiedHandler handler = nullptr;
     {
         unique_lock<mutex> lock(proxyMutex_);
         daemonProxy_ = nullptr;
+        handler = daemonDiedHandler_;
     }
-    // Settle pending copy promises instead of leaving them pending forever.
-    FileCopyManager::GetInstance().NotifyDaemonDied();
+    // Notify the registered listener (FileCopyManager) so pending copy promises
+    // are settled instead of staying pending forever.
+    if (handler != nullptr) {
+        handler();
+    }
+}
+
+void DistributedFileDaemonProxy::SetDaemonDiedHandler(DaemonDiedHandler handler)
+{
+    unique_lock<mutex> lock(proxyMutex_);
+    daemonDiedHandler_ = std::move(handler);
 }
 
 void DistributedFileDaemonProxy::DaemonDeathRecipient::SetDeathRecipient(RemoteDiedHandler handler)

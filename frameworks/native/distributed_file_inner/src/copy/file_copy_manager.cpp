@@ -14,6 +14,7 @@
  */
 
 #include "copy/file_copy_manager.h"
+#include "distributed_file_daemon_proxy.h"
 
 #include <cstring>
 #include <dirent.h>
@@ -21,6 +22,7 @@
 #include <filesystem>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
@@ -185,6 +187,12 @@ uint32_t GetApiCompatibleVersion()
 FileCopyManager &FileCopyManager::GetInstance()
 {
     static FileCopyManager instance;
+    static std::once_flag daemonDiedHandlerFlag;
+    std::call_once(daemonDiedHandlerFlag, [] {
+        DistributedFileDaemonProxy::SetDaemonDiedHandler([] {
+            FileCopyManager::GetInstance().NotifyDaemonDied();
+        });
+    });
     return instance;
 }
 
