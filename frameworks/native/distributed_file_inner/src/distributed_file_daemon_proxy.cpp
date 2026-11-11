@@ -13,17 +13,21 @@
  * limitations under the License.
  */
 
-#include "distributed_file_daemon_proxy.h"
+#include "distributed_file_daemon_proxy.h"  // NOLINT(build/include_subdir)
 
 #include <sstream>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "copy/file_copy_manager.h"
 #include "copy/ipc_wrapper.h"
-#include "dfs_error.h"
+#include "dfs_error.h"  // NOLINT(build/include_subdir)
 #include "ipc/distributed_file_daemon_ipc_interface_code.h"
-#include "iservice_registry.h"
-#include "system_ability_definition.h"
-#include "utils_log.h"
+#include "iservice_registry.h"  // NOLINT(build/include_subdir)
+#include "system_ability_definition.h"  // NOLINT(build/include_subdir)
+#include "utils_log.h"  // NOLINT(build/include_subdir)
 
 #undef LOG_DOMAIN
 #undef LOG_TAG

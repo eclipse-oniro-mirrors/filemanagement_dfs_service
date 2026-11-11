@@ -13,14 +13,15 @@
  * limitations under the License.
  */
 
-#ifndef DISTRIBUTED_TRANS_LISTENER_H
+#ifndef DISTRIBUTED_TRANS_LISTENER_H  // NOLINT(build/header_guard)
 #define DISTRIBUTED_TRANS_LISTENER_H
 
 #include <chrono>
 #include <condition_variable>
+#include <string>
 
-#include "file_trans_listener_stub.h"
-#include "hmdfs_info.h"
+#include "file_trans_listener_stub.h"  // NOLINT(build/include_subdir)
+#include "hmdfs_info.h"  // NOLINT(build/include_subdir)
 
 constexpr int DFS_NONE = 0;
 constexpr int DFS_SUCCESS = 1;

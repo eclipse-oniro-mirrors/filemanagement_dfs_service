@@ -13,18 +13,19 @@
  * limitations under the License.
  */
 
-#include "distributed_file_daemon_manager_impl.h"
+#include "distributed_file_daemon_manager_impl.h"  // NOLINT(build/include_subdir)
 
 #include <chrono>
+#include <string>
 
 #include "asset/asset_adapter_sa_client.h"
 #include "copy/file_copy_manager.h"
 #include "copy/file_size_utils.h"
-#include "dfs_error.h"
+#include "dfs_error.h"  // NOLINT(build/include_subdir)
 #ifdef DFS_ENABLE_DISTRIBUTED_ABILITY
-#include "distributed_file_daemon_proxy.h"
+#include "distributed_file_daemon_proxy.h"  // NOLINT(build/include_subdir)
 #endif
-#include "utils_log.h"
+#include "utils_log.h"  // NOLINT(build/include_subdir)
 
 #undef LOG_DOMAIN
 #undef LOG_TAG
@@ -34,8 +35,8 @@
 namespace OHOS {
 namespace Storage {
 namespace DistributedFile {
-using namespace OHOS::Storage;
-using namespace OHOS::FileManagement;
+using namespace OHOS::Storage;  // NOLINT(build/namespaces)
+using namespace OHOS::FileManagement;  // NOLINT(build/namespaces)
 constexpr int32_t E_CONNECTION_FAILED = 13900045;
 constexpr auto OPEN_P2P_WAIT_TIMEOUT = std::chrono::seconds(30);
 DistributedFileDaemonManagerImpl &DistributedFileDaemonManagerImpl::GetInstance()
