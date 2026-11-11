@@ -347,10 +347,10 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationSetStateWriteFail_001, Tes
             return -1;
         }));
 
-    // The state xattr write failure propagates as an IO error from Execute.
-    EXPECT_NE(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+    // The state xattr write failure propagates as E_NO_SPACE_LEFT from Execute.
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
                              MakeRequest(key, 0, {1, 2, 3, 4}, 4, true)),
-              E_OK);
+              E_NO_SPACE_LEFT);
 }
 
 } // namespace OHOS::FileManagement::CloudDiskService::Test

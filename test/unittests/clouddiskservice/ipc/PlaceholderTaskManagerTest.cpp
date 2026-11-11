@@ -2477,7 +2477,8 @@ HWTEST_F(PlaceholderTaskManagerTest, DispatchLoop_001, TestSize.Level1)
         std::string filePath = "active-" + std::to_string(index) + ".txt";
         PlaceholderTaskManager::RequestKey key;
         ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, filePath, TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
-                                            CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+                                            CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key,
+                                            {100, "", "", ""}),
                   E_OK);
         ActivateTask(manager, key);
         activePaths.push_back(std::move(filePath));
@@ -2492,7 +2493,6 @@ HWTEST_F(PlaceholderTaskManagerTest, DispatchLoop_001, TestSize.Level1)
                                         CLOUD_DISK_HYDRATE_PRIORITY_HIGH, pendingFile.DuplicateFd(), pendingKey,
                                         {100, "", pendingFile.GetPath(), TEST_TEMP_ROOT}),
               E_OK);
-
     manager.StartScheduler();
     auto initialBarrier = manager.dispatchQueue_.submit_h([] {});
     manager.dispatchQueue_.wait(initialBarrier);
@@ -3049,5 +3049,190 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_CopyFailureKeepsTaskRetryable
               E_OK);
     EXPECT_NE(stat(task->tempPath.c_str(), &tempStat), 0);
     EXPECT_FALSE(manager.GetTaskState(key, state));
+}
+
+/**
+ * @tc.name: HydrationTemp_CopyRetriesEINTR_001
+ * @tc.desc: An interrupted sendfile is retried in place and the completion still succeeds.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_CopyRetriesEINTR_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    int32_t taskFd = ActivateTask(manager, key);
+    ASSERT_GE(taskFd, 0);
+    auto task = manager.taskMap_.at(key);
+    task->totalSize = 4;
+    task->timestampsSaved = true;
+    task->savedAtime = {111, 222};
+    task->savedMtime = {333, 444};
+    Assistant::mockPwriteApi = true;
+    Assistant::mockFsyncApi = true;
+    Assistant::mockSendfileApi = true;
+
+    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 0)).WillOnce(Return(4));
+    {
+        InSequence sequence;
+        EXPECT_CALL(*mock_, Sendfile(taskFd, task->tempFd.Get(), _, 4))
+            .WillOnce(Invoke([](int, int, off_t *, size_t) {
+                errno = EINTR;
+                return -1;
+            }));
+        EXPECT_CALL(*mock_, Sendfile(taskFd, task->tempFd.Get(), _, 4)).WillOnce(Return(4));
+    }
+    EXPECT_CALL(*mock_, Fsync(taskFd)).WillOnce(Return(0));
+    EXPECT_CALL(*mock_, fgetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+        .Times(2)
+        .WillRepeatedly(Invoke(ReturnPlaceholderState(PLACEHOLDER_STATE_PARTIALLY_HYDRATED)));
+    EXPECT_CALL(*mock_, fsetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+        .WillOnce(Return(0));
+    // Copy exit restore plus the EraseTaskLocked catch-all.
+    EXPECT_CALL(*mock_, futimens(taskFd, _))
+        .Times(2)
+        .WillRepeatedly(Invoke([](int, const struct timespec *times) {
+            EXPECT_EQ(times[0].tv_sec, 111);
+            EXPECT_EQ(times[0].tv_nsec, 222);
+            EXPECT_EQ(times[1].tv_sec, 333);
+            EXPECT_EQ(times[1].tv_nsec, 444);
+            return 0;
+        }));
+
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 0, {1, 2, 3, 4}, 4, true)),
+              E_OK);
+    PlaceholderTaskState state;
+    EXPECT_FALSE(manager.GetTaskState(key, state));
+}
+
+/**
+ * @tc.name: HydrationTemp_CopyUnexpectedEofRestores_001
+ * @tc.desc: A short sendfile sequence ends with EOF, returns E_TRY_AGAIN and restores once.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_CopyUnexpectedEofRestores_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    int32_t taskFd = ActivateTask(manager, key);
+    ASSERT_GE(taskFd, 0);
+    auto task = manager.taskMap_.at(key);
+    task->totalSize = 4;
+    task->timestampsSaved = true;
+    task->savedAtime = {111, 222};
+    task->savedMtime = {333, 444};
+    Assistant::mockPwriteApi = true;
+    Assistant::mockSendfileApi = true;
+
+    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 0)).WillOnce(Return(4));
+    {
+        InSequence sequence;
+        EXPECT_CALL(*mock_, Sendfile(taskFd, task->tempFd.Get(), _, 4)).WillOnce(Return(2));
+        EXPECT_CALL(*mock_, Sendfile(taskFd, task->tempFd.Get(), _, 2)).WillOnce(Return(0));
+    }
+    // Only the copy exit restores: the task stays retryable, so no EraseTaskLocked yet.
+    EXPECT_CALL(*mock_, futimens(taskFd, _))
+        .WillOnce(Invoke([](int, const struct timespec *times) {
+            EXPECT_EQ(times[0].tv_sec, 111);
+            EXPECT_EQ(times[0].tv_nsec, 222);
+            EXPECT_EQ(times[1].tv_sec, 333);
+            EXPECT_EQ(times[1].tv_nsec, 444);
+            return 0;
+        }));
+
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 0, {1, 2, 3, 4}, 4, true)),
+              E_TRY_AGAIN);
+    PlaceholderTaskState state;
+    ASSERT_TRUE(manager.GetTaskState(key, state));
+    EXPECT_EQ(state, PlaceholderTaskState::IN_PROGRESS);
+    struct stat tempStat {};
+    ASSERT_EQ(stat(task->tempPath.c_str(), &tempStat), 0);
+    // Keep the teardown catch-all silent so the single-restore count above stays scoped.
+    Mock::VerifyAndClearExpectations(mock_.get());
+}
+
+/**
+ * @tc.name: HydrationTemp_CopyLseekFailSkipsRestore_001
+ * @tc.desc: A failing lseek before any sendfile keeps the task retryable without a restore.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_CopyLseekFailSkipsRestore_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    int32_t pipeFds[2];
+    ASSERT_EQ(pipe(pipeFds), 0);
+    close(pipeFds[0]);
+    int32_t taskFd = ActivateTask(manager, key, UniqueFd(pipeFds[1]));
+    ASSERT_GE(taskFd, 0);
+    auto task = manager.taskMap_.at(key);
+    task->totalSize = 4;
+    task->timestampsSaved = true;
+    task->savedAtime = {111, 222};
+    task->savedMtime = {333, 444};
+    Assistant::mockPwriteApi = true;
+
+    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 0)).WillOnce(Return(4));
+    // lseek on the pipe output fd fails with ESPIPE before any byte is sent, so the
+    // copy must not touch the timestamps at all.
+    EXPECT_CALL(*mock_, futimens(taskFd, _)).Times(0);
+    EXPECT_CALL(*mock_, Sendfile(_, _, _, _)).Times(0);
+
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 0, {1, 2, 3, 4}, 4, true)),
+              E_TRY_AGAIN);
+    PlaceholderTaskState state;
+    ASSERT_TRUE(manager.GetTaskState(key, state));
+    EXPECT_EQ(state, PlaceholderTaskState::IN_PROGRESS);
+    struct stat tempStat {};
+    ASSERT_EQ(stat(task->tempPath.c_str(), &tempStat), 0);
+    // Keep the teardown catch-all silent so the zero-restore count above stays scoped.
+    Mock::VerifyAndClearExpectations(mock_.get());
+}
+
+/**
+ * @tc.name: HydrationTemp_TempCreationFailCancelsActivation_001
+ * @tc.desc: A failing temp file open at activation cancels the task after the partial-state flip.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TempCreationFailCancelsActivation_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    HydrationTestFile file;
+    ASSERT_TRUE(file.IsValid());
+    // The temp file path is derived from the validated device and inode; occupying it
+    // with a directory makes the O_CREAT open fail with EISDIR without any mocks.
+    const std::string tempSlot = TEST_HYDRATION_TEMP_DIR + "/1_100.tmp";
+    ASSERT_EQ(mkdir(tempSlot.c_str(), S_IRWXU | S_IRWXG | S_IRWXO), 0);
+
+    ExpectAdmissionAndActivationMetadata(TEST_INODE_ID, TEST_INODE_ID);
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, file.DuplicateFd(), key,
+                                        {100, "", file.GetPath(), TEST_TEMP_ROOT}),
+              E_OK);
+    manager.ActivateAndDispatch(manager.taskMap_.at(key));
+
+    // Activation validated the file and flipped PARTIALLY before the temp creation
+    // failed, so the task ends cancelled with a record while the slot stays occupied.
+    EXPECT_EQ(manager.taskMap_.count(key), 0U);
+    EXPECT_EQ(manager.cancellationRecordMap_.count(key), 1U);
+    struct stat slotStat {};
+    EXPECT_EQ(stat(tempSlot.c_str(), &slotStat), 0);
+    ASSERT_EQ(rmdir(tempSlot.c_str()), 0);
 }
 } // namespace OHOS::FileManagement::CloudDiskService::Test
