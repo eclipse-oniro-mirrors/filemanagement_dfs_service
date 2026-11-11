@@ -16,7 +16,6 @@
 #include "distributed_file_daemon_manager_impl.h"  // NOLINT(build/include_subdir)
 
 #include <chrono>
-#include <string>
 
 #include "asset/asset_adapter_sa_client.h"
 #include "copy/file_copy_manager.h"

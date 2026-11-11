@@ -19,7 +19,6 @@
 
 #include <filesystem>  // NOLINT(build/c++17)
 #include <random>
-#include <string>
 
 #include "dfs_error.h"  // NOLINT(build/include_subdir)
 #include "dfs_radar.h"  // NOLINT(build/include_subdir)

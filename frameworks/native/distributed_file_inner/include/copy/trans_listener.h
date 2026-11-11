@@ -13,11 +13,10 @@
  * limitations under the License.
  */
 
-#ifndef DISTRIBUTED_TRANS_LISTENER_H  // NOLINT(build/header_guard)
+#ifndef DISTRIBUTED_TRANS_LISTENER_H
 #define DISTRIBUTED_TRANS_LISTENER_H
 
 #include <condition_variable>
-#include <string>
 
 #include "file_trans_listener_stub.h"  // NOLINT(build/include_subdir)
 #include "hmdfs_info.h"  // NOLINT(build/include_subdir)

@@ -16,7 +16,6 @@
 #include "distributed_file_daemon_proxy.h"  // NOLINT(build/include_subdir)
 
 #include <sstream>
-#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>

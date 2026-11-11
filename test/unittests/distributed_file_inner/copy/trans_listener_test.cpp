@@ -21,7 +21,6 @@
 #include <filesystem>  // NOLINT(build/c++17)
 #include <fstream>
 #include <memory>
-#include <string>
 #include <thread>
 
 #include "dfs_error.h"  // NOLINT(build/include_subdir)
