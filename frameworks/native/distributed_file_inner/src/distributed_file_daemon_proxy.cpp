@@ -16,9 +16,6 @@
 #include "distributed_file_daemon_proxy.h"
 
 #include <sstream>
-#include <unordered_map>
-#include <utility>
-#include <vector>
 
 #include "copy/ipc_wrapper.h"
 #include "dfs_error.h"

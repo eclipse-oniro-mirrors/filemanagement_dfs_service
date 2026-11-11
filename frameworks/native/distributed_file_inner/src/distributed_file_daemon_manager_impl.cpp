@@ -15,7 +15,6 @@
 
 #include "distributed_file_daemon_manager_impl.h"
 
-#include <chrono>
 
 #include "asset/asset_adapter_sa_client.h"
 #include "copy/file_copy_manager.h"
