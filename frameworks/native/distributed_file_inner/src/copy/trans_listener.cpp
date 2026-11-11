@@ -16,7 +16,6 @@
 #include "copy/trans_listener.h"
 
 #include <dirent.h>
-
 #include <filesystem>
 #include <random>
 
