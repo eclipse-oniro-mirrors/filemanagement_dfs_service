@@ -203,7 +203,6 @@ HWTEST_F(ConnectCountTest, RemoveConnect_004, TestSize.Level1)
     ConnectCount::GetInstance().AddConnect(testCallingTokenId, testNetworkId, testListener);
     EXPECT_TRUE(ConnectCount::GetInstance().CheckCount(testNetworkId));
 
-    // A single disconnect removes all references instead of decrementing the count.
     ConnectCount::GetInstance().RemoveConnect(testCallingTokenId, testNetworkId);
     EXPECT_FALSE(ConnectCount::GetInstance().CheckCount(testNetworkId));
     GTEST_LOG_(INFO) << "RemoveConnect_004 end";

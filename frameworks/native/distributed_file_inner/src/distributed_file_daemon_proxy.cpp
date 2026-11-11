@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-#include "distributed_file_daemon_proxy.h"  // NOLINT(build/include_subdir)
+#include "distributed_file_daemon_proxy.h"
 
 #include <sstream>
 #include <unordered_map>
@@ -21,11 +21,11 @@
 #include <vector>
 
 #include "copy/ipc_wrapper.h"
-#include "dfs_error.h"  // NOLINT(build/include_subdir)
+#include "dfs_error.h"
 #include "ipc/distributed_file_daemon_ipc_interface_code.h"
-#include "iservice_registry.h"  // NOLINT(build/include_subdir)
-#include "system_ability_definition.h"  // NOLINT(build/include_subdir)
-#include "utils_log.h"  // NOLINT(build/include_subdir)
+#include "iservice_registry.h"
+#include "system_ability_definition.h"
+#include "utils_log.h"
 
 #undef LOG_DOMAIN
 #undef LOG_TAG
@@ -69,8 +69,6 @@ void DistributedFileDaemonProxy::OnRemoteSaDied(const wptr<IRemoteObject> &remot
         daemonProxy_ = nullptr;
         handler = daemonDiedHandler_;
     }
-    // Notify the registered listener (FileCopyManager) so pending copy promises
-    // are settled instead of staying pending forever.
     if (handler != nullptr) {
         handler();
     }

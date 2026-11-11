@@ -17,19 +17,19 @@
 
 #include <dirent.h>
 
-#include <filesystem>  // NOLINT(build/c++17)
+#include <filesystem>
 #include <random>
 
-#include "dfs_error.h"  // NOLINT(build/include_subdir)
-#include "dfs_radar.h"  // NOLINT(build/include_subdir)
+#include "dfs_error.h"
+#include "dfs_radar.h"
 #ifdef DFS_ENABLE_RADAR
-#include "radar_report.h"  // NOLINT(build/include_subdir)
+#include "radar_report.h"
 #endif
-#include "distributed_file_daemon_proxy.h"  // NOLINT(build/include_subdir)
-#include "ipc_skeleton.h"  // NOLINT(build/include_subdir)
-#include "sandbox_helper.h"  // NOLINT(build/include_subdir)
-#include "uri.h"  // NOLINT(build/include_subdir)
-#include "utils_log.h"  // NOLINT(build/include_subdir)
+#include "distributed_file_daemon_proxy.h"
+#include "ipc_skeleton.h"
+#include "sandbox_helper.h"
+#include "uri.h"
+#include "utils_log.h"
 
 #undef LOG_DOMAIN
 #undef LOG_TAG

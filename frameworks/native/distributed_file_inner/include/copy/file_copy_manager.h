@@ -74,7 +74,6 @@ public:
     int32_t Copy(const std::string &srcUri, const std::string &destUri, ProcessCallback &processCallback);
     int32_t Cancel(const std::string &srcUri, const std::string &destUri, const bool isKeepFiles = false);
     int32_t Cancel(const bool isKeepFiles = false);
-    // Called when the daemon dies, to settle all pending copy promises.
     void NotifyDaemonDied();
     // operator of local copy
     int32_t ExecLocal(std::shared_ptr<FileInfos> infos);

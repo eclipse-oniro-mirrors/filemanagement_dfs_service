@@ -18,18 +18,18 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
-#include <filesystem>  // NOLINT(build/c++17)
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <thread>
 
-#include "dfs_error.h"  // NOLINT(build/include_subdir)
+#include "dfs_error.h"
 
 namespace OHOS::Storage::DistributedFile::Test {
-using namespace OHOS::FileManagement;  // NOLINT(build/namespaces)
-using namespace testing;  // NOLINT(build/namespaces)
-using namespace testing::ext;  // NOLINT(build/namespaces)
-using namespace std;  // NOLINT(build/namespaces)
+using namespace OHOS::FileManagement;
+using namespace testing;
+using namespace testing::ext;
+using namespace std;
 
 class TransListenerTest : public testing::Test {
 public:
