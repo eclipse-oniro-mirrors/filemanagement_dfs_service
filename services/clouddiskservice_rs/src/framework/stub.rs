@@ -260,7 +260,14 @@ impl RemoteStub for CloudDiskService {
             @public(Skeleton::calling_pid()),
             @public(Skeleton::calling_uid()),
         );
-        match self.handle_request(code, data, reply) {
+        let ret = self.wait_for_init();
+        let result = if ret == E_OK {
+            self.handle_request(code, data, reply)
+        } else {
+            // Match C++: initialization failure is a business error in the reply.
+            write_status(reply, ret)
+        };
+        match result {
             Ok(()) => 0,
             Err(status) => {
                 error!(

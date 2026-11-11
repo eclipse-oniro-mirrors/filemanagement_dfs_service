@@ -16,8 +16,10 @@
 //! SAFWK lifecycle and IPC protocol adaptation for CloudDiskService.
 
 mod ability;
+mod callback_proxy;
 mod interface;
 mod stub;
 
-pub(crate) use ability::register_cloud_disk_service;
+pub(crate) use ability::{register_cloud_disk_service, AbilityHandler, CLOUD_DISK_SERVICE_SA_ID};
+pub(crate) use callback_proxy::CloudDiskServiceCallbackProxy;
 pub(crate) use interface::ICloudDiskService;

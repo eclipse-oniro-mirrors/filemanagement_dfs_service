@@ -17,14 +17,20 @@
 //!
 //! Existing C++ clients keep their IDL-generated proxy. This crate implements
 //! the same wire protocol and dispatches to the business entry points in
-//! `service`. Business entry points currently return synthetic IPC verification
-//! replies, rather than performing real cloud disk operations.
+//! `service`. Sync-folder registration and unregistration are implemented; other
+//! points still provide synthetic IPC verification replies.
 
 #[macro_use]
 mod logging;
+mod account_status_listener;
 mod common;
+mod ffi;
 mod framework;
+mod monitor;
+mod placeholder;
 mod service;
+mod sync_folder_manager;
+mod sync_folder_service;
 
 // SAFWK dlopens the shared library and expects it to register its SA.
 #[used]
