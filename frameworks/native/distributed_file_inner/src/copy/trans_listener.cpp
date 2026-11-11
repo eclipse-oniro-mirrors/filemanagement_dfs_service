@@ -17,7 +17,6 @@
 
 #include <dirent.h>
 
-#include <chrono>
 #include <filesystem>  // NOLINT(build/c++17)
 #include <random>
 #include <string>
@@ -62,19 +61,13 @@ TransListener::~TransListener()
     RmTmpDir();
 }
 
-int32_t TransListener::WaitForCopyResult(std::chrono::milliseconds timeout)
+int32_t TransListener::WaitForCopyResult()
 {
     LOGI("WaitForCopyResult.");
     std::unique_lock<std::mutex> lock(cvMutex_);
-    bool finished = cv_.wait_for(lock, timeout, [this]() {
+    cv_.wait(lock, [this]() {
         return copyEvent_.copyResult == DFS_SUCCESS || copyEvent_.copyResult == DFS_FAILED;
     });
-    if (!finished) {
-        LOGE("WaitForCopyResult timeout.");
-        copyEvent_.copyResult = DFS_FAILED;
-        copyEvent_.errorCode = FileManagement::E_IPCSS;
-        return DFS_FAILED;
-    }
     return copyEvent_.copyResult;
 }
 

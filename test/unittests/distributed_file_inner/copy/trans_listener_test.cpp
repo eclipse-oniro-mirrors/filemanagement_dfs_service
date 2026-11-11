@@ -610,7 +610,7 @@ HWTEST_F(TransListenerTest, TransListener_WaitForCopyResult_0001, TestSize.Level
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         ptr->OnFinished("session");
     });
-    int32_t ret = ptr->WaitForCopyResult(std::chrono::milliseconds(1000));
+    int32_t ret = ptr->WaitForCopyResult();
     notifier.join();
 
     EXPECT_EQ(ret, DFS_SUCCESS);
@@ -636,7 +636,7 @@ HWTEST_F(TransListenerTest, TransListener_WaitForCopyResult_0002, TestSize.Level
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         ptr->OnFailed("session", errorCode);
     });
-    int32_t ret = ptr->WaitForCopyResult(std::chrono::milliseconds(1000));
+    int32_t ret = ptr->WaitForCopyResult();
     notifier.join();
 
     EXPECT_EQ(ret, DFS_FAILED);
@@ -644,22 +644,4 @@ HWTEST_F(TransListenerTest, TransListener_WaitForCopyResult_0002, TestSize.Level
     GTEST_LOG_(INFO) << "TransListener_WaitForCopyResult_0002 End";
 }
 
-/**
- * @tc.name: TransListener_WaitForCopyResult_0003
- * @tc.desc: No callback (e.g. daemon died without notification) makes WaitForCopyResult()
- *           return DFS_FAILED on timeout instead of blocking forever.
- * @tc.type: FUNC
- * @tc.require: I7TDJK
- */
-HWTEST_F(TransListenerTest, TransListener_WaitForCopyResult_0003, TestSize.Level0)
-{
-    GTEST_LOG_(INFO) << "TransListener_WaitForCopyResult_0003 Start";
-    string desturi = "file://docs/storage/media/100/local/files/Docs/aa1/";
-    auto ptr = std::make_shared<TransListener>(desturi, listener);
-
-    int32_t ret = ptr->WaitForCopyResult(std::chrono::milliseconds(20));
-    EXPECT_EQ(ret, DFS_FAILED);
-    EXPECT_EQ(ptr->GetErrCode(), E_IPCSS);
-    GTEST_LOG_(INFO) << "TransListener_WaitForCopyResult_0003 End";
-}
 } // namespace OHOS::Storage::DistributedFile::Test
