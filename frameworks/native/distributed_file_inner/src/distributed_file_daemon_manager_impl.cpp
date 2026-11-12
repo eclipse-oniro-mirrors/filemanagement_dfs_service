@@ -34,8 +34,10 @@ namespace Storage {
 namespace DistributedFile {
 using namespace OHOS::Storage;
 using namespace OHOS::FileManagement;
+#ifdef DFS_ENABLE_DISTRIBUTED_ABILITY
 constexpr int32_t E_CONNECTION_FAILED = 13900045;
 constexpr auto OPEN_P2P_WAIT_TIMEOUT = std::chrono::seconds(30);
+#endif
 DistributedFileDaemonManagerImpl &DistributedFileDaemonManagerImpl::GetInstance()
 {
     static DistributedFileDaemonManagerImpl instance;
