@@ -34,10 +34,6 @@ namespace Storage {
 namespace DistributedFile {
 using namespace OHOS::Storage;
 using namespace OHOS::FileManagement;
-#ifdef DFS_ENABLE_DISTRIBUTED_ABILITY
-constexpr int32_t E_CONNECTION_FAILED = 13900045;
-constexpr auto OPEN_P2P_WAIT_TIMEOUT = std::chrono::seconds(30);
-#endif
 DistributedFileDaemonManagerImpl &DistributedFileDaemonManagerImpl::GetInstance()
 {
     static DistributedFileDaemonManagerImpl instance;
@@ -86,10 +82,7 @@ int32_t DistributedFileDaemonManagerImpl::OpenP2PConnectionEx(const std::string 
         LOGE("proxy is null.");
         return OHOS::FileManagement::E_SA_LOAD_FAILED;
     }
-    if (!openP2PConnectionExSem_.try_acquire_for(OPEN_P2P_WAIT_TIMEOUT)) {
-        LOGE("OpenP2PConnectionEx wait semaphore timeout.");
-        return E_CONNECTION_FAILED;
-    }
+    openP2PConnectionExSem_.acquire();
     int32_t res = distributedFileDaemonProxy->OpenP2PConnectionEx(networkId, remoteReverseObj);
     openP2PConnectionExSem_.release();
     return res;
