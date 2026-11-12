@@ -477,7 +477,8 @@ int32_t CloudDiskServiceLogFile::PraseLog(const uint64_t line, ChangeData &data,
         isEof = true;
         return E_OK;
     } else if (!CheckLineIsValid(line)) {
-        LOGE("PraseLog: line is invalid, currentLine_:%{public}llu, line:%{public}llu", currentLine_.load(), line);
+        LOGE("PraseLog: line is invalid, currentLine_:%{public}" PRIu64 ", line:%{public}" PRIu64,
+             currentLine_.load(), line);
         return E_INVALID_CHANGE_SEQUENCE;
     }
 
