@@ -306,16 +306,16 @@ public:
     void ExpectStateTransitions(int32_t taskFd, uint8_t &stateByte)
     {
         // The partial flip happens at activation; the completion path only flips to fully hydrated.
-        constexpr int32_t STATE_UPDATE_COUNT = 1;                    // Fully hydrated.
-        constexpr int32_t STATE_READ_COUNT = STATE_UPDATE_COUNT * 2; // Get + Set per update.
+        constexpr int32_t stateUpdateCount = 1;                    // Fully hydrated.
+        constexpr int32_t stateReadCount = stateUpdateCount * 2;   // Get + Set per update.
         EXPECT_CALL(*mock_, fgetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
-            .Times(STATE_READ_COUNT)
+            .Times(stateReadCount)
             .WillRepeatedly(Invoke([&stateByte](int, const char *, void *value, size_t) {
                 *static_cast<uint8_t *>(value) = stateByte;
                 return static_cast<ssize_t>(sizeof(uint8_t));
             }));
         EXPECT_CALL(*mock_, fsetxattr(taskFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
-            .Times(STATE_UPDATE_COUNT)
+            .Times(stateUpdateCount)
             .WillRepeatedly(Invoke([&stateByte](int, const char *, const void *value, size_t, int) {
                 stateByte = *static_cast<const uint8_t *>(value);
                 return 0;
@@ -393,9 +393,11 @@ public:
             }));
         // Validation reads the state once. When activation proceeds, the partial-state
         // flip at activation adds one more read plus the old-state read inside the set.
+        constexpr int32_t validationOnlyReadCount = 1;
+        constexpr int32_t activationProceedReadCount = 3; // Validation + partial flip + old-state read.
         const bool activationProceeds = admissionInode == activationInode;
         EXPECT_CALL(*mock_, fgetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
-            .Times(activationProceeds ? 3 : 1)
+            .Times(activationProceeds ? activationProceedReadCount : validationOnlyReadCount)
             .WillRepeatedly(Invoke([](int, const char *, void *value, size_t) {
                 *static_cast<uint8_t *>(value) = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
                 return static_cast<ssize_t>(sizeof(uint8_t));
