@@ -56,6 +56,12 @@ void InitDownloadStopReason(napi_env env, napi_value exports)
         DECLARE_NAPI_STATIC_PROPERTY("APP_UNLOAD", NVal::CreateInt32(env, (int32_t)DowngradeProgress::APP_UNLOAD).val_),
         DECLARE_NAPI_STATIC_PROPERTY("OTHER_REASON",
                                      NVal::CreateInt32(env, (int32_t)DowngradeProgress::OTHER_REASON).val_),
+        DECLARE_NAPI_STATIC_PROPERTY("CONTENT_NOT_FOUND",
+                                     NVal::CreateInt32(env, (int32_t)DowngradeProgress::CONTENT_NOT_FOUND).val_),
+        DECLARE_NAPI_STATIC_PROPERTY("FREQUENT_USER_REQUESTS",
+                                     NVal::CreateInt32(env, (int32_t)DowngradeProgress::FREQUENT_USER_REQUESTS).val_),
+        DECLARE_NAPI_STATIC_PROPERTY("LOW_BATTERY",
+                                     NVal::CreateInt32(env, (int32_t)DowngradeProgress::LOW_BATTERY).val_),
     };
     napi_define_properties(env, obj, sizeof(desc) / sizeof(desc[0]), desc);
     napi_set_named_property(env, exports, propertyName, obj);

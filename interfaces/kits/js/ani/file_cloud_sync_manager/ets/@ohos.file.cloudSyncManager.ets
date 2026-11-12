@@ -46,7 +46,10 @@ export default namespace cloudSyncManager  {
         TEMPERATURE_LIMIT = 3,
         USER_STOPPED = 4,
         APP_UNLOAD = 5,
-        OTHER_REASON = 6
+        OTHER_REASON = 6,
+        CONTENT_NOT_FOUND = 7,
+        FREQUENT_USER_REQUESTS = 8,
+        LOW_BATTERY = 9
     }
 
     export enum TransferStopReason {
