@@ -314,14 +314,14 @@ int32_t FileCopyManager::Cancel(const bool isKeepFiles)
 void FileCopyManager::NotifyDaemonDied()
 {
     LOGE("daemon died, notify pending copy tasks");
+#ifdef DFS_ENABLE_DISTRIBUTED_ABILITY
     std::lock_guard<std::mutex> lock(FileInfosVecMutex_);
     for (auto &item : FileInfosVec_) {
-#ifdef DFS_ENABLE_DISTRIBUTED_ABILITY
         if (item->transListener != nullptr) {
             item->transListener->OnFailed("", E_IPCSS);
         }
-#endif
     }
+#endif
 }
 
 int32_t FileCopyManager::Cancel(const std::string &srcUri, const std::string &destUri, const bool isKeepFiles)
