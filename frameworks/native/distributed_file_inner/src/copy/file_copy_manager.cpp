@@ -14,7 +14,9 @@
  */
 
 #include "copy/file_copy_manager.h"
+#ifdef DFS_ENABLE_DISTRIBUTED_ABILITY
 #include "distributed_file_daemon_proxy.h"
+#endif
 
 #include <cstring>
 #include <dirent.h>
@@ -187,12 +189,14 @@ uint32_t GetApiCompatibleVersion()
 FileCopyManager &FileCopyManager::GetInstance()
 {
     static FileCopyManager instance;
+#ifdef DFS_ENABLE_DISTRIBUTED_ABILITY
     static std::once_flag daemonDiedHandlerFlag;
     std::call_once(daemonDiedHandlerFlag, [] {
         DistributedFileDaemonProxy::SetDaemonDiedHandler([] {
             FileCopyManager::GetInstance().NotifyDaemonDied();
         });
     });
+#endif
     return instance;
 }
 
