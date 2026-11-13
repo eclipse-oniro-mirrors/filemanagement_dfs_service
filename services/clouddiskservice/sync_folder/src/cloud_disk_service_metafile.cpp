@@ -141,7 +141,7 @@ static CloudDiskServiceDentry *FindInBlockById(
             continue;
         }
 
-        if ((de->revalidate & revalidate) != 0 &&
+        if ((de->revalidate & revalidate) != 0 && de->hash == ctx->hash &&
             !memcmp(ctx->recordId.c_str(), de->recordId, ctx->recordId.length())) {
             ctx->bitPos = bitPos;
             return de;
@@ -328,6 +328,8 @@ CloudDiskServiceMetaFile::CloudDiskServiceMetaFile(const int32_t userId,
     userId_ = userId;
     syncFolderIndex_ = Convertor::ConvertToHex(syncFolderIndex);
     selfInode_ = Convertor::ConvertToHex(inode);
+    LOGI("Construct meta file, userId: %{public}d, syncFolderIndex: %{public}s, selfInode: %{public}s",
+         userId_, syncFolderIndex_.c_str(), selfInode_.c_str());
     cacheFile_ = GetDentryFileByPath(userId_, syncFolderIndex_, selfInode_);
     if (access(cacheFile_.c_str(), F_OK) == 0) {
         fd_ = UniqueFd{open(cacheFile_.c_str(), O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)};
@@ -343,6 +345,7 @@ int32_t CloudDiskServiceMetaFile::DecodeDentryHeader()
     std::unique_lock<std::mutex> lock(mtx_);
     ssize_t size = FileUtils::ReadFile(fd_, 0, sizeof(CloudDiskServiceDcacheHeader), &header);
     if (size != sizeof(CloudDiskServiceDcacheHeader)) {
+        LOGW("Read dentry header incomplete, bytes: %{public}zd", size);
         return size;
     }
 
@@ -350,6 +353,8 @@ int32_t CloudDiskServiceMetaFile::DecodeDentryHeader()
     selfRecordId_ = std::string(reinterpret_cast<const char *>(header.selfRecordId), RECORD_ID_LEN);
     selfHash_ = header.selfHash;
 
+    LOGI("DecodeDentryHeader, parentDentryFile: %{public}s, selfRecordId: %{public}s, selfHash: %{public}u",
+         parentDentryFile_.c_str(), selfRecordId_.c_str(), selfHash_);
     return E_OK;
 }
 
@@ -426,7 +431,8 @@ int32_t CloudDiskServiceMetaFile::DoCreate(const MetaBase &base, unsigned long &
 int32_t CloudDiskServiceMetaFile::DoRemove(const MetaBase &base,
                                            std::string &recordId,
                                            unsigned long &bidx,
-                                           uint32_t &bitPos)
+                                           uint32_t &bitPos,
+                                           bool markDeleted)
 {
     if (fd_ < 0) {
         LOGE("bad metafile fd");
@@ -442,7 +448,7 @@ int32_t CloudDiskServiceMetaFile::DoRemove(const MetaBase &base,
         return ENOENT;
     }
 
-    de->revalidate = INVALIDATE;
+    de->revalidate = markDeleted ? (INVALIDATE | DENTRY_DELETED) : INVALIDATE;
     recordId = std::string(reinterpret_cast<const char *>(de->recordId), RECORD_ID_LEN);
 
     off_t ipos = GetDentryGroupPos(ctx.bidx);
@@ -657,7 +663,7 @@ int32_t CloudDiskServiceMetaFile::DoRename(MetaBase &metaBase,
     }
     metaBase.name = oldName;
     std::string childRecordId;
-    ret = DoRemove(metaBase, childRecordId, bidx, bitPos);
+    ret = DoRemove(metaBase, childRecordId, bidx, bitPos, false);
     if (ret != 0) {
         LOGE("remove dentry failed, ret = %{public}d", ret);
         metaBase.name = newName;
@@ -705,12 +711,15 @@ int32_t CloudDiskServiceMetaFile::DoLookupByRecordId(MetaBase &base, uint8_t rev
     InitDcacheLookupCtx(&ctx, base, base.hash, fd_);
     ctx.recordId = base.recordId;
     struct CloudDiskServiceDentry *de = ((revalidate & VALIDATE) == 0) ? nullptr : FindDentry(&ctx, true, VALIDATE);
-    if (de == nullptr) {
-        de = ((revalidate & INVALIDATE) == 0) ? nullptr : FindDentry(&ctx, true, INVALIDATE);
+    if (de == nullptr && (revalidate & INVALIDATE) != 0) {
+        de = FindDentry(&ctx, true, DENTRY_DELETED);
         if (de == nullptr) {
-            LOGD("find dentry by id failed");
-            return ENOENT;
+            de = FindDentry(&ctx, true, INVALIDATE);
         }
+    }
+    if (de == nullptr) {
+        LOGD("find dentry by id failed");
+        return ENOENT;
     }
 
     base.mode = de->mode;
@@ -748,6 +757,12 @@ int32_t CloudDiskServiceMetaFile::DoLookupByOffset(MetaBase &base, const unsigne
     base.atime = de->atime;
     base.mtime = de->mtime;
     base.name = std::string(reinterpret_cast<const char *>(dentryBlk->fileName[bitPos]), de->namelen);
+    if (base.name.empty() || base.name.front() == '\0') {
+        LOGW("Abnormal dentry name, index: %{public}s, inode: %{public}s, bidx: %{public}lu, bitPos: %{public}u, "
+             "namelen: %{public}u, occupied: %{public}d, revalidate: %{public}u",
+             syncFolderIndex_.c_str(), selfInode_.c_str(), bidx, bitPos, static_cast<uint32_t>(de->namelen),
+             static_cast<int32_t>(BitOps::TestBit(bitPos, dentryBlk->bitmap)), static_cast<uint32_t>(de->revalidate));
+    }
     base.recordId = std::string(reinterpret_cast<const char *>(de->recordId), RECORD_ID_LEN);
     base.placeholder = GetDentryPlaceholderState(*de);
     return E_OK;
@@ -867,12 +882,15 @@ std::shared_ptr<CloudDiskServiceMetaFile> MetaFileMgr::GetCloudDiskServiceMetaFi
     } else {
         if (metaFiles_.size() == MAX_META_FILE_NUM) {
             auto deleteKey = metaFileList_.back().first;
+            LOGW("Remove meta file from cache, userId: %{public}u, key: %{public}s",
+                 deleteKey.first, deleteKey.second.c_str());
             metaFiles_.erase(deleteKey);
             metaFileList_.pop_back();
         }
         mFile = std::make_shared<CloudDiskServiceMetaFile>(userId, syncFolderIndex, inode);
         metaFileList_.emplace_front(key, mFile);
         metaFiles_[key] = metaFileList_.begin();
+        LOGI("Add meta file to cache, userId: %{public}u, key: %{public}s", key.first, key.second.c_str());
     }
     return mFile;
 }
@@ -887,8 +905,14 @@ int32_t MetaFileMgr::GetRelativePath(const std::shared_ptr<CloudDiskServiceMetaF
         auto parentMetaFile = GetCloudDiskServiceMetaFile(userId, syncFolderIndex, inode);
 
         MetaBase mBase(pMetaFile->selfRecordId_, pMetaFile->selfHash_);
-        int32_t ret = parentMetaFile->DoLookupByRecordId(mBase, VALIDATE);
+        int32_t ret = parentMetaFile->DoLookupByRecordId(mBase, VALIDATE | INVALIDATE);
         if (ret != 0) {
+            LOGE("DoLookupByRecordId failed, index: %{public}s, startInode: %{public}s, "
+                 "inode: %{public}s, parentField: '%{public}s', hash: %{public}u, "
+                 "recordIdLen: %{public}zu, path: %{private}s, ret: %{public}d",
+                 pMetaFile->syncFolderIndex_.c_str(), metaFile->selfInode_.c_str(),
+                 pMetaFile->selfInode_.c_str(), pMetaFile->parentDentryFile_.c_str(),
+                 mBase.hash, mBase.recordId.size(), path.c_str(), ret);
             path = "";
             return E_PATH_NOT_EXIST;
         }

@@ -645,7 +645,8 @@ int32_t CloudDiskService::GetSyncFolderChangesInner(const std::string &syncFolde
                                                     ChangesResult &changesResult)
 {
 #ifdef SUPPORT_CLOUD_DISK_SERVICE
-    LOGI("Begin GetSyncFolderChangesInner");
+    LOGI("Begin GetSyncFolderChangesInner, startUsn: %{public}" PRIu64 ", count: %{public}" PRIu64,
+         startUsn, count);
 
     if (count > GET_SYNC_FOLDER_CHANGE_MAX) {
         LOGE("Invalid argument");
@@ -672,16 +673,17 @@ int32_t CloudDiskService::GetSyncFolderChangesInner(const std::string &syncFolde
     SyncFolderValue syncFolderValue;
     if (!CloudDiskSyncFolder::GetInstance().GetSyncFolderValueByIndex(syncFolderIndex, syncFolderValue) ||
         syncFolderValue.bundleName != bundleName) {
-        LOGE("SyncFolder is not exist");
+        LOGE("Sync folder unavailable for caller, index: %{public}u", syncFolderIndex);
         return E_SYNC_FOLDER_NOT_REGISTERED;
     }
 
     ret = CloudDiskServiceSyncFolder::GetSyncFolderChanges(userId, syncFolderIndex, startUsn, count, changesResult);
     if (ret != E_OK) {
-        LOGE("GetSyncFolderChanges failed");
+        LOGE("GetSyncFolderChanges failed, ret: %{public}d", ret);
         return ret;
     }
-    LOGI("End GetSyncFolderChangesInner");
+    LOGI("End GetSyncFolderChangesInner, nextUsn: %{public}" PRIu64 ", isEof: %{public}d",
+         changesResult.nextUsn, changesResult.isEof);
     return E_OK;
 #else
     return E_NOT_SUPPORTED;
@@ -1169,7 +1171,7 @@ int32_t CloudDiskService::RegisterSyncFolderInner(
     auto syncFolderIndex = CloudDisk::CloudFileUtils::DentryHash(registerSyncFolder);
     ret = CloudDiskServiceSyncFolder::RegisterSyncFolder(userId, syncFolderIndex, registerSyncFolder);
     if (ret != E_OK) {
-        LOGE("RegisterSyncFolder failed");
+        LOGE("RegisterSyncFolder failed, index: %{public}u, ret: %{public}d", syncFolderIndex, ret);
         return ret;
     }
 
@@ -1182,7 +1184,7 @@ int32_t CloudDiskService::RegisterSyncFolderInner(
     syncFolderValue.path = registerSyncFolder;
 
     CloudDiskSyncFolder::GetInstance().AddSyncFolder(syncFolderIndex, syncFolderValue);
-    LOGI("End RegisterSyncFolderInner");
+    LOGI("End RegisterSyncFolderInner, index: %{public}u", syncFolderIndex);
     return E_OK;
 #else
     return E_NOT_SUPPORTED;

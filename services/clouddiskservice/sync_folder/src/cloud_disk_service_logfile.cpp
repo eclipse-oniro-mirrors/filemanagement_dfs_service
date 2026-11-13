@@ -319,6 +319,11 @@ int32_t CloudDiskServiceLogFile::GenerateLogBlock(const struct EventInfo &eventI
     WriteSuperBlock();
     line = logBlock.line;
     LOGD("[Generate log line:%{public}" PRIu64 "], operationType:%{public}d", line, logBlock.operationType);
+    if (eventInfo.operateType != OperationType::CLOSE_WRITE) {
+        LOGI("Generate log line: %{public}" PRIu64 ", index: %{public}u"
+             ", parentInode: %{public}" PRIu64 ", bidx: %{public}" PRIu64 ", bitPos: %{public}u",
+             line, syncFolderIndex_, parentInode, logBlock.bidx, logBlock.bitPos);
+    }
     return E_OK;
 }
 
@@ -418,13 +423,13 @@ int32_t CloudDiskServiceLogFile::FillChildForDir(const std::string &path, const 
 
 void CloudDiskServiceLogFile::StartCallback()
 {
-    LOGD("StartCallback, %{public}u", syncFolderIndex_);
+    LOGI("StartCallback, %{public}u", syncFolderIndex_);
     needCallback_ = true;
 }
 
 void CloudDiskServiceLogFile::StopCallback()
 {
-    LOGD("StopCallback, %{public}u", syncFolderIndex_);
+    LOGI("StopCallback, %{public}u", syncFolderIndex_);
     needCallback_ = false;
 }
 
@@ -434,6 +439,13 @@ int32_t CloudDiskServiceLogFile::ProduceLog(const struct EventInfo &eventInfo)
     if (stat(eventInfo.path.c_str(), &parentStat) != 0) {
         LOGE("stat parent failed for %{public}d", errno);
         return errno;
+    }
+
+    if (eventInfo.operateType != OperationType::CLOSE_WRITE) {
+        LOGI("ProduceLog, operationType: %{public}d, index: %{public}u, parentInode: %{public}" PRIu64
+             ", path: %{private}s, name: %{public}s",
+             static_cast<int32_t>(eventInfo.operateType), syncFolderIndex_,
+             static_cast<uint64_t>(parentStat.st_ino), eventInfo.path.c_str(), eventInfo.name.c_str());
     }
 
     int32_t ret = 0;
@@ -453,7 +465,7 @@ int32_t CloudDiskServiceLogFile::ProduceLog(const struct EventInfo &eventInfo)
     struct LogGenerateCtx ctx;
     ret = ProductLogForOperate(parentMetaFile, eventInfo.path, eventInfo.name, ctx, eventInfo.operateType);
     if (ret != 0) {
-        LOGE("create log failed");
+        LOGE("create log failed, ret: %{public}d", ret);
         return ret;
     }
 
@@ -472,7 +484,7 @@ int32_t CloudDiskServiceLogFile::ProduceLog(const struct EventInfo &eventInfo)
 int32_t CloudDiskServiceLogFile::PraseLog(const uint64_t line, ChangeData &data, bool &isEof)
     __attribute__((no_sanitize("unsigned-integer-overflow")))
 {
-    LOGD("[prase line:%{public}" PRIu64 "], currentline:%{public}" PRIu64, line, currentLine_.load());
+    LOGI("[prase line:%{public}" PRIu64 "], currentline:%{public}" PRIu64, line, currentLine_.load());
     if (line == currentLine_.load()) {
         isEof = true;
         return E_OK;
@@ -485,9 +497,13 @@ int32_t CloudDiskServiceLogFile::PraseLog(const uint64_t line, ChangeData &data,
     struct LogBlock logBlock;
     auto ret = ReadLogFile(line, logBlock);
     if (ret != 0) {
+        LOGE("readLogFile failed");
         return ret;
     }
 
+    LOGI("Read LogBlock, syncFolderindex: %{public}u, logUsn: %{public}" PRIu64
+         ", parentInode: %{public}" PRIu64 ", operationType: %{public}d",
+         syncFolderIndex_, logBlock.line, logBlock.parentInode, static_cast<int32_t>(logBlock.operationType));
     auto parentMetaFile =
         MetaFileMgr::GetInstance().GetCloudDiskServiceMetaFile(userId_, syncFolderIndex_, logBlock.parentInode);
     std::string relativePath;
@@ -511,6 +527,10 @@ int32_t CloudDiskServiceLogFile::PraseLog(const uint64_t line, ChangeData &data,
     data.size = mBase.size;
     data.mtime = mBase.mtime;
     data.timeStamp = logBlock.timestamp;
+    LOGI("PraseLog result, usn: %{public}" PRIu64 ", mBase.name: %{private}s, relativePath: %{private}s"
+         ", operationType: %{public}d",
+         data.updateSequenceNumber, mBase.name.c_str(), data.relativePath.c_str(),
+         static_cast<int32_t>(data.operationType));
     return E_OK;
 }
 
@@ -594,7 +614,7 @@ int32_t CloudDiskServiceLogFile::ProduceUnlinkLog(const std::shared_ptr<CloudDis
     if (ret != E_OK) {
         LOGD("lookup placeholder state failed, errno:%{public}d", ret);
     }
-    ret = parentMetaFile->DoRemove(mBase, ctx.recordId, ctx.bidx, ctx.bitPos);
+    ret = parentMetaFile->DoRemove(mBase, ctx.recordId, ctx.bidx, ctx.bitPos, true);
     if (ret != 0) {
         LOGE("remove failed");
         return -1;
@@ -760,6 +780,7 @@ int32_t LogFileMgr::PraseRequest(const int32_t userId,
         startLine = logFile->GetStartLine();
         nextUsn = startLine + count;
     }
+    LOGI("startUsn: %{public}" PRIu64 ", count: %{public}" PRIu64, startLine, count);
     for (uint64_t line = startLine; line < startLine + count; line++) {
         struct ChangeData changeData;
         ret = logFile->PraseLog(line, changeData, changesResult.isEof);
