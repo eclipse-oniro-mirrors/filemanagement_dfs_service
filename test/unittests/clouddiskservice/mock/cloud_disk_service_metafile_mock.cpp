@@ -142,7 +142,8 @@ std::shared_ptr<CloudDiskServiceMetaFile> MetaFileMgr::GetCloudDiskServiceMetaFi
 int32_t CloudDiskServiceMetaFile::DoRemove(const MetaBase &base,
                                            std::string &recordId,
                                            unsigned long &bidx,
-                                           uint32_t &bitPos)
+                                           uint32_t &bitPos,
+                                           bool)
 {
     if (removeResultOverridden) {
         return removeResult;

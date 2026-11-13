@@ -28,6 +28,8 @@ namespace OHOS::FileManagement::CloudDiskService {
 
 constexpr uint8_t VALIDATE = 0x01;
 constexpr uint8_t INVALIDATE = 0x02;
+// A deleted dentry retains INVALIDATE so older lookups can still read it.
+constexpr uint8_t DENTRY_DELETED = 0x04;
 constexpr uint32_t DENTRYGROUP_SIZE = 4096;
 constexpr uint32_t DENTRY_NAME_LEN = 16;
 constexpr uint32_t DENTRY_RESERVED_LENGTH = 3;
@@ -100,7 +102,8 @@ public:
     explicit CloudDiskServiceMetaFile(const int32_t userId, const uint32_t syncFolderIndex, const uint64_t inode);
 
     int32_t DoCreate(const MetaBase &base, unsigned long &bidx, uint32_t &bitPos);
-    int32_t DoRemove(const MetaBase &base, std::string &recordId, unsigned long &bidx, uint32_t &bitPos);
+    int32_t DoRemove(const MetaBase &base, std::string &recordId, unsigned long &bidx, uint32_t &bitPos,
+                     bool markDeleted = true);
     int32_t DoFlush(const MetaBase &base, std::string &recordId, unsigned long &bidx, uint32_t &bitPos);
     int32_t DoUpdate(const MetaBase &base, std::string &recordId, unsigned long &bidx, uint32_t &bitPos);
     int32_t DoRenameOld(const MetaBase &base, std::string &recordId, unsigned long &bidx, uint32_t &bitPos);

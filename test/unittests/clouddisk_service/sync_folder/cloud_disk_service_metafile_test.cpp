@@ -15,9 +15,12 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include "assistant.h"
+#include "bit_ops.h"
 #include "cloud_disk_common.h"
+#include "cloud_file_utils.h"
 #include "cloud_disk_service_error.h"
 #include "cloud_disk_service_metafile.h"
 #include "convertor.h"
@@ -1215,6 +1218,44 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoLookupByRecordIdTest002, TestSize.Level
         GTEST_LOG_(INFO) << "DoLookupByRecordIdTest002 ERROR";
     }
     GTEST_LOG_(INFO) << "DoLookupByRecordIdTest002 End";
+}
+
+/**
+ * @tc.name: DoLookupByRecordIdTest003
+ * @tc.desc: Prefer the deleted directory over a same-hash rename source.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceMetafileTest, DoLookupByRecordIdTest003, TestSize.Level1)
+{
+    CloudDiskServiceMetaFile mFile(USER_ID, INDEX_ID, INODE);
+    mFile.fd_.Reset(dup(STDOUT_FILENO));
+    ASSERT_GE(mFile.fd_.Get(), 0);
+
+    const std::string recordId(RECORD_ID_LEN, 'd');
+    const uint32_t hash = CloudDisk::CloudFileUtils::DentryHash("aaaa");
+    ASSERT_EQ(CloudDisk::CloudFileUtils::DentryHash("AAAA"), hash);
+    CloudDiskServiceDentryGroup group {};
+    group.nsl[0].hash = hash;
+    group.nsl[0].namelen = 4;
+    group.nsl[0].revalidate = INVALIDATE;
+    ASSERT_EQ(memcpy_s(group.nsl[0].recordId, RECORD_ID_LEN, recordId.data(), recordId.size()), EOK);
+    ASSERT_EQ(memcpy_s(group.fileName[0], DENTRY_NAME_LEN, "AAAA", 4), EOK);
+    BitOps::SetBit(0, group.bitmap);
+    group.nsl[1] = group.nsl[0];
+    group.nsl[1].revalidate = INVALIDATE | DENTRY_DELETED;
+    ASSERT_EQ(memcpy_s(group.fileName[1], DENTRY_NAME_LEN, "aaaa", 4), EOK);
+    BitOps::SetBit(1, group.bitmap);
+
+    EXPECT_CALL(*insMock, ReadFile(_, _, _, _)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*insMock, ReadFile(_, DENTRYGROUP_HEADER, DENTRYGROUP_SIZE, _))
+        .WillRepeatedly(Invoke([&group](int, off_t, size_t size, void *data) -> int64_t {
+            return memcpy_s(data, size, &group, sizeof(group)) == EOK ? static_cast<int64_t>(size) : -1;
+        }));
+
+    MetaBase base(recordId, hash);
+    ASSERT_EQ(mFile.DoLookupByRecordId(base, VALIDATE | INVALIDATE), E_OK);
+    EXPECT_EQ(base.name, "aaaa");
 }
 
 /**
