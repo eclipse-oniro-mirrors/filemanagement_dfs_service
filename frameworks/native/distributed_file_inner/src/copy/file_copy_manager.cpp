@@ -14,6 +14,9 @@
  */
 
 #include "copy/file_copy_manager.h"
+#ifdef DFS_ENABLE_DISTRIBUTED_ABILITY
+#include "distributed_file_daemon_proxy.h"
+#endif
 
 #include <cstring>
 #include <dirent.h>
@@ -21,6 +24,7 @@
 #include <filesystem>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
@@ -185,6 +189,14 @@ uint32_t GetApiCompatibleVersion()
 FileCopyManager &FileCopyManager::GetInstance()
 {
     static FileCopyManager instance;
+#ifdef DFS_ENABLE_DISTRIBUTED_ABILITY
+    static std::once_flag daemonDiedHandlerFlag;
+    std::call_once(daemonDiedHandlerFlag, [] {
+        DistributedFileDaemonProxy::SetDaemonDiedHandler([] {
+            FileCopyManager::GetInstance().NotifyDaemonDied();
+        });
+    });
+#endif
     return instance;
 }
 
@@ -301,6 +313,19 @@ int32_t FileCopyManager::Cancel(const bool isKeepFiles)
     }
     FileInfosVec_.clear();
     return E_OK;
+}
+
+void FileCopyManager::NotifyDaemonDied()
+{
+    LOGE("daemon died, notify pending copy tasks");
+#ifdef DFS_ENABLE_DISTRIBUTED_ABILITY
+    std::lock_guard<std::mutex> lock(FileInfosVecMutex_);
+    for (auto &item : FileInfosVec_) {
+        if (item->transListener != nullptr) {
+            item->transListener->OnFailed("", E_IPCSS);
+        }
+    }
+#endif
 }
 
 int32_t FileCopyManager::Cancel(const std::string &srcUri, const std::string &destUri, const bool isKeepFiles)

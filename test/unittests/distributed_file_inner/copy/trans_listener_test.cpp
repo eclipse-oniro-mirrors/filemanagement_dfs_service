@@ -588,4 +588,55 @@ HWTEST_F(TransListenerTest, TransListener_0015, TestSize.Level0)
 
     GTEST_LOG_(INFO) << "TransListener_0015 End";
 }
+
+/**
+ * @tc.name: TransListener_WaitForCopyResult_0001
+ * @tc.desc: OnFinished() settles the pending copy and WaitForCopyResult() returns DFS_SUCCESS.
+ * @tc.type: FUNC
+ * @tc.require: I7TDJK
+ */
+HWTEST_F(TransListenerTest, TransListener_WaitForCopyResult_0001, TestSize.Level0)
+{
+    GTEST_LOG_(INFO) << "TransListener_WaitForCopyResult_0001 Start";
+    string desturi = "file://docs/storage/media/100/local/files/Docs/aa1/";
+    auto ptr = std::make_shared<TransListener>(desturi, listener);
+
+    std::thread notifier([&ptr]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        ptr->OnFinished("session");
+    });
+    int32_t ret = ptr->WaitForCopyResult();
+    notifier.join();
+
+    EXPECT_EQ(ret, DFS_SUCCESS);
+    EXPECT_EQ(ptr->GetErrCode(), 0);
+    GTEST_LOG_(INFO) << "TransListener_WaitForCopyResult_0001 End";
+}
+
+/**
+ * @tc.name: TransListener_WaitForCopyResult_0002
+ * @tc.desc: OnFailed() settles the pending copy and WaitForCopyResult() returns DFS_FAILED
+ *           with the reported error code.
+ * @tc.type: FUNC
+ * @tc.require: I7TDJK
+ */
+HWTEST_F(TransListenerTest, TransListener_WaitForCopyResult_0002, TestSize.Level0)
+{
+    GTEST_LOG_(INFO) << "TransListener_WaitForCopyResult_0002 Start";
+    string desturi = "file://docs/storage/media/100/local/files/Docs/aa1/";
+    auto ptr = std::make_shared<TransListener>(desturi, listener);
+    constexpr int32_t errorCode = E_IPCSS;
+
+    std::thread notifier([&ptr]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        ptr->OnFailed("session", errorCode);
+    });
+    int32_t ret = ptr->WaitForCopyResult();
+    notifier.join();
+
+    EXPECT_EQ(ret, DFS_FAILED);
+    EXPECT_EQ(ptr->GetErrCode(), errorCode);
+    GTEST_LOG_(INFO) << "TransListener_WaitForCopyResult_0002 End";
+}
+
 } // namespace OHOS::Storage::DistributedFile::Test

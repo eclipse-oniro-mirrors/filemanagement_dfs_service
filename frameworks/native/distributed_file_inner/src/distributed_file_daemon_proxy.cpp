@@ -60,8 +60,21 @@ static int32_t ReadUriInfoFromResult(const std::vector<std::string> &result,
 void DistributedFileDaemonProxy::OnRemoteSaDied(const wptr<IRemoteObject> &remote)
 {
     LOGI("dfs service death");
+    DaemonDiedHandler handler = nullptr;
+    {
+        unique_lock<mutex> lock(proxyMutex_);
+        daemonProxy_ = nullptr;
+        handler = daemonDiedHandler_;
+    }
+    if (handler != nullptr) {
+        handler();
+    }
+}
+
+void DistributedFileDaemonProxy::SetDaemonDiedHandler(DaemonDiedHandler handler)
+{
     unique_lock<mutex> lock(proxyMutex_);
-    daemonProxy_ = nullptr;
+    daemonDiedHandler_ = std::move(handler);
 }
 
 void DistributedFileDaemonProxy::DaemonDeathRecipient::SetDeathRecipient(RemoteDiedHandler handler)
