@@ -1078,7 +1078,8 @@ int32_t CloudDiskRdbStore::GetRowId(const std::string &cloudId, int64_t &rowId)
     return E_OK;
 }
 
-static int32_t RecycleSetValue(TrashOptType val, ValuesBucket &setXAttr, int32_t position, int32_t dirtyType)
+static int32_t RecycleSetValue(TrashOptType val, ValuesBucket &setXAttr, int32_t position, int32_t dirtyType,
+    int64_t metaTimeEdited = UTCTimeMilliSeconds())
 {
     if (position != LOCAL) {
         if (dirtyType != static_cast<int32_t>(DirtyType::TYPE_FDIRTY)) {
@@ -1091,13 +1092,12 @@ static int32_t RecycleSetValue(TrashOptType val, ValuesBucket &setXAttr, int32_t
         setXAttr.PutInt(FileColumn::OPERATE_TYPE, static_cast<int32_t>(OperationType::RESTORE));
         setXAttr.PutLong(FileColumn::FILE_TIME_RECYCLED, CANCEL_STATE);
         setXAttr.PutInt(FileColumn::DIRECTLY_RECYCLED, CANCEL_STATE);
-        setXAttr.PutLong(FileColumn::META_TIME_EDITED, UTCTimeMilliSeconds());
+        setXAttr.PutLong(FileColumn::META_TIME_EDITED, metaTimeEdited);
     } else if (val == TrashOptType::RECYCLE) {
-        int64_t recycledTime = UTCTimeMilliSeconds();
         setXAttr.PutInt(FileColumn::OPERATE_TYPE, static_cast<int32_t>(OperationType::DELETE));
-        setXAttr.PutLong(FileColumn::FILE_TIME_RECYCLED, recycledTime);
+        setXAttr.PutLong(FileColumn::FILE_TIME_RECYCLED, metaTimeEdited);
         setXAttr.PutInt(FileColumn::DIRECTLY_RECYCLED, SET_STATE);
-        setXAttr.PutLong(FileColumn::META_TIME_EDITED, recycledTime);
+        setXAttr.PutLong(FileColumn::META_TIME_EDITED, metaTimeEdited);
     } else {
         LOGE("invalid value");
         return E_RDB;
@@ -1976,13 +1976,13 @@ static void FileMoveAndRename(ValuesBucket &values, const int32_t &position, con
 }
 
 int32_t CloudDiskRdbStore::HandleRenameValue(ValuesBucket &rename, int32_t position, uint8_t noNeedUpload,
-    const CacheNode &oldNode, const CacheNode &newNode)
+    const CacheNode &oldNode, const CacheNode &newNode, int64_t metaTimeEdited)
 {
     string oldParentCloudId = oldNode.parentCloudId;
     string oldFileName = oldNode.fileName;
     string newParentCloudId = newNode.parentCloudId;
     string newFileName = newNode.fileName;
-    rename.PutLong(FileColumn::META_TIME_EDITED, UTCTimeMilliSeconds());
+    rename.PutLong(FileColumn::META_TIME_EDITED, metaTimeEdited);
     rename.PutInt(FileColumn::NO_NEED_UPLOAD, noNeedUpload);
     int32_t dirtyType = static_cast<int32_t>(DirtyType::TYPE_SYNCED);
     RETURN_ON_ERR(GetDirtyType(oldNode.cloudId, dirtyType));
@@ -2024,18 +2024,23 @@ int32_t CloudDiskRdbStore::Rename(const std::string &oldParentCloudId, const std
     ValuesBucket rename;
     CacheNode newNode = {.cloudId = metaBase.cloudId, .parentCloudId = newParentCloudId, .fileName = newFileName};
     CacheNode oldNode = {.cloudId = metaBase.cloudId, .parentCloudId = oldParentCloudId, .fileName = oldFileName};
-    RETURN_ON_ERR(HandleRenameValue(rename, metaBase.position, metaBase.noUpload, oldNode, newNode));
+    int64_t metaTimeEdited = UTCTimeMilliSeconds();
+    RETURN_ON_ERR(HandleRenameValue(rename, metaBase.position, metaBase.noUpload, oldNode,
+        newNode, metaTimeEdited));
     vector<ValueObject> bindArgs;
     bindArgs.emplace_back(metaBase.cloudId);
+    if (!needSyncAndNotify) {
+        rename.Delete(FileColumn::DIRTY_TYPE);
+        rename.Delete(FileColumn::FILE_STATUS);
+        rename.Delete(FileColumn::META_TIME_EDITED);
+    } else {
+        metaBase.mtime = static_cast<uint64_t>(metaTimeEdited);
+    }
     auto newMetaFile = MetaFileMgr::GetInstance().GetCloudDiskMetaFile(userId_, bundleName_, newParentCloudId);
     ret = oldMetaFile->DoRename(metaBase, newFileName, newMetaFile);
     if (ret != E_OK) {
         LOGE("rename dentry failed, ret = %{public}d", ret);
         return EINVAL;
-    }
-    if (!needSyncAndNotify) {
-        rename.Delete(FileColumn::DIRTY_TYPE);
-        rename.Delete(FileColumn::FILE_STATUS);
     }
     function<void()> rdbUpdate = [this, rename, bindArgs,
         oldFileNoNeedUpload, newFileNoNeedUpload, oldFileName, newFileName, needSyncAndNotify] {
@@ -3040,8 +3045,9 @@ int32_t CloudDiskRdbStore::HandleRestore(string &name, const string &parentCloud
     ValuesBucket setXAttr;
     setXAttr.PutString(FileColumn::PARENT_CLOUD_ID, parentCloudId);
     setXAttr.PutString(FileColumn::FILE_NAME, newName);
-    RETURN_ON_ERR(RecycleSetValue(TrashOptType::RESTORE, setXAttr, position, dirtyType));
-    struct RestoreInfo restoreInfo = {name, parentCloudId, newName, rowId};
+    int64_t metaTimeEdited = UTCTimeMilliSeconds();
+    RETURN_ON_ERR(RecycleSetValue(TrashOptType::RESTORE, setXAttr, position, dirtyType, metaTimeEdited));
+    struct RestoreInfo restoreInfo = {name, parentCloudId, newName, rowId, static_cast<uint64_t>(metaTimeEdited)};
     ret = RestoreUpdateRdb(cloudId, restoreInfo, setXAttr);
     if (ret != E_OK) {
         std::string msg = "handle restore rdb update fail, ret = " + std::to_string(ret);

@@ -110,7 +110,7 @@ public:
     int32_t GetSrcCloudId(const std::string &cloudId, std::string &srcCloudId);
     void TriggerSyncForWrite(const std::string &fileName, const std::string &parentCloudId);
     int32_t HandleRenameValue(NativeRdb::ValuesBucket &rename, int32_t position, uint8_t noNeedUpload,
-        const CacheNode &oldNode, const CacheNode &newNode);
+        const CacheNode &oldNode, const CacheNode &newNode, int64_t metaTimeEdited);
     int32_t UpdateTHMStatus(std::shared_ptr<CloudDiskMetaFile> metaFile, MetaBase &metabase, int32_t status,
         const std::string &filePath);
     int32_t GenerateNewRowId(const std::string &cloudId, const std::string &fileName, int64_t &rowId,

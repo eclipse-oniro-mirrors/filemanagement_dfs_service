@@ -836,6 +836,7 @@ int32_t MetaFileMgr::RemoveFromRecycleDentryfile(uint32_t userId, const std::str
         LOGE("lookup and update dentry failed, ret = %{public}d", ret);
         return ret;
     }
+    metaBase.mtime = restoreInfo.metaTimeEdited;
     metaBase.name = restoreInfo.newName;
     ret = dstMetaFile->DoCreate(metaBase);
     if (ret != E_OK) {
