@@ -41,7 +41,8 @@ static shared_ptr<CloudDiskRdbStore> GetRdbStore(const string &bundleName, int32
 {
     std::lock_guard<std::mutex> lock(cacheRdbMutex);
     string storeKey = bundleName + to_string(userId);
-    if (cacheRdbStore.first == storeKey) {
+    if (cacheRdbStore.first == storeKey && cacheRdbStore.second != nullptr &&
+        cacheRdbStore.second->IsRdbFileValid()) {
         return cacheRdbStore.second;
     }
     cacheRdbStore.first = storeKey;

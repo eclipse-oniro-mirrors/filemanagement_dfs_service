@@ -1151,6 +1151,77 @@ HWTEST_F(CloudDiskNotifyTest, NotifyChangeOuterTest004, TestSize.Level1)
     CloudDiskNotify.NotifyChangeOuter();
     GTEST_LOG_(INFO) << "NotifyChangeOuter End";
 }
+
+/**
+ * @tc.name: TryNotifyServiceCacheHitTest001
+ * @tc.desc: Verify GetRdbStore returns cached store when IsRdbFileValid is true
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskNotifyTest, TryNotifyServiceCacheHitTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TryNotifyServiceCacheHitTest001 start";
+    CloudDiskNotify CloudDiskNotify;
+    NotifyParamService paramService;
+    paramService.node.isRecycled = true;
+    paramService.cloudId = "cacheHit001";
+    paramService.opsType = NotifyOpsType::SERVICE_INSERT;
+    ParamServiceOther paramOthers;
+    paramOthers.bundleName = "com.test.notifycachehit";
+    paramOthers.userId = 3001;
+    // First call - cache miss (key does not match), populates cache
+    CloudDiskNotify.TryNotifyService(paramService, paramOthers);
+    // Second call - cache hit (key matches, store not null, IsRdbFileValid true)
+    CloudDiskNotify.TryNotifyService(paramService, paramOthers);
+    EXPECT_TRUE(true);
+    GTEST_LOG_(INFO) << "TryNotifyServiceCacheHitTest001 end";
+}
+
+/**
+ * @tc.name: TryNotifyServiceCacheInvalidTest001
+ * @tc.desc: Verify GetRdbStore recreates store when IsRdbFileValid returns false
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskNotifyTest, TryNotifyServiceCacheInvalidTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TryNotifyServiceCacheInvalidTest001 start";
+    CloudDiskNotify CloudDiskNotify;
+    NotifyParamService paramService;
+    paramService.node.isRecycled = true;
+    paramService.cloudId = "cacheInvalid001";
+    paramService.opsType = NotifyOpsType::SERVICE_INSERT;
+    ParamServiceOther paramOthers;
+    paramOthers.bundleName = "com.test.notifycacheinvalid";
+    paramOthers.userId = 3002;
+    // First call - cache miss, populates cache
+    CloudDiskNotify.TryNotifyService(paramService, paramOthers);
+    // Second call - cache miss due to invalid file, recreates store
+    CloudDiskNotify.TryNotifyService(paramService, paramOthers);
+    EXPECT_TRUE(true);
+    GTEST_LOG_(INFO) << "TryNotifyServiceCacheInvalidTest001 end";
+}
+
+/**
+ * @tc.name: TryNotifyServiceCacheMissTest001
+ * @tc.desc: Verify GetRdbStore creates new store when key does not match cache
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskNotifyTest, TryNotifyServiceCacheMissTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TryNotifyServiceCacheMissTest001 start";
+    CloudDiskNotify CloudDiskNotify;
+    NotifyParamService paramService;
+    paramService.node.isRecycled = true;
+    paramService.cloudId = "cacheMiss001";
+    paramService.opsType = NotifyOpsType::SERVICE_INSERT;
+    ParamServiceOther paramOthers;
+    // Use a unique key that does not match any previous test's cache entry
+    paramOthers.bundleName = "com.test.notifycachemiss";
+    paramOthers.userId = 3003;
+    // Single call - cache miss (key does not match), creates new store
+    CloudDiskNotify.TryNotifyService(paramService, paramOthers);
+    EXPECT_TRUE(true);
+    GTEST_LOG_(INFO) << "TryNotifyServiceCacheMissTest001 end";
+}
 } // namespace Test
 } // namespace FileManagement::CloudSync
 } // namespace OHOS

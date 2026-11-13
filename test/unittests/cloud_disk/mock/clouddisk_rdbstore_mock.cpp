@@ -325,4 +325,12 @@ int32_t CloudDiskRdbStore::HandleRecycle(const string &name, const string &paren
 {
     return E_OK;
 }
+
+void CloudDiskRdbStore::UpdateDbFileInfo() {}
+
+bool CloudDiskRdbStore::IsRdbFileValid()
+{
+    return rdbStore_ != nullptr;
+}
+
 }

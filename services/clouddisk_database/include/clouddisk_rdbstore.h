@@ -120,6 +120,8 @@ public:
     void DatabaseRestore();
     int32_t UpdateDownloadSize(int64_t size);
     int32_t UpdateTotalDownloadSize(int64_t size);
+    // check whether the db file opened by this store still exists and is the same file.
+    bool IsRdbFileValid();
 
     int32_t CheckParentUploadStatus(const std::string &cloudId, bool &parentUploaded);
     void OnParentUploadComplete(const std::string &parentCloudId);
@@ -132,6 +134,7 @@ private:
     int32_t UnlinkSynced(const std::string &cloudId, const int64_t &visitTime);
     int32_t UnlinkLocal(const std::string &cloudId);
     int32_t ReBuildDatabase(const std::string &databasePath);
+    void UpdateDbFileInfo();
     bool TryOpenRdbStore(const std::string &customDir, const std::string &databasePath, int32_t &errCode);
     int32_t CheckIsConflict(const std::string &name, const std::string &parentCloudId, std::string &newName);
     int32_t RestoreUpdateRdb(const std::string &cloudId, const struct RestoreInfo &restoreInfo,
@@ -142,6 +145,9 @@ private:
     NativeRdb::RdbStoreConfig config_{""};
     const int32_t CONNECT_SIZE = 8;
     std::string bundleName_;
+    std::string databasePath_;
+    uint64_t dbDev_{0};
+    uint64_t dbIno_{0};
     const int64_t RDB_WAL_LIMIT_SIZE = 0x40000000;
     int32_t userId_{0};
     std::string tableName_ = FileColumn::FILES_TABLE;
