@@ -33,13 +33,13 @@
 
 namespace OHOS {
 const pid_t PASTEBOARDUSERID = 3816;
-pid_t g_uid = 1009;
+pid_t g_appUid = 1009;
 #ifdef CONFIG_IPC_SINGLE
 using namespace IPC_SINGLE;
 #endif
-pid_t IPCSkeleton::GetCallingUid()
+pid_t IPCSkeleton::GetCallingAppUid()
 {
-    return g_uid;
+    return g_appUid;
 }
 }
 
@@ -183,7 +183,7 @@ void HandleGetDfsUrisDirFromLocalFuzzTest(std::shared_ptr<DaemonStub> daemonStub
                                           const uint8_t *data,
                                           size_t size)
 {
-    OHOS::g_uid = PASTEBOARDUSERID;
+    OHOS::g_appUid = PASTEBOARDUSERID;
     uint32_t code =
         static_cast<uint32_t>(DistributedFileDaemonInterfaceCode::GET_DFS_URI_IS_DIR_FROM_LOCAL);
     MessageParcel datas;

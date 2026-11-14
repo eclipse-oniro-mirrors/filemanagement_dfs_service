@@ -34,13 +34,13 @@
 
 namespace OHOS {
 constexpr pid_t DATA_UID = 3012;
-pid_t g_uid = 1009;
+pid_t g_appUid = 1009;
 #ifdef CONFIG_IPC_SINGLE
 using namespace IPC_SINGLE;
 #endif
-pid_t IPCSkeleton::GetCallingUid()
+pid_t IPCSkeleton::GetCallingAppUid()
 {
-    return g_uid;
+    return g_appUid;
 }
 }
 
@@ -186,7 +186,7 @@ void HandleInnerCancelCopyTaskFuzzTest(std::shared_ptr<DaemonStub> daemonStubPtr
         return;
     }
     FuzzedDataProvider fdp(data, size);
-    OHOS::g_uid = DATA_UID;
+    OHOS::g_appUid = DATA_UID;
     uint32_t code =
     static_cast<uint32_t>(DistributedFileDaemonInterfaceCode::DISTRIBUTED_FILE_CANCEL_INNER_COPY_TASK);
     MessageParcel datas;

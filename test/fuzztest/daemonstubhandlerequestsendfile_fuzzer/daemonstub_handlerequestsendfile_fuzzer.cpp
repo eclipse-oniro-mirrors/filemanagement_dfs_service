@@ -32,13 +32,13 @@
 #include "token_setproc.h"
 
 namespace OHOS {
-constexpr pid_t UID = 1009;
+constexpr pid_t APPUID = 1009;
 #ifdef CONFIG_IPC_SINGLE
 using namespace IPC_SINGLE;
 #endif
-pid_t IPCSkeleton::GetCallingUid()
+pid_t IPCSkeleton::GetCallingAppUid()
 {
-    return UID;
+    return APPUID;
 }
 }
 

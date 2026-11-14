@@ -317,9 +317,9 @@ DecompressFaultReporter &DecompressFaultReporter::GetInstance()
 void DecompressFaultReporter::ReportFsCommonInfo(const DecompressErrInfo &info)
 {
     int32_t pid = static_cast<int32_t>(getpid());
-    int32_t uid = static_cast<int32_t>(getuid());
+    int32_t appUid = static_cast<int32_t>(getappuid());
     std::string processName = GetProcessName();
-    WriteFsCommonEvent(pid, uid, processName, info);
+    WriteFsCommonEvent(pid, appUid, processName, info);
 }
 
 void DecompressFaultReporter::WriteFsCommonEvent(int32_t pid,

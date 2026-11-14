@@ -737,7 +737,7 @@ int32_t Daemon::StoreSessionAndListener(const std::string &physicalPath,
                                         std::string &sessionName,
                                         const sptr<IFileTransListener> &listener)
 {
-    SoftBusSessionPool::SessionInfo sessionInfo{.dstPath = physicalPath, .uid = IPCSkeleton::GetCallingUid()};
+    SoftBusSessionPool::SessionInfo sessionInfo{.dstPath = physicalPath, .uid = IPCSkeleton::GetCallingAppUid()};
     sessionName = SoftBusSessionPool::GetInstance().GenerateSessionName(sessionInfo);
     if (sessionName.empty()) {
         LOGE("SessionServer exceed max");
@@ -1039,10 +1039,10 @@ int32_t Daemon::CancelCopyTask(const std::string &sessionName)
         HiAudit::GetInstance().WriteEnd("CancelCopyTask", E_INVAL_ARG);
         return E_INVAL_ARG;
     }
-    auto callingUid = IPCSkeleton::GetCallingUid();
-    if (callingUid != sessionInfo.uid) {
+    auto callingAppUid = IPCSkeleton::GetCallingAppUid();
+    if (callingAppUid != sessionInfo.uid) {
         LOGE("CancelCopyTask failed, calling uid=%{public}d has no permission to cancel copy for uid=%{public}d.",
-             callingUid, sessionInfo.uid);
+             callingAppUid, sessionInfo.uid);
         RadarParaInfo info = {"CancelCopyTask", ReportLevel::INNER, DfxBizStage::HMDFS_COPY,
             "softbus", "", E_PERMISSION_DENIED, "ipc call failed"};
         RadarReportAdapter::GetInstance().ReportFileAccessAdapter(info);
@@ -1224,8 +1224,8 @@ int32_t Daemon::GetDfsUrisDirFromLocal(const std::vector<std::string> &uriList,
     RadarParaInfo info = {"GetDfsUrisDirFromLocal", ReportLevel::DEFAULT, DfxBizStage::GENERATE_DIS_URI,
         DEFAULT_PKGNAME, "", E_OK, "GetDfsUrisDirFromLocal Begin"};
     RadarReportAdapter::GetInstance().ReportGenerateDisUriAdapter(info);
-    auto callingUid = IPCSkeleton::GetCallingUid();
-    if (callingUid != PASTEBOARDUSERID && callingUid != UDMFUSERID) {
+    auto callingAppUid = IPCSkeleton::GetCallingAppUid();
+    if (callingAppUid != PASTEBOARDUSERID && callingAppUid != UDMFUSERID) {
         LOGE("Permission denied, caller is not pasterboard or udmf");
         info = {"GetDfsUrisDirFromLocal", ReportLevel::INTERFACE, DfxBizStage::GENERATE_DIS_URI,
             DEFAULT_PKGNAME, "", E_PERMISSION_DENIED, "Permission Denied"};
@@ -1282,9 +1282,9 @@ sptr<StorageManager::IStorageManager> Daemon::GetStorageManager()
 int32_t Daemon::UMountDisShareFile(const std::string &bundleName, const int32_t userId)
 {
     LOGI("Daemon::UMountDisShareFile start");
-    auto callingUid = IPCSkeleton::GetCallingUid();
-    if (callingUid != INSTALLSUSERID) {
-        LOGE("UMountDisShareFile permission denied, callingUid: %{public}d", callingUid);
+    auto callingAppUid = IPCSkeleton::GetCallingAppUid();
+    if (callingAppUid != INSTALLSUSERID) {
+        LOGE("UMountDisShareFile permission denied, callingAppUid: %{public}d", callingAppUid);
         return E_PERMISSION_DENIED;
     }
 

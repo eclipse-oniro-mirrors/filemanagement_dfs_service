@@ -30,13 +30,13 @@
 #include "utils_log.h"
 
 namespace {
-bool g_getCallingUidTrue = true;
+bool g_getCallingAppUidTrue = true;
 bool g_checkUriPermissionTrue = true;
 bool g_checkCallerPermissionTrue = true;
 bool g_isLocalCalling = true;
 constexpr pid_t DATA_UID = 3012;
 constexpr pid_t DAEMON_UID = 1009;
-static pid_t UID = DAEMON_UID;
+static pid_t APPUID = DAEMON_UID;
 bool g_writeBatchUrisTrue = true;
 pid_t g_dfsUid = 1009;
 int32_t g_readBatchUris = OHOS::FileManagement::E_OK;
@@ -46,13 +46,13 @@ namespace OHOS {
 #ifdef CONFIG_IPC_SINGLE
 using namespace IPC_SINGLE;
 #endif
-pid_t IPCSkeleton::GetCallingUid()
+pid_t IPCSkeleton::GetCallingAppUid()
 {
-    if (!g_getCallingUidTrue) {
+    if (!g_getCallingAppUidTrue) {
         return -1;
     }
 
-    return UID;
+    return APPUID;
 }
 
 bool IPCSkeleton::IsLocalCalling()
@@ -168,7 +168,7 @@ void DaemonStubTest::SetUp(void)
 {
     GTEST_LOG_(INFO) << "SetUp";
     g_checkUriPermissionTrue = true;
-    UID = DATA_UID;
+    APPUID = DATA_UID;
     daemonStub_ = std::make_shared<MockDaemonStub>();
     messageParcelMock_ = make_shared<MessageParcelMock>();
     MessageParcelMock::messageParcel = messageParcelMock_;
@@ -499,11 +499,11 @@ HWTEST_F(DaemonStubTest, DaemonStubHandleInnerCancelCopyTaskTest001, TestSize.Le
 HWTEST_F(DaemonStubTest, DaemonStubHandleRequestSendFileTest001, TestSize.Level0)
 {
     GTEST_LOG_(INFO) << "DaemonStubHandleRequestSendFileTest001 Start";
-    UID = DAEMON_UID;
+    APPUID = DAEMON_UID;
     MessageParcel data;
     MessageParcel reply;
 
-    g_getCallingUidTrue = true;
+    g_getCallingAppUidTrue = true;
     EXPECT_CALL(*messageParcelMock_, ReadString(_)).WillOnce(Return(false));
     auto ret = daemonStub_->HandleRequestSendFile(data, reply);
     EXPECT_EQ(ret, E_IPC_READ_FAILED);
@@ -551,7 +551,7 @@ HWTEST_F(DaemonStubTest, DaemonStubHandleRequestSendFileACLTest_0001, TestSize.L
     MessageParcel data;
     MessageParcel reply;
 
-    g_getCallingUidTrue = true;
+    g_getCallingAppUidTrue = true;
     // Test srcUri read failure
     EXPECT_CALL(*messageParcelMock_, ReadString(_)).WillOnce(Return(false));
     auto ret = daemonStub_->HandleRequestSendFileACL(data, reply);
@@ -606,7 +606,7 @@ HWTEST_F(DaemonStubTest, DaemonStubHandleRequestSendFileACLTest_0002, TestSize.L
     MessageParcel data;
     MessageParcel reply;
 
-    g_getCallingUidTrue = true;
+    g_getCallingAppUidTrue = true;
     // Test accountId read failure
     EXPECT_CALL(*messageParcelMock_, ReadString(_))
         .WillOnce(Return(true))
@@ -670,11 +670,11 @@ HWTEST_F(DaemonStubTest, DaemonStubHandleRequestSendFileACLTest_0002, TestSize.L
 HWTEST_F(DaemonStubTest, DaemonStubHandleGetRemoteCopyInfoTest001, TestSize.Level0)
 {
     GTEST_LOG_(INFO) << "DaemonStubHandleGetRemoteCopyInfoTest001 Start";
-    UID = DAEMON_UID;
+    APPUID = DAEMON_UID;
     MessageParcel data;
     MessageParcel reply;
 
-    g_getCallingUidTrue = true;
+    g_getCallingAppUidTrue = true;
     EXPECT_CALL(*messageParcelMock_, ReadString(_)).WillOnce(Return(false));
     auto ret = daemonStub_->HandleGetRemoteCopyInfo(data, reply);
     EXPECT_EQ(ret, E_IPC_READ_FAILED);
@@ -721,11 +721,11 @@ HWTEST_F(DaemonStubTest, DaemonStubHandleGetRemoteCopyInfoTest001, TestSize.Leve
 HWTEST_F(DaemonStubTest, DaemonStubHandleGetRemoteCopyInfoTest002, TestSize.Level0)
 {
     GTEST_LOG_(INFO) << "DaemonStubHandleGetRemoteCopyInfoTest002 Start";
-    UID = DAEMON_UID;
+    APPUID = DAEMON_UID;
     MessageParcel data;
     MessageParcel reply;
 
-    g_getCallingUidTrue = true;
+    g_getCallingAppUidTrue = true;
     EXPECT_CALL(*messageParcelMock_, ReadString(_)).WillOnce(Return(true));
     EXPECT_CALL(*daemonStub_, GetRemoteCopyInfo(_, _, _)).WillOnce(Return(E_OK));
     EXPECT_CALL(*messageParcelMock_, WriteBool(_)).WillOnce(Return(true)).WillOnce(Return(true));
@@ -747,7 +747,7 @@ HWTEST_F(DaemonStubTest, DaemonStubHandleGetRemoteCopyInfoACLTest_0001, TestSize
     MessageParcel data;
     MessageParcel reply;
 
-    g_getCallingUidTrue = true;
+    g_getCallingAppUidTrue = true;
     // Test srcUri read failure
     EXPECT_CALL(*messageParcelMock_, ReadString(_)).WillOnce(Return(false));
     auto ret = daemonStub_->HandleGetRemoteCopyInfoACL(data, reply);
@@ -789,7 +789,7 @@ HWTEST_F(DaemonStubTest, DaemonStubHandleGetRemoteCopyInfoACLTest_0002, TestSize
     MessageParcel data;
     MessageParcel reply;
 
-    g_getCallingUidTrue = true;
+    g_getCallingAppUidTrue = true;
     // Test isFile write failure
     EXPECT_CALL(*messageParcelMock_, ReadString(_))
         .WillOnce(Return(true))
@@ -841,7 +841,7 @@ HWTEST_F(DaemonStubTest, DaemonStubHandleGetRemoteCopyInfoACLTest_0002, TestSize
 
 /**
  * @tc.name: DaemonStubHandlePushAssetTest001
- * @tc.desc: Verify the HandlePushAsset function - UID permission denied
+ * @tc.desc: Verify the HandlePushAsset function - APPUID permission denied
  * @tc.type: FUNC
  * @tc.require: I7M6L1
  */
@@ -851,13 +851,13 @@ HWTEST_F(DaemonStubTest, DaemonStubHandlePushAssetTest001, TestSize.Level0)
     MessageParcel data;
     MessageParcel reply;
 
-    // Test case 1: UID is not DATA_UID
-    UID = DATA_UID + 1;
+    // Test case 1: APPUID is not DATA_UID
+    APPUID = DATA_UID + 1;
     auto ret = daemonStub_->HandlePushAsset(data, reply);
     EXPECT_EQ(ret, E_PERMISSION_DENIED);
 
-    // Test case 2: UID is DATA_UID but permission check fails
-    UID = DATA_UID;
+    // Test case 2: APPUID is DATA_UID but permission check fails
+    APPUID = DATA_UID;
     g_checkCallerPermissionTrue = false;
     ret = daemonStub_->HandlePushAsset(data, reply);
     EXPECT_EQ(ret, E_PERMISSION_DENIED);
@@ -876,7 +876,7 @@ HWTEST_F(DaemonStubTest, DaemonStubHandlePushAssetTest002, TestSize.Level0)
     MessageParcel data;
     MessageParcel reply;
 
-    UID = DATA_UID;
+    APPUID = DATA_UID;
     g_checkCallerPermissionTrue = true;
 
     // Test case: ReadInt32 for userId fails
@@ -898,7 +898,7 @@ HWTEST_F(DaemonStubTest, DaemonStubHandlePushAssetTest003, TestSize.Level0)
     MessageParcel data;
     MessageParcel reply;
 
-    UID = DATA_UID;
+    APPUID = DATA_UID;
     g_checkCallerPermissionTrue = true;
 
     // Test case: ReadParcelable returns nullptr (AssetObj read failure)
@@ -927,7 +927,7 @@ HWTEST_F(DaemonStubTest, DaemonStubHandlePushAssetTest003, TestSize.Level0)
 HWTEST_F(DaemonStubTest, DaemonStubHandleRegisterRecvCallback001, TestSize.Level0)
 {
     GTEST_LOG_(INFO) << "DaemonStubHandleRegisterRecvCallback001 Start";
-    UID = DATA_UID;
+    APPUID = DATA_UID;
     MessageParcel data;
     MessageParcel reply;
     g_checkCallerPermissionTrue = false;
@@ -963,7 +963,7 @@ HWTEST_F(DaemonStubTest, DaemonStubHandleRegisterRecvCallback001, TestSize.Level
 HWTEST_F(DaemonStubTest, DaemonStubHandleUnRegisterRecvCallback001, TestSize.Level0)
 {
     GTEST_LOG_(INFO) << "DaemonStubHandleUnRegisterRecvCallback001 Start";
-    UID = DATA_UID;
+    APPUID = DATA_UID;
     MessageParcel data;
     MessageParcel reply;
     g_checkCallerPermissionTrue = false;
@@ -999,7 +999,7 @@ HWTEST_F(DaemonStubTest, DaemonStubHandleUnRegisterRecvCallback001, TestSize.Lev
 HWTEST_F(DaemonStubTest, DaemonStubHandleGetDfsUrisDirFromLocalTest, TestSize.Level0)
 {
     GTEST_LOG_(INFO) << "DaemonStubHandleGetDfsUrisDirFromLocalTest Start";
-    UID = DATA_UID;
+    APPUID = DATA_UID;
     MessageParcel data;
     MessageParcel reply;
     g_readBatchUris = E_IPC_READ_FAILED;

@@ -34,7 +34,7 @@ constexpr int32_t BASE_USER_RANGE = 200000;
 bool DfsuAccessTokenHelper::CheckCallerPermission(const std::string &permissionName)
 {
     auto tokenId = IPCSkeleton::GetCallingTokenID();
-    auto uid = IPCSkeleton::GetCallingUid();
+    auto appUid = IPCSkeleton::GetCallingAppUid();
     auto tokenType = Security::AccessToken::AccessTokenKit::GetTokenTypeFlag(tokenId);
     if (tokenType == TOKEN_HAP || tokenType == TOKEN_NATIVE) {
         bool isGranted = CheckPermission(tokenId, permissionName);
@@ -42,7 +42,7 @@ bool DfsuAccessTokenHelper::CheckCallerPermission(const std::string &permissionN
             LOGE("Token Type is %{public}d", tokenType);
         }
         return isGranted;
-    } else if ((tokenType == TOKEN_SHELL) && (uid == ROOT_UID)) {
+    } else if ((tokenType == TOKEN_SHELL) && (appUid == ROOT_UID)) {
         LOGI("Token type is shell");
         return false;
     } else {
@@ -119,8 +119,8 @@ bool DfsuAccessTokenHelper::IsSystemApp()
 
 int32_t DfsuAccessTokenHelper::GetUserId()
 {
-    auto uid = IPCSkeleton::GetCallingUid();
-    return uid / BASE_USER_RANGE;
+    auto appUid = IPCSkeleton::GetCallingAppUid();
+    return appUid / BASE_USER_RANGE;
 }
 
 bool DfsuAccessTokenHelper::IsUserVerifyed(const int32_t userId)

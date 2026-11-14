@@ -203,7 +203,7 @@ HWTEST_F(SoftbusPermissionCheckTest, SoftbusPermissionCheckTest_GetLocalAccountI
     res = SoftBusPermissionCheck::GetLocalAccountInfo(localAccountInfo);
     EXPECT_EQ(res, false);
 
-    osAccountInfo.uid_ = ""; // accountinfo uid = ""
+    osAccountInfo.uid_ = ""; // accountinfo appUid = ""
     EXPECT_CALL(*otherMethodMock_, QueryActiveOsAccountIds(_))
         .WillRepeatedly(DoAll(SetArgReferee<0>(userIds), Return(FileManagement::E_OK)));
     EXPECT_CALL(*otherMethodMock_, GetOhosAccountInfo(_))
@@ -254,7 +254,7 @@ HWTEST_F(SoftbusPermissionCheckTest, SoftbusPermissionCheckTest_GetLocalAccountI
     res = SoftBusPermissionCheck::GetLocalAccountInfo(localAccountInfo, testUserId);
     EXPECT_EQ(res, false);
 
-    osAccountInfo.uid_ = ""; // accountinfo uid = ""
+    osAccountInfo.uid_ = ""; // accountinfo appUid = ""
     EXPECT_CALL(*otherMethodMock_, GetOhosAccountInfo(_))
         .WillOnce(DoAll(SetArgReferee<0>(osAccountInfo), Return(FileManagement::E_OK)));
     res = SoftBusPermissionCheck::GetLocalAccountInfo(localAccountInfo, testUserId);
