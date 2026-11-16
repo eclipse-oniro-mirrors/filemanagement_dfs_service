@@ -821,6 +821,7 @@ ohos_unittest("service_proxy_static_test") {
     "${distributedfile_path}/interfaces/inner_api/native/cloudsync_kit_inner",
     "${distributedfile_path}/utils/log/include",
     "${services_path}/cloudsyncservice/include/ipc",
+    "${utils_path}/inner_api",
   ]
 
   deps = [
