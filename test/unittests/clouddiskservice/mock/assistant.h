@@ -30,6 +30,7 @@ public:
     static inline bool mockPwriteApi = false;
     static inline bool mockFsyncApi = false;
     static inline bool mockLstatApi = false;
+    static inline bool mockSendfileApi = false;
 
     virtual ~Assistant() = default;
     virtual ssize_t readlink(const char *pathname, char *buf, size_t bufsiz) = 0;
@@ -55,6 +56,7 @@ public:
     virtual int Ioctl(int fd, int request, void *arg) = 0;
     virtual ssize_t Pwrite(int fd, const void *data, size_t size, off_t offset) = 0;
     virtual int Fsync(int fd) = 0;
+    virtual ssize_t Sendfile(int outFd, int inFd, off_t *offset, size_t count) = 0;
 
     // file_utils
     virtual int64_t ReadFile(int fd, off_t offset, size_t size, void *data) = 0;
@@ -89,6 +91,7 @@ public:
     MOCK_METHOD3(Ioctl, int(int, int, void *));
     MOCK_METHOD4(Pwrite, ssize_t(int, const void *, size_t, off_t));
     MOCK_METHOD1(Fsync, int(int));
+    MOCK_METHOD4(Sendfile, ssize_t(int, int, off_t *, size_t));
 
     // file_utils
     MOCK_METHOD4(ReadFile, int64_t(int, off_t, size_t, void *));

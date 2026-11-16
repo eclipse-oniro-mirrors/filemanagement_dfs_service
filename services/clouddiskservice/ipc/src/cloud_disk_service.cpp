@@ -423,6 +423,7 @@ int32_t CloudDiskService::Init(const SystemAbilityOnDemandReason &startReason)
     }
 
     PlaceholderTaskManager::GetInstance().StartScheduler();
+    PlaceholderTaskManager::GetInstance().CleanOrphanHydrationTempFiles(userId);
     AddSystemAbilityListener(COMMON_EVENT_SERVICE_ID);
 
     if (CloudDiskSyncFolder::GetInstance().GetSyncFolderSize() > 0) {
@@ -1529,6 +1530,16 @@ static int32_t DispatchDehydrateAuthorization(const PlaceholderStatePathContext 
                                                                        reqHead, pathInfo);
 }
 
+static void RestoreDehydrationTimestamps(int fd, const struct stat &fileStat)
+{
+    // Dehydration only rebuilds the sparse placeholder; restore the timestamps captured
+    // before truncation so the file's atime/mtime stay unchanged, on failure paths too.
+    struct timespec times[2] = {fileStat.st_atim, fileStat.st_mtim};
+    if (futimens(fd, times) < 0) {
+        LOGW("Restore timestamps after dehydration failed, errno:%{public}d", errno);
+    }
+}
+
 static int32_t DehydrateOpenFile(int fd)
 {
     struct stat fileStat = {};
@@ -1552,6 +1563,7 @@ static int32_t DehydrateOpenFile(int fd)
         LOGE("Extend placeholder after dehydration failed, attempt:%{public}d, errno:%{public}d", attempt + 1, errno);
     }
     if (!extendSucceeded) {
+        RestoreDehydrationTimestamps(fd, fileStat);
         return E_TRY_AGAIN;
     }
 
@@ -1559,17 +1571,13 @@ static int32_t DehydrateOpenFile(int fd)
     int32_t ret = SetFilePlaceholderState(fd, PLACEHOLDER_STATE_UNHYDRATED, stateBeforeWrite);
     if (ret != E_OK) {
         LOGE("Set unhydrated state failed, errno:%{public}d", ret);
+        RestoreDehydrationTimestamps(fd, fileStat);
         return ConvertPlaceholderStateErrnoToCloudDiskError(ret);
     }
     if (fsync(fd) < 0) {
         LOGW("Fsync dehydrated placeholder failed, errno:%{public}d", errno);
     }
-    // Dehydration only rebuilds the sparse placeholder; restore the timestamps captured
-    // before truncation so the file's atime/mtime stay unchanged.
-    struct timespec times[2] = {fileStat.st_atim, fileStat.st_mtim};
-    if (futimens(fd, times) < 0) {
-        LOGW("Restore timestamps after dehydration failed, errno:%{public}d", errno);
-    }
+    RestoreDehydrationTimestamps(fd, fileStat);
     return E_OK;
 }
 

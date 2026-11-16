@@ -184,6 +184,104 @@ HWTEST_F(PlaceholderDehydrateCountTest, DehydrateFullyHydratedCount_001, TestSiz
 }
 
 /**
+ * @tc.name: DehydrateExtendFailRestoreTimestamps_001
+ * @tc.desc: When re-extending the placeholder fails, dehydration still restores the captured timestamps.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderDehydrateCountTest, DehydrateExtendFailRestoreTimestamps_001, TestSize.Level2)
+{
+    PlaceholderStatePathContext context = {TEST_HOLE_PATH, "/root", 100, TEST_SYNC_FOLDER_INDEX, TEST_BUNDLE_NAME,
+                                            TEST_SYNC_FOLDER};
+    Assistant::mockFdApi = true;
+    auto callback = sptr(new DehydrateAllowStub());
+    ASSERT_EQ(PlaceholderCallbackManager::GetInstance().RegisterCallbackTable(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                                                              callback),
+              E_OK);
+    ResetPlaceholderMetaFileMock();
+    constexpr int32_t fileFd = 97;
+    constexpr off_t logicalSize = 4096;
+    struct stat fileStat = {};
+    fileStat.st_mode = S_IFREG;
+    fileStat.st_size = logicalSize;
+    fileStat.st_atim = {EXPECTED_ATIME_SEC, EXPECTED_ATIME_NSEC};
+    fileStat.st_mtim = {EXPECTED_MTIME_SEC, EXPECTED_MTIME_NSEC};
+
+    EXPECT_CALL(*mock_, MockStat(StrEq(TEST_HOLE_PATH), _))
+        .WillOnce(DoAll(SetArgPointee<1>(fileStat), Return(0)));
+    EXPECT_CALL(*mock_, Open(StrEq(TEST_HOLE_PATH), _, _)).WillOnce(Return(fileFd));
+    EXPECT_CALL(*mock_, fgetxattr(fileFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+        .WillOnce(Invoke(ReturnFileState(PLACEHOLDER_STATE_FULLY_HYDRATED)));
+    EXPECT_CALL(*mock_, fstat(fileFd, _)).WillOnce(DoAll(SetArgPointee<1>(fileStat), Return(0)));
+    {
+        InSequence sequence;
+        EXPECT_CALL(*mock_, ftruncate(fileFd, 0)).WillOnce(Return(0));
+        EXPECT_CALL(*mock_, ftruncate(fileFd, logicalSize))
+            .Times(DEHYDRATE_EXTEND_MAX_ATTEMPTS)
+            .WillRepeatedly(Invoke([](int, off_t) {
+                errno = EIO;
+                return -1;
+            }));
+        EXPECT_CALL(*mock_, futimens(fileFd, _)).WillOnce(Invoke(CheckRestoredTimes));
+    }
+    EXPECT_CALL(*mock_, fsetxattr(fileFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0)).Times(0);
+    EXPECT_CALL(*mock_, getxattr(StrEq("/root"), _, _, _)).Times(0);
+    EXPECT_CALL(*mock_, setxattr(StrEq("/root"), _, _, _, _)).Times(0);
+
+    EXPECT_EQ(DehydratePlaceholderFile(context, "file.txt"), E_TRY_AGAIN);
+    EXPECT_EQ(GetLastPlaceholderMetaFileUpdateState(), PLACEHOLDER_STATE_NONE);
+}
+
+/**
+ * @tc.name: DehydrateSetStateWriteFail_001
+ * @tc.desc: A failing state xattr write during dehydration propagates the error and restores timestamps.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderDehydrateCountTest, DehydrateSetStateWriteFail_001, TestSize.Level2)
+{
+    PlaceholderStatePathContext context = {TEST_HOLE_PATH, "/root", 100, TEST_SYNC_FOLDER_INDEX, TEST_BUNDLE_NAME,
+                                            TEST_SYNC_FOLDER};
+    Assistant::mockFdApi = true;
+    auto callback = sptr(new DehydrateAllowStub());
+    ASSERT_EQ(PlaceholderCallbackManager::GetInstance().RegisterCallbackTable(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                                                              callback),
+              E_OK);
+    ResetPlaceholderMetaFileMock();
+    constexpr int32_t fileFd = 96;
+    constexpr off_t logicalSize = 4096;
+    struct stat fileStat = {};
+    fileStat.st_mode = S_IFREG;
+    fileStat.st_size = logicalSize;
+    fileStat.st_atim = {EXPECTED_ATIME_SEC, EXPECTED_ATIME_NSEC};
+    fileStat.st_mtim = {EXPECTED_MTIME_SEC, EXPECTED_MTIME_NSEC};
+
+    EXPECT_CALL(*mock_, MockStat(StrEq(TEST_HOLE_PATH), _))
+        .WillOnce(DoAll(SetArgPointee<1>(fileStat), Return(0)));
+    EXPECT_CALL(*mock_, Open(StrEq(TEST_HOLE_PATH), _, _)).WillOnce(Return(fileFd));
+    EXPECT_CALL(*mock_, fgetxattr(fileFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+        .WillRepeatedly(Invoke(ReturnFileState(PLACEHOLDER_STATE_FULLY_HYDRATED)));
+    EXPECT_CALL(*mock_, fstat(fileFd, _)).WillOnce(DoAll(SetArgPointee<1>(fileStat), Return(0)));
+    {
+        InSequence sequence;
+        EXPECT_CALL(*mock_, ftruncate(fileFd, 0)).WillOnce(Return(0));
+        EXPECT_CALL(*mock_, ftruncate(fileFd, logicalSize)).WillOnce(Return(0));
+        EXPECT_CALL(*mock_, fsetxattr(fileFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+            .WillOnce(Invoke([](int, const char *, const void *, size_t, int) {
+                errno = ENOSPC;
+                return -1;
+            }));
+        EXPECT_CALL(*mock_, futimens(fileFd, _)).WillOnce(Invoke(CheckRestoredTimes));
+    }
+    EXPECT_CALL(*mock_, getxattr(StrEq("/root"), _, _, _)).Times(0);
+    EXPECT_CALL(*mock_, setxattr(StrEq("/root"), _, _, _, _)).Times(0);
+
+    // The xattr write failure propagates and timestamps are still restored.
+    EXPECT_NE(DehydratePlaceholderFile(context, "file.txt"), E_OK);
+    EXPECT_EQ(GetLastPlaceholderMetaFileUpdateState(), PLACEHOLDER_STATE_NONE);
+}
+
+/**
  * @tc.name: DehydratePartiallyHydratedCount_001
  * @tc.desc: Dehydrating a partially hydrated placeholder keeps the count untouched.
  * @tc.type: FUNC

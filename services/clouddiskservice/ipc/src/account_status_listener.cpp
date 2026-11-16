@@ -72,11 +72,18 @@ void AccountStatusSubscriber::OnStateChanged(const OsAccountStateData &data)
 void AccountStatusSubscriber::HandleUserSwitched(int32_t userId)
 {
     LOGI("Switched user");
+    int32_t previousUserId = currentUserId_;
     SetCurrentUserId(userId);
     DiskMonitor::GetInstance().StopMonitor();
     PlaceholderCallbackManager::GetInstance().ClearAll();
     PlaceholderTaskManager::GetInstance().CancelAllTasks(PlaceholderTaskCancelReason::USER_SWITCH);
     PlaceholderTaskManager::GetInstance().ClearCancellationRecords();
+    // All tasks of the previous user have just been cancelled, so any remaining temp
+    // files are orphans; the new user's dir may still hold orphans from an earlier crash.
+    if (previousUserId >= 0) {
+        PlaceholderTaskManager::GetInstance().CleanOrphanHydrationTempFiles(previousUserId);
+    }
+    PlaceholderTaskManager::GetInstance().CleanOrphanHydrationTempFiles(userId);
     PlaceholderProgressManager::GetInstance().Drain();
     PlaceholderProgressManager::GetInstance().Clear();
     CloudDiskServiceSyncFolder::CloudDiskServiceClearAll();
