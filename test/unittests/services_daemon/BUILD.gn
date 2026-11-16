@@ -91,9 +91,7 @@ ohos_unittest("fuse_manager_test") {
     "${services_path}/cloudfiledaemon/src/fuse_manager",
   ]
 
-  deps = [
-    "${services_path}/cloudsyncservice:cloud_sync_service_proxy",
-  ]
+  deps = [ ]
 
   external_deps = [
     "ability_base:zuri",
@@ -370,6 +368,7 @@ ohos_unittest("cloud_daemon_test") {
     "os_account:os_account_innerkits",
     "preferences:native_preferences",
     "relational_store:native_rdb",
+    "safwk:system_ability_fwk",
     "samgr:samgr_proxy",
   ]
 
