@@ -284,7 +284,7 @@ ohos_unittest("decompress_test") {
     "${utils_path}/inner_api",
   ]
 
-  ldflags = ["-Wl,--wrap=statfs"]
+  ldflags = [ "-Wl,--wrap=statfs" ]
 
   external_deps = [
     "c_utils:utils",
@@ -317,22 +317,21 @@ ohos_unittest("decompress_gains_reporter_test") {
   ]
 
   include_dirs = [
+    "./decompress/mock",
     "${utils_path}/decompress/include",
     "${utils_path}/decompress/src",
     "${utils_path}/ioctl/include",
     "${utils_path}/log/include",
     "${utils_path}/inner_api",
-    "${distributedfile_path}/test/unittests/utils/decompress/mock",
   ]
 
-  ldflags = ["-Wl,--wrap=statfs"]
+  ldflags = [ "-Wl,--wrap=statfs" ]
 
   external_deps = [
     "c_utils:utils",
     "googletest:gmock_main",
     "googletest:gtest_main",
     "hilog:libhilog",
-    "bounds_checking_function:libsec_shared",
   ]
 
   defines = [ "private=public" ]
