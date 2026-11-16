@@ -125,7 +125,7 @@ enum CLOUD_READ_STATUS {
     READ_CANCELED,
 };
 
-enum CLOUD_CACHE_STATUS : int {
+enum CLOUD_CACHE_STATUS : uint8_t {
     NOT_CACHE = 0,
     HAS_CACHED,
 };
