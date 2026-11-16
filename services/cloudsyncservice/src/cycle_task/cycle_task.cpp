@@ -48,6 +48,12 @@ std::string CycleTask::GetTaskName() const
     return this->taskName_;
 }
 
+void CycleTask::InitCloudPrefForBundle(int32_t userId, const std::string &bundleName)
+{
+    userId_ = userId;
+    cloudPrefImpl_ = std::make_unique<CloudPrefImpl>(userId, bundleName, FILE_PATH);
+}
+
 void CycleTask::SetLastRunTime(std::time_t time)
 {
     if (cloudPrefImpl_ == nullptr) {
@@ -100,7 +106,7 @@ void CycleTask::RunTask(int32_t userId)
     userId_ = userId;
     std::time_t currentTime = std::time(nullptr);
     for (const auto &bundleName : bundleNames) {
-        cloudPrefImpl_ = std::make_unique<CloudPrefImpl>(userId_, bundleName, FILE_PATH);
+        InitCloudPrefForBundle(userId_, bundleName);
         if (IsEligibleToRun(currentTime, bundleName)) {
             LOGI("begin task, task name is %{public}s, bundle name is %{public}s",
                 taskName_.c_str(), bundleName.c_str());

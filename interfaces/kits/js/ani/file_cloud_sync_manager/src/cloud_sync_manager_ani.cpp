@@ -15,6 +15,7 @@
 
 #include "cloud_sync_manager_ani.h"
 
+#include "check_trigger_callback_ani.h"
 #include "ani_utils.h"
 #include "dfs_error.h"
 #include "error_handler.h"
@@ -49,6 +50,32 @@ void CloudSyncManagerAni::ChangeAppCloudSwitch(
     if (!data.IsSuccess()) {
         const auto &err = data.GetError();
         LOGE("cloud sync manager change app cloud switch failed, ret = %{public}d", err.GetErrNo());
+        ErrorHandler::Throw(env, err);
+    }
+}
+
+void CloudSyncManagerAni::OnCheckTrigger(ani_env *env, ani_class clazz, ani_object callback)
+{
+    if (callback == nullptr) {
+        ErrorHandler::Throw(env, E_PARAMS);
+        return;
+    }
+
+    auto callbackImpl = std::make_shared<CheckTriggerCallbackAni>(env, reinterpret_cast<ani_ref>(callback));
+    auto data = CloudSyncManagerCore::DoRegisterCheckTriggerCallback(callbackImpl);
+    if (!data.IsSuccess()) {
+        const auto &err = data.GetError();
+        LOGE("cloud sync manager register check trigger callback failed, ret = %{public}d", err.GetErrNo());
+        ErrorHandler::Throw(env, err);
+    }
+}
+
+void CloudSyncManagerAni::OffCheckTrigger(ani_env *env, ani_class clazz)
+{
+    auto data = CloudSyncManagerCore::DoUnRegisterCheckTriggerCallback();
+    if (!data.IsSuccess()) {
+        const auto &err = data.GetError();
+        LOGE("cloud sync manager unregister check trigger callback failed, ret = %{public}d", err.GetErrNo());
         ErrorHandler::Throw(env, err);
     }
 }
@@ -549,5 +576,23 @@ ani_ref CloudSyncManagerAni::GetDowngradeDownloadTaskState(ani_env *env, ani_cla
     }
 
     return result;
+}
+
+ani_int CloudSyncManagerAni::TriggerCloudCheck(ani_env *env, ani_class clazz, ani_int userId, ani_string bundleName)
+{
+    std::string bundleNameStr;
+    ani_status ret = ANIUtils::AniString2String(env, bundleName, bundleNameStr);
+    if (ret != ANI_OK) {
+        LOGE("cloud sync manager trigger cloud check get bundle name failed, ret = %{public}d", ret);
+        return static_cast<ani_int>(E_PERMISSION);
+    }
+
+    auto data = CloudSyncManagerCore::DoTriggerCloudCheck(static_cast<int32_t>(userId), bundleNameStr);
+    if (!data.IsSuccess()) {
+        const auto &err = data.GetError();
+        LOGE("cloud sync manager trigger cloud check failed, ret = %{public}d", err.GetErrNo());
+        return static_cast<ani_int>(err.GetErrNo());
+    }
+    return static_cast<ani_int>(E_OK);
 }
 } // namespace OHOS::FileManagement::CloudSync

@@ -36,6 +36,7 @@
       *OHOS::FileManagement::CloudSync::ICloudOptimizeCallback*;
       *OHOS::FileManagement::CloudSync::IDownloadAssetCallback*;
       *OHOS::FileManagement::CloudSync::IDowngradeDlCallback*;
+      *OHOS::FileManagement::CloudSync::ICheckTriggerCallback*;
       
       # Progress/Status classes (from cloud_sync_common.h)
       *OHOS::FileManagement::CloudSync::DownloadProgressObj*;

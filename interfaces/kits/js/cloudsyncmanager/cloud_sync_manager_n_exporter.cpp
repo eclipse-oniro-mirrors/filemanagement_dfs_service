@@ -15,10 +15,14 @@
 
 #include "cloud_sync_manager_n_exporter.h"
 
-#include <map>
+#include <memory>
+#include <mutex>
 
 #include <sys/types.h>
 
+#include "check_trigger_callback_info.h"
+#include "check_trigger_callback_napi.h"
+#include "cloud_file_utils.h"
 #include "cloud_metrics.h"
 #include "cloud_sync_common.h"
 #include "cloud_sync_manager.h"
@@ -30,6 +34,11 @@ namespace OHOS::FileManagement::CloudSync {
 using namespace FileManagement::LibN;
 using namespace std;
 static constexpr uint32_t BUNDLES_MAX_SIZE = 20;
+
+namespace {
+std::mutex g_checkTriggerCallbackMutex;
+CheckTriggerCallbackInfo g_checkTriggerCallbackInfo;
+}
 
 napi_value ChangeAppCloudSwitch(napi_env env, napi_callback_info info)
 {
@@ -556,6 +565,113 @@ napi_value GetDowngradeDownloadTaskState(napi_env env, napi_callback_info info)
     std::string taskName = "CloudSyncManager.getDowngradeDownloadTaskState";
     auto asyncWork = GetPromiseOrCallBackWork(env, funcArg, static_cast<size_t>(NARG_CNT::TWO), taskName);
     return asyncWork == nullptr ? nullptr : asyncWork->Schedule(procedureName, cbExec, cbComplete).val_;
+}
+
+napi_value TriggerCloudCheck(napi_env env, napi_callback_info info)
+{
+    LOGI("Trigger cloud check");
+    NFuncArg funcArg(env, info);
+
+    if (!funcArg.InitArgs(static_cast<size_t>(NARG_CNT::TWO), static_cast<size_t>(NARG_CNT::THREE))) {
+        NError(E_PARAMS).ThrowErrWithMsg(env, "Number of arguments unmatched");
+        return nullptr;
+    }
+
+    bool succ = false;
+    int32_t userId = 0;
+    tie(succ, userId) = NVal(env, funcArg[(int)NARG_POS::FIRST]).ToInt32();
+    if (!succ) {
+        NError(E_PARAMS).ThrowErr(env);
+        return nullptr;
+    }
+
+    std::unique_ptr<char []> bundleName;
+    tie(succ, bundleName, std::ignore) = NVal(env, funcArg[(int)NARG_POS::SECOND]).ToUTF8String();
+    if (!succ) {
+        NError(E_PARAMS).ThrowErr(env);
+        return nullptr;
+    }
+    string bundleNameStr(bundleName.get());
+
+    auto result = std::make_shared<int32_t>(E_OK);
+    auto cbExec = [userId, bundleNameStr, result]() -> NError {
+        *result = CloudSyncManager::GetInstance().TriggerCloudCheck(userId, bundleNameStr);
+        if (*result != E_OK) {
+            LOGE("Trigger cloud check failed! ret = %{public}d", *result);
+        }
+        return NError(ERRNO_NOERR);
+    };
+
+    auto cbComplete = [result](napi_env env, NError err) -> NVal {
+        if (err) {
+            return { env, err.GetNapiErr(env) };
+        }
+        return NVal::CreateInt32(env, Convert2JsErrNum(*result));
+    };
+
+    std::string procedureName = "TriggerCloudCheck";
+    std::string taskName = "cloudSyncManager.triggerCloudCheck";
+    auto asyncWork = GetPromiseOrCallBackWork(env, funcArg, static_cast<size_t>(NARG_CNT::THREE), taskName);
+    return asyncWork == nullptr ? nullptr : asyncWork->Schedule(procedureName, cbExec, cbComplete).val_;
+}
+
+napi_value OnCheckTrigger(napi_env env, napi_callback_info info)
+{
+    NFuncArg funcArg(env, info);
+    if (!funcArg.InitArgs(static_cast<size_t>(NARG_CNT::ONE))) {
+        NError(E_PARAMS).ThrowErrWithMsg(env, "Number of arguments unmatched");
+        return nullptr;
+    }
+    if (!NVal(env, funcArg[(int)NARG_POS::FIRST]).TypeIs(napi_function)) {
+        NError(E_PARAMS).ThrowErr(env);
+        return nullptr;
+    }
+
+    std::lock_guard<std::mutex> lock(g_checkTriggerCallbackMutex);
+    if (g_checkTriggerCallbackInfo.callback != nullptr) {
+        LOGI("check trigger callback already exist");
+        return NVal::CreateUndefined(env).val_;
+    }
+
+    CheckTriggerCallbackInfo callbackInfo;
+    callbackInfo.callbackId = CloudDisk::CloudFileUtils::GenerateUuid();
+    callbackInfo.callback =
+        make_shared<CheckTriggerCallbackNapi>(env, NVal(env, funcArg[(int)NARG_POS::FIRST]).val_);
+    int32_t ret = CloudSyncManager::GetInstance().RegisterCheckTriggerCallback(callbackInfo);
+    if (ret != E_OK) {
+        LOGE("OnCheckTrigger register failed, ret: %{public}d", ret);
+        NError(Convert2JsErrNum(ret)).ThrowErr(env);
+        return nullptr;
+    }
+    g_checkTriggerCallbackInfo = callbackInfo;
+    return NVal::CreateUndefined(env).val_;
+}
+
+napi_value OffCheckTrigger(napi_env env, napi_callback_info info)
+{
+    NFuncArg funcArg(env, info);
+    if (!funcArg.InitArgs(static_cast<size_t>(NARG_CNT::ZERO))) {
+        NError(E_PARAMS).ThrowErrWithMsg(env, "Number of arguments unmatched");
+        return nullptr;
+    }
+
+    std::lock_guard<std::mutex> lock(g_checkTriggerCallbackMutex);
+    if (g_checkTriggerCallbackInfo.callbackId.empty()) {
+        LOGI("check trigger callback not exist");
+        return NVal::CreateUndefined(env).val_;
+    }
+
+    int32_t ret = CloudSyncManager::GetInstance().UnRegisterCheckTriggerCallback(g_checkTriggerCallbackInfo);
+    if (ret != E_OK) {
+        LOGE("OffCheckTrigger unregister failed, ret: %{public}d", ret);
+        NError(Convert2JsErrNum(ret)).ThrowErr(env);
+        return nullptr;
+    }
+    if (g_checkTriggerCallbackInfo.callback != nullptr) {
+        g_checkTriggerCallbackInfo.callback->DeleteReference();
+    }
+    g_checkTriggerCallbackInfo = CheckTriggerCallbackInfo();
+    return NVal::CreateUndefined(env).val_;
 }
 
 } // namespace OHOS::FileManagement::CloudSync

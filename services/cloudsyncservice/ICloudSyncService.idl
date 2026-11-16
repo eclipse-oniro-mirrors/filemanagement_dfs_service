@@ -103,4 +103,8 @@ interface OHOS.FileManagement.CloudSync.ICloudSyncService
     void GetDecompressUnsupportedList([out] String[] unsupportedList);
     void GetDecompressSystemFeature([out] boolean systemFeature);
     void GetDecompressCrossFsConfig([out] boolean crossFsConfig);
+    void TriggerCloudCheck([in] int userId, [in] String bundleName);
+    void RegisterCheckTriggerCallbackInner([in] IRemoteObject remoteObject, [in] String callbackId,
+                                           [in] String bundleName);
+    void UnRegisterCheckTriggerCallbackInner([in] String callbackId, [in] String bundleName);
 }

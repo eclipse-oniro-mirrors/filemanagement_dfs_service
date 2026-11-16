@@ -21,6 +21,7 @@
 #include "account_utils.h"
 #include "cloud_download_callback_client.h"
 #include "cloud_sync_callback_client.h"
+#include "cloud_sync_constants.h"
 #include "cloud_sync_manager_impl.h"
 #include "cloud_upload_callback_client.h"
 #include "cloud_upload_callback_client_manager.h"
@@ -45,7 +46,6 @@ const string CLOUDSYNC_MEDIA_CALLBACK_ID = "cloudSyncMediaCallbackId";
 static const std::string GLOBAL_CONFIG_FILE_PATH = "globalConfig.xml";
 static const std::string SUM_OCCUPY_FLAG = "SumOccupyFlag";
 constexpr int32_t MAX_OCCUPY_LINE_LIMIT = 10;
-constexpr size_t MAX_BUNDLE_NAME_LEN = 1024;
 
 static const std::unordered_set<int32_t> errForStartTransfer = { E_PERMISSION_DENIED, JsErrCode::E_PERMISSION,
     E_PERMISSION_SYSTEM, JsErrCode::E_PERMISSION_SYS, E_OPERATION_DENY, JsErrCode::E_OPERATION_NOT_PERMITTED,
@@ -183,6 +183,56 @@ int32_t CloudSyncManagerImpl::UnRegisterFileSyncCallback(const CallbackInfo &cal
     }
     SetDeathRecipient(CloudSyncServiceProxy->AsObject());
     LOGI("UnRegisterFileSyncCallback ret %{public}d", ret);
+    return ret;
+}
+
+int32_t CloudSyncManagerImpl::RegisterCheckTriggerCallback(const CheckTriggerCallbackInfo &callbackInfo)
+{
+    LOGI("Start RegisterCheckTriggerCallback");
+    if ((callbackInfo.callbackId.empty()) || (callbackInfo.callback == nullptr)) {
+        LOGE("callbackId or callback is null");
+        return E_INVAL_ARG;
+    }
+    auto cloudSyncServiceProxy = ServiceProxy::GetInstance("RegisterCheckTriggerCallback");
+    if (!cloudSyncServiceProxy) {
+        LOGE("proxy is null");
+        return E_SA_LOAD_FAILED;
+    }
+    auto ret = cloudSyncServiceProxy->RegisterCheckTriggerCallbackInner(
+        sptr(new (std::nothrow) CheckTriggerCallbackClient(callbackInfo.callback)),
+        callbackInfo.callbackId, callbackInfo.bundleName);
+    if (ret == E_OK) {
+        CheckTriggerCallbackClientManager::GetInstance().AddCallback(callbackInfo);
+        SubscribeListener();
+    }
+
+    SetDeathRecipient(cloudSyncServiceProxy->AsObject());
+    LOGI("RegisterCheckTriggerCallback ret %{public}d", ret);
+    return ret;
+}
+
+int32_t CloudSyncManagerImpl::UnRegisterCheckTriggerCallback(const CheckTriggerCallbackInfo &callbackInfo)
+{
+    LOGI("Start UnRegisterCheckTriggerCallback");
+    if (callbackInfo.callbackId.empty()) {
+        LOGE("callbackId is null");
+        return E_INVAL_ARG;
+    }
+
+    auto cloudSyncServiceProxy = ServiceProxy::GetInstance("UnRegisterCheckTriggerCallback");
+    if (!cloudSyncServiceProxy) {
+        LOGE("proxy is null");
+        return E_SA_LOAD_FAILED;
+    }
+
+    auto ret = cloudSyncServiceProxy->UnRegisterCheckTriggerCallbackInner(
+        callbackInfo.callbackId, callbackInfo.bundleName);
+    if (ret == E_OK) {
+        CheckTriggerCallbackClientManager::GetInstance().RemoveCallback(callbackInfo);
+        SubscribeListener();
+    }
+    SetDeathRecipient(cloudSyncServiceProxy->AsObject());
+    LOGI("UnRegisterCheckTriggerCallback ret %{public}d", ret);
     return ret;
 }
 
@@ -960,6 +1010,11 @@ void CloudSyncManagerImpl::SetDeathRecipient(const sptr<IRemoteObject> &remoteOb
             for (auto &callbackInfo : callbackInfos) {
                 callbackInfo.callback->OnDeathRecipient();
             }
+            std::vector<CheckTriggerCallbackInfo> checkTriggerCallbackInfos;
+            CheckTriggerCallbackClientManager::GetInstance().GetAllCallback(checkTriggerCallbackInfos);
+            for (auto &callbackInfo : checkTriggerCallbackInfos) {
+                callbackInfo.callback->OnDeathRecipient();
+            }
             isFirstCall_.clear();
         };
         deathRecipient_ = sptr(new SvcDeathRecipient(deathCallback));
@@ -1128,7 +1183,8 @@ void CloudSyncManagerImpl::SubscribeListener(void)
         LOGI("The callback has already been subscribed to, no need to subscribe to it again.");
         return;
     }
-    if (!CloudSyncCallbackClientManager::GetInstance().IsEmpty()) {
+    if (!CloudSyncCallbackClientManager::GetInstance().IsEmpty() ||
+        !CheckTriggerCallbackClientManager::GetInstance().IsEmpty()) {
         listener_ = new SystemAbilityStatusChange();
         auto ret = samgr->SubscribeSystemAbility(FILEMANAGEMENT_CLOUD_SYNC_SERVICE_SA_ID, listener_);
         LOGI("subscribed to systemAbility ret %{public}d", ret);
@@ -1161,6 +1217,17 @@ bool CloudSyncManagerImpl::ResetProxyCallback(uint32_t retryCount)
         if ((callback == nullptr) || (cloudSyncServiceProxy->RegisterUploadCallbackInner(
             callback, callbackInfo.callbackId, callbackInfo.bundleName) != E_OK)) {
             LOGW("register upload callback failed, try time is %{public}d", retryCount);
+        } else {
+            hasCallback = true;
+        }
+    }
+    std::vector<CheckTriggerCallbackInfo> checkTriggerCallbackInfos;
+    CheckTriggerCallbackClientManager::GetInstance().GetAllCallback(checkTriggerCallbackInfos);
+    for (auto &callbackInfo : checkTriggerCallbackInfos) {
+        auto callback = sptr(new (std::nothrow) CheckTriggerCallbackClient(callbackInfo.callback));
+        if ((callback == nullptr) || (cloudSyncServiceProxy->RegisterCheckTriggerCallbackInner(
+            callback, callbackInfo.callbackId, callbackInfo.bundleName) != E_OK)) {
+            LOGW("register check trigger callback failed, try time is %{public}d", retryCount);
         } else {
             hasCallback = true;
         }
@@ -1408,6 +1475,25 @@ int32_t CloudSyncManagerImpl::SetMediaPreShared(const std::string &albumId, cons
         LOGE("ret is %{public}d id: %{public}s name: %{public}s",
             ret, GetAnonyString(albumId).c_str(), GetAnonyString(albumName).c_str());
     }
+    return ret;
+}
+
+int32_t CloudSyncManagerImpl::TriggerCloudCheck(const int32_t userId, const std::string &bundleName)
+{
+    LOGI("Start TriggerCloudCheck");
+    if (userId < MIN_USER_ID || bundleName.empty() || bundleName.length() > MAX_BUNDLE_NAME_LEN) {
+        LOGE("TriggerCloudCheck parameter is invalid");
+        return E_INVAL_ARG;
+    }
+
+    auto CloudSyncServiceProxy = ServiceProxy::GetInstance("TriggerCloudCheck");
+    if (!CloudSyncServiceProxy) {
+        LOGE("proxy is null");
+        return E_SA_LOAD_FAILED;
+    }
+    SetDeathRecipient(CloudSyncServiceProxy->AsObject());
+    int32_t ret = CloudSyncServiceProxy->TriggerCloudCheck(userId, bundleName);
+    LOGI("TriggerCloudCheck ret %{public}d", ret);
     return ret;
 }
 

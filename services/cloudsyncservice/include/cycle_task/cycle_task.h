@@ -16,6 +16,7 @@
 #ifndef OHOS_CLOUD_SYNC_SERVICE_CYCLE_TASK_H
 #define OHOS_CLOUD_SYNC_SERVICE_CYCLE_TASK_H
 #include <cstdint>
+#include <ctime>
 #include <memory>
 #include <string>
 #include <set>
@@ -52,10 +53,11 @@ protected:
     int32_t intervalTime_;
     std::shared_ptr<CloudFile::DataSyncManager> dataSyncManager_;
     bool runTaskForSwitchOff_ = false;
+    void InitCloudPrefForBundle(int32_t userId, const std::string &bundleName);
+    void SetLastRunTime(std::time_t time);
 
 private:
     void GetLastRunTime(std::time_t &time);
-    void SetLastRunTime(std::time_t time);
     bool IsEligibleToRun(std::time_t currentTime, std::string bundleName);
     virtual int32_t RunTaskForBundle(int32_t userId, std::string bundleName) = 0;
 

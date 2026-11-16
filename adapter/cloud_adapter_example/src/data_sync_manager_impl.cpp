@@ -22,7 +22,8 @@ int32_t DataSyncManagerImpl::TriggerStartSync(const std::string &bundleName,
                                               const int32_t userId,
                                               SyncMode type,
                                               SyncTriggerType triggerType,
-                                              std::string prepareTraceId)
+                                              std::string prepareTraceId,
+                                              const std::string &triggerBundleName)
 {
     return E_OK;
 }

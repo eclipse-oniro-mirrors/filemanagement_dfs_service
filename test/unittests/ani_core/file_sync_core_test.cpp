@@ -251,8 +251,8 @@ HWTEST_F(FileSyncCoreTest, DoStartTest2, TestSize.Level1)
 }
 
 /**
- * @tc.name: DoStop
- * @tc.desc: Verify the FileSyncCore::DoStop function
+ * @tc.name: DoStart
+ * @tc.desc: Verify the FileSyncCore::DoStart function
  * @tc.type: FUNC
  * @tc.require: issueIC7I52
  */

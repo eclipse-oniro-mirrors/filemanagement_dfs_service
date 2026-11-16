@@ -19,6 +19,7 @@
 
 #include <gmock/gmock.h>
 
+#include "i_check_trigger_callback.h"
 #include "i_cloud_sync_callback.h"
 #include "i_cloud_upload_callback.h"
 #include "i_downgrade_dl_callback.h"
@@ -42,6 +43,13 @@ public:
     }
 
     void OnSyncStateChanged(CloudSyncState state, ErrorType error) override {}
+};
+
+class CheckTriggerCallbackMock : public IRemoteStub<ICheckTriggerCallback> {
+public:
+    MOCK_METHOD4(SendRequest, int(uint32_t code, MessageParcel &data, MessageParcel &reply, MessageOption &option));
+    MOCK_METHOD3(OnCheckTriggered, void(CheckTriggerReason reason, const std::string &bundleName,
+        const std::string &triggerBundleName));
 };
 
 class CloudUploadCallbackMock : public IRemoteStub<ICloudUploadCallback> {

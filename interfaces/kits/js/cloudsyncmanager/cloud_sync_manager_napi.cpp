@@ -14,6 +14,8 @@
  */
 
 #include "cloud_sync_manager_napi.h"
+#include "check_trigger_info_napi.h"
+#include "cloud_sync_constants.h"
 #include "cloud_sync_manager_n_exporter.h"
 #include "downgrade_download_napi.h"
 #include "downgrade_progress_napi.h"
@@ -92,6 +94,20 @@ void InitTransferStopReason(napi_env env, napi_value exports)
     napi_set_named_property(env, exports, propertyName, obj);
 }
 
+void InitCheckTriggerReason(napi_env env, napi_value exports)
+{
+    const char *propertyName = "CheckTriggerReason";
+    napi_value obj = nullptr;
+    napi_create_object(env, &obj);
+    napi_property_descriptor desc[] = {
+        DECLARE_NAPI_STATIC_PROPERTY("PERIODIC",
+                                     NVal::CreateInt32(env, (int32_t)CheckTriggerReason::PERIODIC).val_),
+        DECLARE_NAPI_STATIC_PROPERTY("MANUAL", NVal::CreateInt32(env, (int32_t)CheckTriggerReason::MANUAL).val_),
+    };
+    napi_define_properties(env, obj, sizeof(desc) / sizeof(desc[0]), desc);
+    napi_set_named_property(env, exports, propertyName, obj);
+}
+
 static napi_value Init(napi_env env, napi_value exports)
 {
     CloudSyncManagerExport(env, exports);
@@ -100,10 +116,12 @@ static napi_value Init(napi_env env, napi_value exports)
     InitDownloadStopReason(env, exports);
     InitTransferState(env, exports);
     InitTransferStopReason(env, exports);
+    InitCheckTriggerReason(env, exports);
     std::vector<std::unique_ptr<NExporter>> products;
     products.emplace_back(std::make_unique<DowngradeDownloadNapi>(env, exports));
     products.emplace_back(std::make_unique<DowngradeProgressNapi>(env, exports));
     products.emplace_back(std::make_unique<DowngradeTfProgressNapi>(env, exports));
+    products.emplace_back(std::make_unique<CheckTriggerInfoNapi>(env, exports));
     for (auto &&product : products) {
         if (!product->Export()) {
             LOGE("INNER BUG. Failed to export class %{public}s for module cloudSyncDownload ",
@@ -127,6 +145,9 @@ void CloudSyncManagerExport(napi_env env, napi_value exports)
         DECLARE_NAPI_FUNCTION("disableCloud", DisableCloud),
         DECLARE_NAPI_FUNCTION("getBundlesLocalFilePresentStatus", GetBundlesLocalFilePresentStatus),
         DECLARE_NAPI_FUNCTION("getDowngradeDownloadTaskState", GetDowngradeDownloadTaskState),
+        DECLARE_NAPI_FUNCTION("triggerCloudCheck", TriggerCloudCheck),
+        DECLARE_NAPI_FUNCTION("onCheckTrigger", OnCheckTrigger),
+        DECLARE_NAPI_FUNCTION("offCheckTrigger", OffCheckTrigger),
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
 }

@@ -25,7 +25,8 @@ public:
                                      const int32_t userId,
                                      SyncMode type,
                                      SyncTriggerType triggerType,
-                                     std::string prepareTraceId = "") override;
+                                     std::string prepareTraceId = "",
+                                     const std::string &triggerBundleName = "") override;
 };
 } // namespace OHOS::FileManagement::CloudFile
 

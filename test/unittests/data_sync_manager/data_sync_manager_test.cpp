@@ -329,6 +329,29 @@ HWTEST_F(DataSyncManagerTest, CleanCacheTest001, TestSize.Level1)
     }
     GTEST_LOG_(INFO) << "CleanCacheTest001 end";
 }
+
+/**
+ * @tc.name: CheckTriggerCallbackTest001
+ * @tc.desc: Verify DataSyncManager register and unregister check trigger callback.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(DataSyncManagerTest, CheckTriggerCallbackTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CheckTriggerCallbackTest001 start";
+    try {
+        std::string bundleName = "com.ohos.photos";
+        BundleNameUserInfo bundleNameUserInfo{bundleName, 100, 101};
+        sptr<ICheckTriggerCallback> callback = nullptr;
+        manager_->RegisterCheckTriggerCallback(bundleName, bundleNameUserInfo, "callbackId", callback);
+        manager_->UnRegisterCheckTriggerCallback(bundleName, bundleNameUserInfo, "callbackId");
+        EXPECT_TRUE(true);
+    } catch (...) {
+        EXPECT_FALSE(true);
+        GTEST_LOG_(INFO) << "CheckTriggerCallbackTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "CheckTriggerCallbackTest001 end";
+}
 } // namespace Test
 } // namespace FileManagement::CloudSync
 } // namespace OHOS

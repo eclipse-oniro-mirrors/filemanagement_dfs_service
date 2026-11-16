@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 
 #include "dfs_error.h"
+#include "check_trigger_callback_client_manager.h"
 #include "cloud_sync_callback_client_manager.h"
 
 namespace OHOS {
@@ -124,6 +125,110 @@ HWTEST_F(CloudSyncCallbackClientManagerTest, RemoveCallbackTest002, TestSize.Lev
         GTEST_LOG_(INFO) << "RemoveCallbackTest002 FAILED";
     }
     GTEST_LOG_(INFO) << "RemoveCallbackTest002 end";
+}
+/**
+ * @tc.name: CheckTriggerCallbackManagerTest001
+ * @tc.desc: Verify Add/Remove/GetAll for CheckTriggerCallbackClientManager.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncCallbackClientManagerTest, CheckTriggerCallbackManagerTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CheckTriggerCallbackManagerTest001 start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "check_trigger_callback_test_001";
+        callbackInfo.bundleName = "com.ohos.photos";
+        callbackInfo.callback = make_shared<CloudCheckTriggerCallback>();
+        int32_t ret = CheckTriggerCallbackClientManager::GetInstance().AddCallback(callbackInfo);
+        EXPECT_EQ(ret, E_OK);
+        ret = CheckTriggerCallbackClientManager::GetInstance().AddCallback(callbackInfo);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+
+        std::vector<CheckTriggerCallbackInfo> callbackInfos;
+        ret = CheckTriggerCallbackClientManager::GetInstance().GetAllCallback(callbackInfos);
+        EXPECT_EQ(ret, E_OK);
+        EXPECT_FALSE(callbackInfos.empty());
+
+        ret = CheckTriggerCallbackClientManager::GetInstance().RemoveCallback(callbackInfo);
+        EXPECT_EQ(ret, E_OK);
+        ret = CheckTriggerCallbackClientManager::GetInstance().RemoveCallback(callbackInfo);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "CheckTriggerCallbackManagerTest001 FAILED";
+    }
+    GTEST_LOG_(INFO) << "CheckTriggerCallbackManagerTest001 end";
+}
+
+/**
+ * @tc.name: CheckTriggerCallbackManagerTest002
+ * @tc.desc: Verify Add/Remove for CheckTriggerCallbackClientManager matches callbackId and bundleName.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncCallbackClientManagerTest, CheckTriggerCallbackManagerTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CheckTriggerCallbackManagerTest002 start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "check_trigger_callback_test_002";
+        callbackInfo.bundleName = "com.ohos.photos";
+        callbackInfo.callback = make_shared<CloudCheckTriggerCallback>();
+        int32_t ret = CheckTriggerCallbackClientManager::GetInstance().AddCallback(callbackInfo);
+        EXPECT_EQ(ret, E_OK);
+
+        CheckTriggerCallbackInfo otherBundleInfo = callbackInfo;
+        otherBundleInfo.bundleName = "com.ohos.camera";
+        ret = CheckTriggerCallbackClientManager::GetInstance().AddCallback(otherBundleInfo);
+        EXPECT_EQ(ret, E_OK);
+
+        CheckTriggerCallbackInfo wrongBundleInfo = callbackInfo;
+        wrongBundleInfo.bundleName = "com.ohos.wrong";
+        ret = CheckTriggerCallbackClientManager::GetInstance().RemoveCallback(wrongBundleInfo);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+
+        ret = CheckTriggerCallbackClientManager::GetInstance().RemoveCallback(otherBundleInfo);
+        EXPECT_EQ(ret, E_OK);
+        ret = CheckTriggerCallbackClientManager::GetInstance().RemoveCallback(callbackInfo);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "CheckTriggerCallbackManagerTest002 FAILED";
+    }
+    GTEST_LOG_(INFO) << "CheckTriggerCallbackManagerTest002 end";
+}
+
+/**
+ * @tc.name: CheckTriggerCallbackManagerTest003
+ * @tc.desc: Verify invalid callback info is rejected by CheckTriggerCallbackClientManager.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncCallbackClientManagerTest, CheckTriggerCallbackManagerTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CheckTriggerCallbackManagerTest003 start";
+    try {
+        CheckTriggerCallbackInfo callbackInfo;
+        callbackInfo.callbackId = "";
+        callbackInfo.bundleName = "com.ohos.photos";
+        callbackInfo.callback = make_shared<CloudCheckTriggerCallback>();
+        int32_t ret = CheckTriggerCallbackClientManager::GetInstance().AddCallback(callbackInfo);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+
+        callbackInfo.callbackId = "check_trigger_callback_test_003";
+        callbackInfo.callback = nullptr;
+        ret = CheckTriggerCallbackClientManager::GetInstance().AddCallback(callbackInfo);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+
+        callbackInfo.callbackId = "";
+        ret = CheckTriggerCallbackClientManager::GetInstance().RemoveCallback(callbackInfo);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "CheckTriggerCallbackManagerTest003 FAILED";
+    }
+    GTEST_LOG_(INFO) << "CheckTriggerCallbackManagerTest003 end";
 }
 } // namespace Test
 } // namespace FileManagement::CloudSync {

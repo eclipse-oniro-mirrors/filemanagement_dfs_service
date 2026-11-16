@@ -39,6 +39,32 @@ export default namespace cloudSyncManager  {
         extraData: string;
     }
 
+    export enum CheckTriggerReason {
+        PERIODIC = 0,
+        MANUAL = 1,
+    };
+
+    export interface CheckTriggerInfo {
+        bundleName: string;
+        triggerBundleName: string;
+        reason: CheckTriggerReason;
+    }
+
+    export class CheckTriggerInfoInner implements CheckTriggerInfo {
+        constructor(
+            bundleName: string,
+            triggerBundleName: string,
+            reason: CheckTriggerReason
+        ) {
+            this.bundleName = bundleName;
+            this.triggerBundleName = triggerBundleName;
+            this.reason = reason;
+        }
+        public bundleName: string;
+        public triggerBundleName: string;
+        public reason: CheckTriggerReason;
+    }
+
     export enum DownloadStopReason {
         NO_STOP = 0,
         NETWORK_UNAVAILABLE = 1,
@@ -241,6 +267,9 @@ export default namespace cloudSyncManager  {
         static native notifyEventChangeInner(userId: int, extraData: ExtraData): void;
         static native getBundlesLocalFilePresentStatusInner(bundleNames: Array<string>): Array<LocalFilePresentStatus>;
         static native getDowngradeTaskStateInner(bundleNames: Array<string>): Array<DownloadProgress>;
+        static native triggerCloudCheckInner(userId: int, bundleName: string): int;
+        static native onCheckTriggerInner(callback: Callback<CheckTriggerInfo>): void;
+        static native offCheckTriggerInner(): void;
     };
 
     export function changeAppCloudSwitch(accountId: string, bundleName: string, status: boolean): Promise<void> {
@@ -495,6 +524,31 @@ export default namespace cloudSyncManager  {
                 reject(e as BusinessError<void>);
             });
         });
+    }
+
+    export function triggerCloudCheck(userId: int, bundleName: string): Promise<int> {
+        return new Promise<int>((resolve: (result: int) => void,
+            reject: (e: BusinessError) => void): void => {
+            let promise = taskpool.execute((
+                userId: int,
+                bundleName: string
+            ): int => {
+                return StaticFunction.triggerCloudCheckInner(userId, bundleName);
+            }, userId, bundleName);
+            promise.then<void, void>((ret: Any): void => {
+                resolve(ret as int);
+            }, (e: Error): void => {
+                reject(e as BusinessError<void>);
+            });
+        });
+    }
+
+    export function onCheckTrigger(callback: Callback<CheckTriggerInfo>): void {
+        StaticFunction.onCheckTriggerInner(callback);
+    }
+
+    export function offCheckTrigger(): void {
+        StaticFunction.offCheckTriggerInner();
     }
 
 }

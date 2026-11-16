@@ -25,7 +25,8 @@ class MockDataSyncManager : public DataSyncManager {
 public:
     MOCK_METHOD(int32_t, TriggerStartSync,
                 (const std::string &bundleName, const int32_t userId, SyncMode type,
-                 SyncTriggerType triggerType, std::string prepareTraceId),
+                 SyncTriggerType triggerType, std::string prepareTraceId,
+                 const std::string &triggerBundleName),
                 (override));
     MOCK_METHOD(int32_t, TriggerStopSync,
                 (const std::string &bundleName, const int32_t userId, bool forceFlag, SyncTriggerType triggerType),
@@ -42,6 +43,14 @@ public:
                  const std::string &callbackId, const sptr<CloudSync::ICloudSyncCallback> &callback),
                 (override));
     MOCK_METHOD(void, UnRegisterCloudSyncCallback,
+                (const std::string &bundleName, const BundleNameUserInfo &bundleNameUserInfo,
+                 const std::string &callbackId),
+                (override));
+    MOCK_METHOD(void, RegisterCheckTriggerCallback,
+                (const std::string &bundleName, const BundleNameUserInfo &bundleNameUserInfo,
+                 const std::string &callbackId, const sptr<CloudSync::ICheckTriggerCallback> &callback),
+                (override));
+    MOCK_METHOD(void, UnRegisterCheckTriggerCallback,
                 (const std::string &bundleName, const BundleNameUserInfo &bundleNameUserInfo,
                  const std::string &callbackId),
                 (override));

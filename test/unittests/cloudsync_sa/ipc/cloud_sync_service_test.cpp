@@ -28,6 +28,8 @@
 #include "os_account_manager_mock.h"
 #include "service_callback_mock.h"
 #include "system_ability_manager_client_mock.h"
+#include "cloud_sync_constants.h"
+#include "screen_status.h"
 #include "system_mock.h"
 #include "ipc_skeleton.h"
 #include "accesstoken_kit.h"
@@ -85,7 +87,8 @@ public:
     MOCK_METHOD(int32_t, ResetCursor, (const std::string &bundleName, const int32_t &userId, bool flag), (override));
     MOCK_METHOD(int32_t, TriggerStartSync,
                 (const std::string &bundleName, int32_t userId, SyncMode type,
-                 SyncTriggerType triggerType, std::string prepareTraceId), (override));
+                 SyncTriggerType triggerType, std::string prepareTraceId,
+                 const std::string &triggerBundleName), (override));
 };
 
 class CloudSyncServiceTest : public testing::Test {
@@ -536,6 +539,277 @@ HWTEST_F(CloudSyncServiceTest, RegisterFileSyncCallbackInnerTest002, TestSize.Le
         GTEST_LOG_(INFO) << "RegisterFileSyncCallbackInnerTest002 branch FAILED";
     }
     GTEST_LOG_(INFO) << "RegisterFileSyncCallbackInnerTest002 branch end";
+}
+
+/**
+ * @tc.name:RegisterCheckTriggerCallbackInnerTest001
+ * @tc.desc:Verify RegisterCheckTriggerCallbackInner returns E_PERMISSION_DENIED when permission is denied.
+ * @tc.type:FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, RegisterCheckTriggerCallbackInnerTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest001 start";
+    try {
+        std::string callbackId = "0x0000005a40d3b681";
+        std::string bundleName = "com.ohos.photos";
+        sptr<CheckTriggerCallbackMock> callback = sptr(new CheckTriggerCallbackMock());
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(false));
+        int ret = servicePtr_->RegisterCheckTriggerCallbackInner(callback, callbackId, bundleName);
+        EXPECT_EQ(ret, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest001 FAILED";
+    }
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest001 end";
+}
+
+/**
+ * @tc.name:RegisterCheckTriggerCallbackInnerTest002
+ * @tc.desc:Verify RegisterCheckTriggerCallbackInner rejects a null remote object.
+ * @tc.type:FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, RegisterCheckTriggerCallbackInnerTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest002 start";
+    try {
+        std::string callbackId = "0x0000005a40d3b681";
+        std::string bundleName = "com.ohos.photos";
+        sptr<CheckTriggerCallbackMock> callback = nullptr;
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        int ret = servicePtr_->RegisterCheckTriggerCallbackInner(callback, callbackId, bundleName);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest002 FAILED";
+    }
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest002 end";
+}
+
+/**
+ * @tc.name:RegisterCheckTriggerCallbackInnerTest003
+ * @tc.desc:Verify RegisterCheckTriggerCallbackInner succeeds with valid callback and permissions.
+ * @tc.type:FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, RegisterCheckTriggerCallbackInnerTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest003 start";
+    try {
+        std::string callbackId = "0x0000005a40d3b681";
+        std::string bundleName = "com.ohos.photos";
+        sptr<CheckTriggerCallbackMock> callback = sptr(new CheckTriggerCallbackMock());
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).Times(2).WillRepeatedly(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        int ret = servicePtr_->RegisterCheckTriggerCallbackInner(callback, callbackId, bundleName);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest003 FAILED";
+    }
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest003 end";
+}
+
+/**
+ * @tc.name:RegisterCheckTriggerCallbackInnerTest004
+ * @tc.desc:Verify RegisterCheckTriggerCallbackInner returns error when target bundle name resolution fails.
+ * @tc.type:FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, RegisterCheckTriggerCallbackInnerTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest004 start";
+    try {
+        std::string callbackId = "0x0000005a40d3b681";
+        std::string bundleName = "com.ohos.photos";
+        sptr<CheckTriggerCallbackMock> callback = sptr(new CheckTriggerCallbackMock());
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).WillOnce(Return(E_INVAL_ARG));
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).Times(0);
+        int ret = servicePtr_->RegisterCheckTriggerCallbackInner(callback, callbackId, bundleName);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest004 FAILED";
+    }
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest004 end";
+}
+
+/**
+ * @tc.name:RegisterCheckTriggerCallbackInnerTest005
+ * @tc.desc:Verify RegisterCheckTriggerCallbackInner returns error when bundle user info resolution fails.
+ * @tc.type:FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, RegisterCheckTriggerCallbackInnerTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest005 start";
+    try {
+        std::string callbackId = "0x0000005a40d3b681";
+        std::string bundleName = "com.ohos.photos";
+        sptr<CheckTriggerCallbackMock> callback = sptr(new CheckTriggerCallbackMock());
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_))
+            .WillOnce(DoAll(SetArgReferee<0>(bundleName), Return(E_OK)))
+            .WillOnce(Return(E_INVAL_ARG));
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).Times(0);
+        int ret = servicePtr_->RegisterCheckTriggerCallbackInner(callback, callbackId, bundleName);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest005 FAILED";
+    }
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest005 end";
+}
+
+/**
+ * @tc.name:RegisterCheckTriggerCallbackInnerTest006
+ * @tc.desc:Verify RegisterCheckTriggerCallbackInner returns E_PERMISSION_SYSTEM when caller is not a system app.
+ * @tc.type:FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, RegisterCheckTriggerCallbackInnerTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest006 start";
+    try {
+        std::string callbackId = "0x0000005a40d3b681";
+        std::string bundleName = "com.ohos.photos";
+        sptr<CheckTriggerCallbackMock> callback = sptr(new CheckTriggerCallbackMock());
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(false));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).Times(0);
+        int ret = servicePtr_->RegisterCheckTriggerCallbackInner(callback, callbackId, bundleName);
+        EXPECT_EQ(ret, E_PERMISSION_SYSTEM);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest006 FAILED";
+    }
+    GTEST_LOG_(INFO) << "RegisterCheckTriggerCallbackInnerTest006 end";
+}
+
+/**
+ * @tc.name:UnRegisterCheckTriggerCallbackInnerTest001
+ * @tc.desc:Verify UnRegisterCheckTriggerCallbackInner succeeds with valid permissions.
+ * @tc.type:FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, UnRegisterCheckTriggerCallbackInnerTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest001 start";
+    try {
+        std::string callbackId = "0x0000005a40d3b681";
+        std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).Times(2).WillRepeatedly(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        int ret = servicePtr_->UnRegisterCheckTriggerCallbackInner(callbackId, bundleName);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest001 FAILED";
+    }
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest001 end";
+}
+
+/**
+ * @tc.name:UnRegisterCheckTriggerCallbackInnerTest002
+ * @tc.desc:Verify UnRegisterCheckTriggerCallbackInner returns E_PERMISSION_DENIED when permission is denied.
+ * @tc.type:FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, UnRegisterCheckTriggerCallbackInnerTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest002 start";
+    try {
+        std::string callbackId = "0x0000005a40d3b681";
+        std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(false));
+        int32_t ret = servicePtr_->UnRegisterCheckTriggerCallbackInner(callbackId, bundleName);
+        EXPECT_EQ(ret, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest002 FAILED";
+    }
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest002 end";
+}
+
+/**
+ * @tc.name:UnRegisterCheckTriggerCallbackInnerTest003
+ * @tc.desc:Verify UnRegisterCheckTriggerCallbackInner returns error when target bundle name resolution fails.
+ * @tc.type:FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, UnRegisterCheckTriggerCallbackInnerTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest003 start";
+    try {
+        std::string callbackId = "0x0000005a40d3b681";
+        std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).WillOnce(Return(E_INVAL_ARG));
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).Times(0);
+        int32_t ret = servicePtr_->UnRegisterCheckTriggerCallbackInner(callbackId, bundleName);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest003 FAILED";
+    }
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest003 end";
+}
+
+/**
+ * @tc.name:UnRegisterCheckTriggerCallbackInnerTest004
+ * @tc.desc:Verify UnRegisterCheckTriggerCallbackInner returns error when bundle user info resolution fails.
+ * @tc.type:FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, UnRegisterCheckTriggerCallbackInnerTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest004 start";
+    try {
+        std::string callbackId = "0x0000005a40d3b681";
+        std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_))
+            .WillOnce(DoAll(SetArgReferee<0>(bundleName), Return(E_OK)))
+            .WillOnce(Return(E_INVAL_ARG));
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).Times(0);
+        int32_t ret = servicePtr_->UnRegisterCheckTriggerCallbackInner(callbackId, bundleName);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest004 FAILED";
+    }
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest004 end";
+}
+
+/**
+ * @tc.name:UnRegisterCheckTriggerCallbackInnerTest005
+ * @tc.desc:Verify UnRegisterCheckTriggerCallbackInner returns E_PERMISSION_SYSTEM when caller is not a system app.
+ * @tc.type:FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, UnRegisterCheckTriggerCallbackInnerTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest005 start";
+    try {
+        std::string callbackId = "0x0000005a40d3b681";
+        std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(false));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).Times(0);
+        int32_t ret = servicePtr_->UnRegisterCheckTriggerCallbackInner(callbackId, bundleName);
+        EXPECT_EQ(ret, E_PERMISSION_SYSTEM);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest005 FAILED";
+    }
+    GTEST_LOG_(INFO) << "UnRegisterCheckTriggerCallbackInnerTest005 end";
 }
 
 /**
@@ -3518,7 +3792,8 @@ void CloudSyncServiceTest::VerifyNotifyEventCursorReset(const std::string &extra
     EXPECT_CALL(*dataSyncManager, ResetCursor(SHARED_ALBUM_BUNDLE_NAME, userId, true))
         .Times(resetCursor ? 1 : 0).InSequence(sequence);
     EXPECT_CALL(*dataSyncManager,
-        TriggerStartSync("com.ohos.photos", userId, SyncMode::NORMAL, SyncTriggerType::CLOUD_TRIGGER, "traceId"))
+        TriggerStartSync("com.ohos.photos", userId, SyncMode::NORMAL, SyncTriggerType::CLOUD_TRIGGER,
+            "traceId", ""))
         .InSequence(sequence)
         .WillOnce(Invoke([syncDone]() {
             syncDone->set_value_at_thread_exit();
@@ -3823,7 +4098,7 @@ HWTEST_F(CloudSyncServiceTest, StartSyncInnerTest009, TestSize.Level1)
 
     for (auto mode : {SyncMode::NORMAL, SyncMode::FORCE, SyncMode::FORCE_THM}) {
         EXPECT_CALL(*dataSyncManager,
-            TriggerStartSync("com.ohos.photos", 100, mode, SyncTriggerType::APP_TRIGGER, ""))
+            TriggerStartSync("com.ohos.photos", 100, mode, SyncTriggerType::APP_TRIGGER, "", ""))
             .WillOnce(Return(E_OK));
         EXPECT_EQ(service->StartSyncInner(static_cast<int32_t>(mode), ""), E_OK);
     }
@@ -4001,6 +4276,325 @@ HWTEST_F(CloudSyncServiceTest, TriggerSyncInnerTest005, TestSize.Level1)
         GTEST_LOG_(INFO) << "TriggerSyncInnerTest005 failed";
     }
     GTEST_LOG_(INFO) << "TriggerSyncInnerTest005 end";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest001
+ * @tc.desc: Verify TriggerCloudCheck returns E_PERMISSION_DENIED when caller lacks permission.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerCloudCheckTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest001 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        const std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(false));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).Times(0);
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).Times(0);
+        int32_t ret = servicePtr_->TriggerCloudCheck(100, bundleName);
+        EXPECT_EQ(ret, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest001 end";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest002
+ * @tc.desc: Verify TriggerCloudCheck returns E_INVAL_ARG when userId is below MIN_USER_ID.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerCloudCheckTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest002 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        const std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).Times(0);
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).Times(0);
+        int32_t ret = servicePtr_->TriggerCloudCheck(99, bundleName);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest002 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest002 end";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest003
+ * @tc.desc: Verify TriggerCloudCheck returns E_INVAL_ARG when bundleName is empty.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerCloudCheckTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest003 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        const std::string bundleName = "";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).Times(0);
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).Times(0);
+        int32_t ret = servicePtr_->TriggerCloudCheck(100, bundleName);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest003 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest003 end";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest004
+ * @tc.desc: Verify TriggerCloudCheck returns E_PERMISSION_DENIED when caller user id mismatches.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerCloudCheckTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest004 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        const std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).WillOnce(Return(200));
+        int32_t ret = servicePtr_->TriggerCloudCheck(100, bundleName);
+        EXPECT_EQ(ret, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest004 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest004 end";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest005
+ * @tc.desc: Verify TriggerCloudCheck accepts the caller-provided bundleName with matched caller user id.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerCloudCheckTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest005 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        const std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).WillOnce(Return(100));
+        int32_t ret = servicePtr_->TriggerCloudCheck(100, bundleName);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest005 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest005 end";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest006
+ * @tc.desc: Verify TriggerCloudCheck returns E_SA_LOAD_FAILED when the data sync manager is not initialized.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerCloudCheckTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest006 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        const std::string bundleName = "com.ohos.photos";
+        auto savedDataSyncManager = servicePtr_->dataSyncManager_;
+        servicePtr_->dataSyncManager_ = nullptr;
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).WillOnce(Return(100));
+        int32_t ret = servicePtr_->TriggerCloudCheck(100, bundleName);
+        servicePtr_->dataSyncManager_ = savedDataSyncManager;
+        EXPECT_EQ(ret, E_SA_LOAD_FAILED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest006 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest006 end";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest007
+ * @tc.desc: Verify TriggerCloudCheck maps the root caller user id 0 to the main user id, so that the
+ *           request of the main user is accepted.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerCloudCheckTest007, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest007 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        const std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).WillOnce(Return(0));
+        int32_t ret = servicePtr_->TriggerCloudCheck(100, bundleName);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest007 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest007 end";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest008
+ * @tc.desc: Verify TriggerCloudCheck rejects the request before touching caller info when the permission
+ *           check fails.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerCloudCheckTest008, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest008 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        const std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(false));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).Times(0);
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).Times(0);
+        int32_t ret = servicePtr_->TriggerCloudCheck(100, bundleName);
+        EXPECT_EQ(ret, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest008 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest008 end";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest009
+ * @tc.desc: Verify TriggerCloudCheck returns E_INVAL_ARG when bundleName exceeds the maximum length.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerCloudCheckTest009, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest009 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        const std::string bundleName(MAX_BUNDLE_NAME_LEN + 1, 'a');
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).Times(0);
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).Times(0);
+        int32_t ret = servicePtr_->TriggerCloudCheck(100, bundleName);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest009 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest009 end";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest010
+ * @tc.desc: Verify TriggerCloudCheck returns E_INVAL_ARG when caller bundle name cannot be obtained.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerCloudCheckTest010, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest010 start";
+    try {
+        const std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).WillOnce(Return(E_INVAL_ARG));
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).Times(0);
+        int32_t ret = servicePtr_->TriggerCloudCheck(100, bundleName);
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest010 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest010 end";
+}
+
+/**
+ * @tc.name: TriggerCloudCheckTest011
+ * @tc.desc: Verify TriggerCloudCheck returns E_PERMISSION_SYSTEM when caller is not a system app.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, TriggerCloudCheckTest011, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest011 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        const std::string bundleName = "com.ohos.photos";
+        EXPECT_CALL(*dfsuAccessToken_, CheckCallerPermission(_)).WillOnce(Return(true));
+        EXPECT_CALL(*dfsuAccessToken_, IsSystemApp()).WillOnce(Return(false));
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).Times(0);
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).Times(0);
+        int32_t ret = servicePtr_->TriggerCloudCheck(100, bundleName);
+        EXPECT_EQ(ret, E_PERMISSION_SYSTEM);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "TriggerCloudCheckTest011 failed";
+    }
+    GTEST_LOG_(INFO) << "TriggerCloudCheckTest011 end";
+}
+
+/**
+ * @tc.name: HandleTriggerCloudCheckTest001
+ * @tc.desc: Verify HandleTriggerCloudCheck rejects an empty bundleName.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, HandleTriggerCloudCheckTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "HandleTriggerCloudCheckTest001 start";
+    try {
+        int32_t ret = servicePtr_->HandleTriggerCloudCheck(100, "", "com.ohos.trigger");
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "HandleTriggerCloudCheckTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "HandleTriggerCloudCheckTest001 end";
+}
+
+/**
+ * @tc.name: HandleTriggerCloudCheckTest002
+ * @tc.desc: Verify HandleTriggerCloudCheck returns the failure code from TriggerCheck.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, HandleTriggerCloudCheckTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "HandleTriggerCloudCheckTest002 start";
+    try {
+        auto savedDataSyncManager = servicePtr_->dataSyncManager_;
+        auto dataSyncManager = make_shared<NotifyEventDataSyncManagerMock>();
+        servicePtr_->dataSyncManager_ = dataSyncManager;
+        EXPECT_CALL(*dataSyncManager,
+            TriggerStartSync("com.ohos.photos", 100, SyncMode::NORMAL,
+                SyncTriggerType::MANUAL_TRIGGER, "", "com.ohos.trigger"))
+            .WillOnce(Return(E_PERMISSION_DENIED));
+        int32_t ret = servicePtr_->HandleTriggerCloudCheck(100, "com.ohos.photos", "com.ohos.trigger");
+        servicePtr_->dataSyncManager_ = savedDataSyncManager;
+        EXPECT_EQ(ret, E_PERMISSION_DENIED);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "HandleTriggerCloudCheckTest002 failed";
+    }
+    GTEST_LOG_(INFO) << "HandleTriggerCloudCheckTest002 end";
 }
 } // namespace Test
 } // namespace FileManagement::CloudSync
