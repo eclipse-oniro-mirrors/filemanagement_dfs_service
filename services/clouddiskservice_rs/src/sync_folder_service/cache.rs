@@ -198,6 +198,18 @@ impl FolderCache {
         Ok(())
     }
 
+    pub(super) fn set_dentry_placeholder_state(&self, path: &Path, state: u8) -> io::Result<()> {
+        let parent = path
+            .parent()
+            .ok_or_else(|| io::Error::from_raw_os_error(libc::EINVAL))?;
+        let name = path
+            .file_name()
+            .ok_or_else(|| io::Error::from_raw_os_error(libc::EINVAL))?;
+        let inode = fs::metadata(parent)?.ino();
+        CloudDiskServiceMetaFile::open(&self.directory, inode)?
+            .set_placeholder_state(name.as_bytes(), state)
+    }
+
     pub(super) fn close_write(
         &mut self,
         root: &Path,

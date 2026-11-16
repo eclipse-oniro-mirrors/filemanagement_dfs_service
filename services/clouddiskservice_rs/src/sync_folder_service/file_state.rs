@@ -17,6 +17,7 @@
 
 use std::ffi::{CStr, CString};
 use std::io;
+use std::os::fd::{AsRawFd, BorrowedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::Mutex;
@@ -25,7 +26,10 @@ const SYNC_STATE: &CStr = xattr_name(b"user.clouddisk.filesyncstate\0");
 const PLACEHOLDER_COUNT: &CStr = xattr_name(b"user.clouddisk.phcount\0");
 const STATE_SHIFT: u8 = 5;
 const SYNC_STATE_MASK: u8 = 0x1f;
-const FULLY_HYDRATED: u8 = 3;
+pub(crate) const NONE: u8 = 0;
+pub(crate) const UNHYDRATED: u8 = 1;
+const PARTIALLY_HYDRATED: u8 = 2;
+pub(crate) const FULLY_HYDRATED: u8 = 3;
 
 // Corresponds to C++ GetPlaceholderStateMutex: both parts of the shared state
 // byte must use the same lock across read/modify/write operations.
@@ -38,7 +42,7 @@ const fn xattr_name(bytes: &[u8]) -> &CStr {
     }
 }
 
-pub(super) fn state(path: &Path) -> io::Result<u8> {
+pub(crate) fn state(path: &Path) -> io::Result<u8> {
     Ok(get_file_sync_state_byte(path, true)? >> STATE_SHIFT)
 }
 
@@ -69,11 +73,82 @@ pub(crate) fn set_file_sync_state(path: &Path, sync_state: u8) -> io::Result<()>
     write_attr(path, SYNC_STATE, &[new])
 }
 
-pub(super) fn is_counted(state: u8) -> bool {
-    matches!(state, 1 | 2)
+pub(crate) fn set_new_placeholder_state(fd: BorrowedFd<'_>) -> io::Result<()> {
+    let _guard = FILE_SYNC_STATE_MUTEX
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+    let state = [UNHYDRATED << STATE_SHIFT];
+    set_fd_xattr(fd, SYNC_STATE, &state)
 }
 
-pub(super) fn adjust_ancestors(root: &Path, path: &Path, increase: bool) {
+pub(crate) fn placeholder_state(fd: BorrowedFd<'_>) -> io::Result<u8> {
+    let _guard = FILE_SYNC_STATE_MUTEX
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+    Ok(read_fd_state(fd)? >> STATE_SHIFT)
+}
+
+pub(crate) fn set_placeholder_state(fd: BorrowedFd<'_>, state: u8) -> io::Result<u8> {
+    if state > FULLY_HYDRATED {
+        return Err(io::Error::from_raw_os_error(libc::EINVAL));
+    }
+    let _guard = FILE_SYNC_STATE_MUTEX
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+    let old = read_fd_state(fd)?;
+    let new = (state << STATE_SHIFT) | (old & SYNC_STATE_MASK);
+    set_fd_xattr(fd, SYNC_STATE, &[new])?;
+    Ok(old >> STATE_SHIFT)
+}
+
+// Callers hold FILE_SYNC_STATE_MUTEX across placeholder-state reads and writes.
+fn read_fd_state(fd: BorrowedFd<'_>) -> io::Result<u8> {
+    let mut state = [0];
+    match get_fd_xattr(fd, SYNC_STATE, &mut state) {
+        Ok(1) => Ok(state[0]),
+        Ok(_) => Err(io::Error::from_raw_os_error(libc::EINVAL)),
+        Err(err) if err.raw_os_error() == Some(libc::ENODATA) => Ok(0),
+        Err(err) => Err(err),
+    }
+}
+
+pub(crate) fn get_fd_xattr(fd: BorrowedFd<'_>, attr: &CStr, value: &mut [u8]) -> io::Result<usize> {
+    let out = if value.is_empty() {
+        std::ptr::null_mut()
+    } else {
+        value.as_mut_ptr().cast()
+    };
+    // SAFETY: The descriptor is borrowed and attr is terminated. A zero length
+    // with a null pointer probes the size. Otherwise out holds value.len() writable bytes.
+    let size = unsafe { libc::fgetxattr(fd.as_raw_fd(), attr.as_ptr(), out, value.len()) };
+    if size < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(size as usize)
+}
+
+pub(crate) fn set_fd_xattr(fd: BorrowedFd<'_>, attr: &CStr, value: &[u8]) -> io::Result<()> {
+    // SAFETY: The descriptor is borrowed, attr is terminated, and value is readable for its length.
+    let ret = unsafe {
+        libc::fsetxattr(
+            fd.as_raw_fd(),
+            attr.as_ptr(),
+            value.as_ptr().cast(),
+            value.len(),
+            0,
+        )
+    };
+    if ret == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+pub(crate) fn is_counted(state: u8) -> bool {
+    matches!(state, UNHYDRATED | PARTIALLY_HYDRATED)
+}
+
+pub(crate) fn adjust_ancestors(root: &Path, path: &Path, increase: bool) {
     for dir in ancestors(root, path) {
         match adjust_directory_count(dir, increase) {
             Ok(true) => {}
@@ -131,7 +206,11 @@ fn adjust_directory_count(path: &Path, increase: bool) -> io::Result<bool> {
         return Ok(false);
     }
     let old_state = read_attr::<1>(path, SYNC_STATE)?.unwrap_or_default()[0];
-    write_state(path, old_state, if new == 0 { FULLY_HYDRATED } else { 1 })?;
+    write_state(
+        path,
+        old_state,
+        if new == 0 { FULLY_HYDRATED } else { UNHYDRATED },
+    )?;
     Ok(true)
 }
 

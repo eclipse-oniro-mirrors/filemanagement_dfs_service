@@ -278,6 +278,17 @@ impl CloudDiskServiceLogFile {
         }
     }
 
+    pub(crate) fn set_dentry_placeholder_state(
+        &self,
+        relative: &Path,
+        state: u8,
+    ) -> io::Result<()> {
+        // Use the physical path and the same per-root cache lock as fanotify events.
+        self.with_cache(|cache, root| {
+            cache.set_dentry_placeholder_state(&root.join(relative), state)
+        })
+    }
+
     pub(crate) fn record_close_write(&self, path: &Path, modified: bool) {
         if let Err(err) = self.with_cache(|cache, root| cache.close_write(root, path, modified)) {
             self.log_error("event_close_write", path, &err);

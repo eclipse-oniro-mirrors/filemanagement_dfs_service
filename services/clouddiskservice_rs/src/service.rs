@@ -16,7 +16,7 @@
 //! Business entry points corresponding to ipc/src/cloud_disk_service.cpp.
 //!
 //! Sync-folder registration, change callbacks/history and file sync states use
-//! the Rust implementation. Placeholder entry points remain framework stubs.
+//! the Rust implementation, as do placeholder file operations.
 
 use std::fs;
 use std::path::Path;
@@ -31,9 +31,9 @@ use system_ability_fwk::ability::Handler;
 
 use crate::account_status_listener::AccountStatusListener;
 use crate::common::error_codes::{
-    error_reason, E_INVALID_ARG, E_IPC_FAILED, E_LISTENER_ALREADY_REGISTERED,
-    E_LISTENER_NOT_REGISTERED, E_OK, E_PERMISSION_DENIED, E_SYNC_FOLDER_NOT_REGISTERED,
-    E_TRY_AGAIN,
+    error_reason, E_INVALID_ARG, E_INVALID_PLACEHOLDER_STATE, E_IPC_FAILED,
+    E_LISTENER_ALREADY_REGISTERED, E_LISTENER_NOT_REGISTERED, E_OK, E_PERMISSION_DENIED,
+    E_SYNC_FOLDER_NOT_REGISTERED, E_SYNC_FOLDER_PATH_UNAUTHORIZED, E_TRY_AGAIN,
 };
 use crate::common::types::{
     CallbackExecuteRequest, ChangesResult, FailedList, FileSyncState, PlaceholderCustomInfo,
@@ -43,7 +43,8 @@ use crate::ffi::{self, ffrt, utils};
 use crate::framework::{AbilityHandler, ICloudDiskService, CLOUD_DISK_SERVICE_SA_ID};
 use crate::monitor::DiskMonitor;
 use crate::placeholder::{
-    PlaceholderCallbackManager, PlaceholderProgressManager, PlaceholderTaskManager,
+    file as placeholder_file, PlaceholderCallbackManager, PlaceholderProgressManager,
+    PlaceholderTaskManager,
 };
 use crate::sync_folder_manager::{self, CloudDiskSyncFolder, SyncFolderValue};
 use crate::sync_folder_service::{
@@ -459,6 +460,71 @@ fn get_file_sync_state(path: &str, user_id: i32, sync_folder: &str) -> ResultLis
     result
 }
 
+fn placeholder_user_id() -> i32 {
+    let mut user_id = utils::get_user_id();
+    if user_id == 0 {
+        let _ = utils::get_account_id(&mut user_id);
+    }
+    user_id
+}
+
+fn check_placeholder_owner(physical_path: &str, bundle: &str) -> Result<u32, i32> {
+    let index = sync_folder_manager::dentry_hash(physical_path);
+    let Some(folder) = CloudDiskSyncFolder::get_instance().get_sync_folder_value_by_index(index)
+    else {
+        error!("[PlaceholderOwner] sync root is not registered, index={}", @public(index));
+        return Err(E_SYNC_FOLDER_NOT_REGISTERED);
+    };
+    if folder.path != physical_path {
+        error!("[PlaceholderOwner] registered path differs, index={}", @public(index));
+        return Err(E_SYNC_FOLDER_NOT_REGISTERED);
+    }
+    if folder.bundle_name != bundle {
+        error!("[PlaceholderOwner] bundle mismatch, index={}", @public(index));
+        return Err(E_SYNC_FOLDER_PATH_UNAUTHORIZED);
+    }
+    Ok(index)
+}
+
+fn query_placeholder_state(sync_folder: &str, relative_path: &str) -> Result<u8, i32> {
+    if sync_folder.is_empty() || relative_path.is_empty() {
+        return Err(E_INVALID_ARG);
+    }
+    let user = placeholder_user_id().to_string();
+    let physical = sync_folder_manager::path_to_physical_path(sync_folder, &user)?;
+    let bundle = utils::get_caller_bundle_name().map_err(|_| E_TRY_AGAIN)?;
+    check_placeholder_owner(&physical, &bundle).map_err(|_| E_SYNC_FOLDER_NOT_REGISTERED)?;
+    let mount_root = sync_folder_manager::path_to_mnt_path_by_physical_path(&physical, &user)?;
+    placeholder_file::query_state(&mount_root, relative_path)
+}
+
+fn resolve_existing_placeholder_file(
+    sync_folder: &str,
+    relative_path: &str,
+) -> Result<placeholder_file::ExistingFile, i32> {
+    if sync_folder.is_empty() || relative_path.is_empty() {
+        return Err(E_INVALID_ARG);
+    }
+    let user_id = placeholder_user_id();
+    let bundle = utils::get_caller_bundle_name().map_err(|_| E_TRY_AGAIN)?;
+    let physical = sync_folder_manager::path_to_physical_path(sync_folder, &user_id.to_string())?;
+    let index = check_placeholder_owner(&physical, &bundle)?;
+    placeholder_file::ExistingFile::resolve(sync_folder, relative_path, user_id, index)
+}
+
+fn log_placeholder_result<T>(operation: &str, result: Result<T, i32>) -> Result<T, i32> {
+    match result {
+        Ok(value) => {
+            info!("[{}] completed, ret={}", @public(operation), @public(E_OK));
+            Ok(value)
+        }
+        Err(ret) => {
+            error!("[{}] failed, ret={}", @public(operation), @public(ret));
+            Err(ret)
+        }
+    }
+}
+
 impl ICloudDiskService for CloudDiskService {
     fn register_sync_folder_changes_inner(&self, sync_folder: &str, remote: &RemoteObj) -> i32 {
         info!(
@@ -714,30 +780,38 @@ impl ICloudDiskService for CloudDiskService {
         info: &PlaceholderInfo,
         custom_info: &PlaceholderCustomInfo,
     ) -> i32 {
-        info!(
-            "[create_placeholder_file_inner] sync_folder={}, relative_path={}, logical_size={}, atime_ms={}, mtime_ms={}",
-            @public(sync_folder),
-            @public(relative_path),
-            @public(info.logical_size),
-            @public(info.atime_ms),
-            @public(info.mtime_ms),
-        );
-        info!(
-            "[create_placeholder_file_inner] custom_info.data_len={}, data={:02x?}",
-            @public(custom_info.data.len()),
-            @public(&custom_info.data),
-        );
-        E_OK
+        info!("[CreatePlaceholderFileInner] sync_folder={}, relative_path={}, size={}, atime_ms={}, mtime_ms={}, custom_size={}",
+            @private(sync_folder), @private(relative_path), @public(info.logical_size),
+            @public(info.atime_ms), @public(info.mtime_ms), @public(custom_info.data.len()));
+        let result = (|| {
+            placeholder_file::validate_params(sync_folder, relative_path, info, custom_info)?;
+            let user_id = utils::get_user_id().to_string();
+            let physical = sync_folder_manager::path_to_physical_path(sync_folder, &user_id)?;
+            let bundle = utils::get_caller_bundle_name().map_err(|_| E_TRY_AGAIN)?;
+            check_placeholder_owner(&physical, &bundle)
+                .map_err(|_| E_SYNC_FOLDER_NOT_REGISTERED)?;
+            placeholder_file::create(sync_folder, relative_path, &user_id, info, custom_info)
+        })();
+        let ret = result.map_or_else(|ret| ret, |()| E_OK);
+        info!("[CreatePlaceholderFileInner] completed, ret={}", @public(ret));
+        ret
     }
 
     fn is_placeholder_file_inner(&self, sync_folder: &str, path: &str, result: &mut bool) -> i32 {
-        info!(
-            "[is_placeholder_file_inner] sync_folder={}, path={}",
-            @public(sync_folder),
-            @public(path),
-        );
-        *result = true;
-        E_OK
+        info!("[IsPlaceholderFileInner] sync_folder={}, path={}",
+            @private(sync_folder), @private(path));
+        *result = false;
+        match log_placeholder_result(
+            "IsPlaceholderFileInner",
+            query_placeholder_state(sync_folder, path),
+        ) {
+            Ok(state) => {
+                *result = state != file_state::NONE;
+                debug!("[IsPlaceholderFileInner] state={}, is_placeholder={}", @public(state), @public(*result));
+                E_OK
+            }
+            Err(ret) => ret,
+        }
     }
 
     fn register_sync_folder_inner(&self, user_id: i32, bundle_name: &str, path: &str) -> i32 {
@@ -905,30 +979,33 @@ impl ICloudDiskService for CloudDiskService {
     }
 
     fn convert_placeholder_to_file_inner(&self, sync_folder: &str, relative_path: &str) -> i32 {
-        info!(
-            "[convert_placeholder_to_file_inner] sync_folder={}, relative_path={}",
-            @public(sync_folder),
-            @public(relative_path),
-        );
-        E_OK
+        info!("[ConvertPlaceholderToFileInner] sync_folder={}, relative_path={}",
+            @private(sync_folder), @private(relative_path));
+        let result = resolve_existing_placeholder_file(sync_folder, relative_path)
+            .and_then(|file| file.convert_to_file());
+        log_placeholder_result("ConvertPlaceholderToFileInner", result)
+            .err()
+            .unwrap_or(E_OK)
     }
 
     fn mark_file_as_placeholder_inner(&self, sync_folder: &str, relative_path: &str) -> i32 {
-        info!(
-            "[mark_file_as_placeholder_inner] sync_folder={}, relative_path={}",
-            @public(sync_folder),
-            @public(relative_path),
-        );
-        E_OK
+        info!("[MarkFileAsPlaceholderInner] sync_folder={}, relative_path={}",
+            @private(sync_folder), @private(relative_path));
+        let result = resolve_existing_placeholder_file(sync_folder, relative_path)
+            .and_then(|file| file.change_state(placeholder_file::StateTransition::Mark));
+        log_placeholder_result("MarkFileAsPlaceholderInner", result)
+            .err()
+            .unwrap_or(E_OK)
     }
 
     fn unmark_placeholder_file_inner(&self, sync_folder: &str, relative_path: &str) -> i32 {
-        info!(
-            "[unmark_placeholder_file_inner] sync_folder={}, relative_path={}",
-            @public(sync_folder),
-            @public(relative_path),
-        );
-        E_OK
+        info!("[UnmarkPlaceholderFileInner] sync_folder={}, relative_path={}",
+            @private(sync_folder), @private(relative_path));
+        let result = resolve_existing_placeholder_file(sync_folder, relative_path)
+            .and_then(|file| file.change_state(placeholder_file::StateTransition::Unmark));
+        log_placeholder_result("UnmarkPlaceholderFileInner", result)
+            .err()
+            .unwrap_or(E_OK)
     }
 
     fn start_hydration_inner(&self, sync_folder: &str, relative_path: &str, priority: i32) -> i32 {
@@ -987,20 +1064,16 @@ impl ICloudDiskService for CloudDiskService {
         metadata: &PlaceholderInfo,
         custom_info: &PlaceholderCustomInfo,
     ) -> i32 {
-        info!(
-            "[update_placeholder_inner] sync_folder={}, relative_path={}, logical_size={}, atime_ms={}, mtime_ms={}",
-            @public(sync_folder),
-            @public(relative_path),
-            @public(metadata.logical_size),
-            @public(metadata.atime_ms),
-            @public(metadata.mtime_ms),
-        );
-        info!(
-            "[update_placeholder_inner] custom_info.data_len={}, data={:02x?}",
-            @public(custom_info.data.len()),
-            @public(&custom_info.data),
-        );
-        E_OK
+        info!("[UpdatePlaceholderInner] sync_folder={}, relative_path={}, size={}, atime_ms={}, mtime_ms={}, custom_size={}",
+            @private(sync_folder), @private(relative_path), @public(metadata.logical_size),
+            @public(metadata.atime_ms), @public(metadata.mtime_ms), @public(custom_info.data.len()));
+        let result =
+            placeholder_file::validate_params(sync_folder, relative_path, metadata, custom_info)
+                .and_then(|()| resolve_existing_placeholder_file(sync_folder, relative_path))
+                .and_then(|file| file.update(metadata, custom_info));
+        log_placeholder_result("UpdatePlaceholderInner", result)
+            .err()
+            .unwrap_or(E_OK)
     }
 
     fn get_placeholder_custom_info_inner(
@@ -1009,13 +1082,19 @@ impl ICloudDiskService for CloudDiskService {
         relative_path: &str,
         custom_info: &mut PlaceholderCustomInfo,
     ) -> i32 {
-        info!(
-            "[get_placeholder_custom_info_inner] sync_folder={}, relative_path={}",
-            @public(sync_folder),
-            @public(relative_path),
-        );
-        custom_info.data = b"RSIPC\0\x01\x7f\x80\xff".to_vec();
-        E_OK
+        info!("[GetPlaceholderCustomInfoInner] sync_folder={}, relative_path={}",
+            @private(sync_folder), @private(relative_path));
+        custom_info.data.clear();
+        let result = resolve_existing_placeholder_file(sync_folder, relative_path)
+            .and_then(|file| file.custom_info());
+        match log_placeholder_result("GetPlaceholderCustomInfoInner", result) {
+            Ok(data) => {
+                info!("[GetPlaceholderCustomInfoInner] custom_size={}", @public(data.len()));
+                custom_info.data = data;
+                E_OK
+            }
+            Err(ret) => ret,
+        }
     }
 
     fn start_hydration_by_path_inner(
@@ -1067,12 +1146,23 @@ impl ICloudDiskService for CloudDiskService {
         relative_path: &str,
         result: &mut i32,
     ) -> i32 {
-        info!(
-            "[get_placeholder_state_inner] sync_folder={}, relative_path={}",
-            @public(sync_folder),
-            @public(relative_path),
-        );
-        *result = 2;
-        E_OK
+        info!("[GetPlaceholderStateInner] sync_folder={}, relative_path={}",
+            @private(sync_folder), @private(relative_path));
+        *result = i32::from(file_state::NONE);
+        let state = query_placeholder_state(sync_folder, relative_path).and_then(|state| {
+            if state > file_state::FULLY_HYDRATED {
+                error!("[GetPlaceholderStateInner] invalid stored state={}", @public(state));
+                return Err(E_INVALID_PLACEHOLDER_STATE);
+            }
+            Ok(state)
+        });
+        match log_placeholder_result("GetPlaceholderStateInner", state) {
+            Ok(state) => {
+                *result = i32::from(state);
+                info!("[GetPlaceholderStateInner] state={}", @public(state));
+                E_OK
+            }
+            Err(ret) => ret,
+        }
     }
 }
