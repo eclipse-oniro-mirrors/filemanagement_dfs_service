@@ -45,6 +45,7 @@ public:
     virtual int ftruncate(int fd, off_t length) = 0;
     virtual int fsetxattr(int fd, const char *name, const void *value, size_t size, int flags) = 0;
     virtual ssize_t fgetxattr(int fd, const char *name, void *value, size_t size) = 0;
+    virtual int fremovexattr(int fd, const char *name) = 0;
     virtual int futimens(int fd, const struct timespec *times) = 0;
     virtual int removexattr(const char *path, const char *name) = 0;
     virtual ssize_t getxattr(const char *path, const char *name, void *value, size_t size) = 0;
@@ -80,6 +81,7 @@ public:
     MOCK_METHOD2(ftruncate, int(int, off_t));
     MOCK_METHOD5(fsetxattr, int(int, const char *, const void *, size_t, int));
     MOCK_METHOD4(fgetxattr, ssize_t(int, const char *, void *, size_t));
+    MOCK_METHOD2(fremovexattr, int(int, const char *));
     MOCK_METHOD2(futimens, int(int, const struct timespec *));
     MOCK_METHOD2(removexattr, int(const char *, const char *));
     MOCK_METHOD4(getxattr, ssize_t(const char *, const char *, void *, size_t));

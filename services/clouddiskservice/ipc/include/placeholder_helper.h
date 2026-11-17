@@ -46,6 +46,7 @@ std::mutex &GetPlaceholderStateMutex();
 std::mutex &GetPlaceholderFileMutex(const std::string &path);
 
 int32_t GetFileSyncStateByte(const std::string &path, uint8_t &state, bool missingAsZero);
+int32_t GetFileSyncStateByte(int32_t fd, uint8_t &state, bool missingAsZero);
 int32_t GetFilePlaceholderState(const std::string &path, uint8_t &placeholderState);
 int32_t GetFilePlaceholderState(int32_t fd, uint8_t &placeholderState);
 int32_t SetFilePlaceholderState(const std::string &path, uint8_t newState, uint8_t &oldState);

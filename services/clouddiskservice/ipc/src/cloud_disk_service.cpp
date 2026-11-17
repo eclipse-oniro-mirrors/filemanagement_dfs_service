@@ -1226,15 +1226,41 @@ int32_t CloudDiskService::UnregisterSyncFolderInner(
     CloudDiskServiceCallbackManager::GetInstance().UnregisterSyncFolderMap(bundleName, syncFolderIndex);
     PlaceholderCallbackManager::GetInstance().ClearBySyncFolder(bundleName, syncFolderIndex);
 
-    CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(unregisterSyncFolderMnt);
-    CloudDiskSyncFolder::GetInstance().RemoveXattr(unregisterSyncFolderMnt, CLOUD_DISK_FILE_SYNC_STATE_XATTR);
-    CloudDiskSyncFolder::GetInstance().RemoveXattr(unregisterSyncFolderMnt, CLOUD_DISK_PLACEHOLDER_COUNT_XATTR);
+    PlaceholderTaskManager::GetInstance().BeginUnregisterSyncFolder(syncFolderIndex);
+    PlaceholderCleanupStats cleanupStats =
+        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(unregisterSyncFolderMnt);
+    PlaceholderTaskManager::GetInstance().EndUnregisterSyncFolder(syncFolderIndex);
+    if (cleanupStats.failed > 0 || cleanupStats.inconsistent > 0 || cleanupStats.skippedLinks > 0 ||
+        cleanupStats.hardLinks > 0) {
+        LOGW("Unregister placeholder cleanup incomplete, removed:%{public}u, kept:%{public}u, "
+             "skippedLinks:%{public}u, hardLinks:%{public}u, inconsistent:%{public}u, failed:%{public}u, "
+             "firstError:%{public}d",
+             cleanupStats.removed, cleanupStats.kept, cleanupStats.skippedLinks, cleanupStats.hardLinks,
+             cleanupStats.inconsistent, cleanupStats.failed, cleanupStats.firstError);
+    }
     UnloadSa();
     LOGI("End UnregisterSyncFolderInner");
     return E_OK;
 #else
     return E_NOT_SUPPORTED;
 #endif
+}
+
+static void CleanupUnregisteredSyncFolder(const std::string &mntPath, uint32_t syncFolderIndex)
+{
+    auto &taskManager = PlaceholderTaskManager::GetInstance();
+    taskManager.BeginUnregisterSyncFolder(syncFolderIndex);
+    PlaceholderCleanupStats cleanupStats =
+        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(mntPath);
+    // The caller releases the marker with EndUnregisterSyncFolder after map/callback cleanup.
+    if (cleanupStats.failed > 0 || cleanupStats.inconsistent > 0 || cleanupStats.skippedLinks > 0 ||
+        cleanupStats.hardLinks > 0) {
+        LOGW("UnregisterForSa placeholder cleanup incomplete, removed:%{public}u, kept:%{public}u, "
+             "skippedLinks:%{public}u, hardLinks:%{public}u, inconsistent:%{public}u, failed:%{public}u, "
+             "firstError:%{public}d",
+             cleanupStats.removed, cleanupStats.kept, cleanupStats.skippedLinks, cleanupStats.hardLinks,
+             cleanupStats.inconsistent, cleanupStats.failed, cleanupStats.firstError);
+    }
 }
 
 int32_t CloudDiskService::UnregisterForSaInner(const std::string &path)
@@ -1261,20 +1287,23 @@ int32_t CloudDiskService::UnregisterForSaInner(const std::string &path)
         LOGE("Get path failed");
         return E_INVALID_ARG;
     }
-    CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(pathRemove);
-    CloudDiskSyncFolder::GetInstance().RemoveXattr(pathRemove, CLOUD_DISK_FILE_SYNC_STATE_XATTR);
-    CloudDiskSyncFolder::GetInstance().RemoveXattr(pathRemove, CLOUD_DISK_PLACEHOLDER_COUNT_XATTR);
-
     auto syncFolderIndex = CloudDisk::CloudFileUtils::DentryHash(path);
+    CleanupUnregisteredSyncFolder(pathRemove, syncFolderIndex);
+
     SyncFolderValue syncFolderValue;
-    if (!CloudDiskSyncFolder::GetInstance().GetSyncFolderValueByIndex(syncFolderIndex, syncFolderValue)) {
+    bool registered =
+        CloudDiskSyncFolder::GetInstance().GetSyncFolderValueByIndex(syncFolderIndex, syncFolderValue);
+    if (registered) {
+        CloudDiskSyncFolder::GetInstance().DeleteSyncFolder(syncFolderIndex);
+        CloudDiskServiceCallbackManager::GetInstance().UnregisterSyncFolderMap(
+            syncFolderValue.bundleName, syncFolderIndex);
+        PlaceholderCallbackManager::GetInstance().ClearBySyncFolder(syncFolderValue.bundleName, syncFolderIndex);
+    }
+    PlaceholderTaskManager::GetInstance().EndUnregisterSyncFolder(syncFolderIndex);
+    if (!registered) {
         LOGE("No such index");
         return E_SYNC_FOLDER_NOT_REGISTERED;
     }
-
-    CloudDiskSyncFolder::GetInstance().DeleteSyncFolder(syncFolderIndex);
-    CloudDiskServiceCallbackManager::GetInstance().UnregisterSyncFolderMap(syncFolderValue.bundleName, syncFolderIndex);
-    PlaceholderCallbackManager::GetInstance().ClearBySyncFolder(syncFolderValue.bundleName, syncFolderIndex);
     UnloadSa();
     return ret;
 #else
@@ -1540,17 +1569,41 @@ static void RestoreDehydrationTimestamps(int fd, const struct stat &fileStat)
     }
 }
 
-static int32_t DehydrateOpenFile(int fd)
+static bool IsSyncStateBlockingDehydrate(uint8_t syncState)
 {
-    struct stat fileStat = {};
-    if (fstat(fd, &fileStat) < 0) {
-        int32_t error = errno;
-        LOGE("Get file size before dehydration failed, errno:%{public}d", error);
-        return ConvertErrnoToCloudDiskError(error);
+    switch (static_cast<SyncState>(syncState)) {
+        case SyncState::SYNCING:
+        case SyncState::SYNC_FAILED:
+        case SyncState::SYNC_CANCELED:
+        case SyncState::SYNC_CONFLICTED:
+            return true;
+        default:
+            return false;
     }
+}
+
+static void RefreshDehydratedPlaceholderMetadata(const PlaceholderStatePathContext &context, uint8_t oldState)
+{
+    if (context.mntSyncFolder.empty()) {
+        return;
+    }
+    if (oldState == PLACEHOLDER_STATE_FULLY_HYDRATED) {
+        // A fully hydrated placeholder was not counted; after dehydration it becomes
+        // unhydrated and must be counted again.
+        (void)RefreshAncestorPlaceholderCount(context.mntSyncFolder, context.hmdfsPath, 1);
+    }
+    if (context.userId >= 0) {
+        (void)UpdateDentryPlaceholderState(context.userId, context.syncFolderIndex, context.hmdfsPath,
+                                           PLACEHOLDER_STATE_UNHYDRATED);
+    }
+}
+
+static int32_t TruncatePlaceholderForDehydration(int fd, const struct stat &fileStat)
+{
     if (ftruncate(fd, 0) < 0) {
         int32_t error = errno;
         LOGE("Truncate file before dehydration failed, errno:%{public}d", error);
+        RestoreDehydrationTimestamps(fd, fileStat);
         return ConvertErrnoToCloudDiskError(error);
     }
 
@@ -1566,19 +1619,44 @@ static int32_t DehydrateOpenFile(int fd)
         RestoreDehydrationTimestamps(fd, fileStat);
         return E_TRY_AGAIN;
     }
-
-    uint8_t stateBeforeWrite = PLACEHOLDER_STATE_NONE;
-    int32_t ret = SetFilePlaceholderState(fd, PLACEHOLDER_STATE_UNHYDRATED, stateBeforeWrite);
-    if (ret != E_OK) {
-        LOGE("Set unhydrated state failed, errno:%{public}d", ret);
-        RestoreDehydrationTimestamps(fd, fileStat);
-        return ConvertPlaceholderStateErrnoToCloudDiskError(ret);
-    }
     if (fsync(fd) < 0) {
         LOGW("Fsync dehydrated placeholder failed, errno:%{public}d", errno);
     }
     RestoreDehydrationTimestamps(fd, fileStat);
     return E_OK;
+}
+
+// Dehydration lowers the state before touching the content: observers must never see a fully
+// hydrated state over an empty or sparse file. The state change is also the point where the
+// placeholder starts being counted again, so phcount/dentry are updated before truncation.
+static int32_t DehydrateOpenFile(int fd, const PlaceholderStatePathContext &context)
+{
+    struct stat fileStat = {};
+    if (fstat(fd, &fileStat) < 0) {
+        int32_t error = errno;
+        LOGE("Get file size before dehydration failed, errno:%{public}d", error);
+        return ConvertErrnoToCloudDiskError(error);
+    }
+
+    uint8_t stateBeforeWrite = PLACEHOLDER_STATE_NONE;
+    int32_t ret = SetFilePlaceholderState(fd, PLACEHOLDER_STATE_UNHYDRATED, stateBeforeWrite);
+    if (ret != E_OK) {
+        LOGE("Set unhydrated state failed, errno:%{public}d", ret);
+        return ConvertPlaceholderStateErrnoToCloudDiskError(ret);
+    }
+    if (!IsValidPlaceholderState(stateBeforeWrite)) {
+        LOGE("Invalid placeholder state before dehydration, state:%{public}u", stateBeforeWrite);
+        return E_INVALID_PLACEHOLDER_STATE;
+    }
+    RefreshDehydratedPlaceholderMetadata(context, stateBeforeWrite);
+    if (fsync(fd) < 0) {
+        // Do not truncate when the state change is not durable: a crash could otherwise leave
+        // the file fully hydrated and empty.
+        int32_t error = errno;
+        LOGE("Flush dehydrated placeholder state failed, errno:%{public}d", error);
+        return ConvertErrnoToCloudDiskError(error);
+    }
+    return TruncatePlaceholderForDehydration(fd, fileStat);
 }
 
 static int32_t DehydratePlaceholderFile(const PlaceholderStatePathContext &context, const std::string &relativePath)
@@ -1603,16 +1681,25 @@ static int32_t DehydratePlaceholderFile(const PlaceholderStatePathContext &conte
         return ConvertTargetErrnoToCloudDiskError(error);
     }
 
-    uint8_t state = PLACEHOLDER_STATE_NONE;
-    ret = GetFilePlaceholderState(fd, state);
+    uint8_t stateByte = 0;
+    ret = GetFileSyncStateByte(fd, stateByte, true);
     if (ret != E_OK) {
         LOGE("Get placeholder state before dehydration failed, errno:%{public}d", ret);
         return ConvertPlaceholderStateErrnoToCloudDiskError(ret);
     }
+    uint8_t state = GetPlaceholderStateFromFileSyncState(stateByte);
+    uint8_t syncState = GetSyncStateFromFileSyncState(stateByte);
     ret = CheckDehydrateState(state);
     if (ret != E_OK || state == PLACEHOLDER_STATE_UNHYDRATED) {
         LOGE("Dehydrate rejected by placeholder state, state:%{public}u, ret:%{public}d", state, ret);
         return ret;
+    }
+    if (IsSyncStateBlockingDehydrate(syncState)) {
+        // Dropping the local copy while an upload/failure/conflict is pending would delete the
+        // only copy of unsynced content; the provider has to settle the sync state first.
+        LOGW("Dehydrate rejected by sync state, syncState:%{public}u, path:%{private}s", syncState,
+             context.hmdfsPath.c_str());
+        return E_TRY_AGAIN;
     }
 
     LOGI("Request dehydration authorization, bundleName:%{private}s", context.bundleName.c_str());
@@ -1622,19 +1709,8 @@ static int32_t DehydratePlaceholderFile(const PlaceholderStatePathContext &conte
         return ret;
     }
 
-    ret = DehydrateOpenFile(fd);
+    ret = DehydrateOpenFile(fd, context);
     LOGI("Dehydration finished, ret:%{public}d", ret);
-    if (ret == E_OK && !context.mntSyncFolder.empty()) {
-        if (state == PLACEHOLDER_STATE_FULLY_HYDRATED) {
-            // A fully hydrated placeholder was not counted; after dehydration it becomes
-            // unhydrated and must be counted again.
-            (void)RefreshAncestorPlaceholderCount(context.mntSyncFolder, context.hmdfsPath, 1);
-        }
-        if (context.userId >= 0) {
-            (void)UpdateDentryPlaceholderState(context.userId, context.syncFolderIndex, context.hmdfsPath,
-                                               PLACEHOLDER_STATE_UNHYDRATED);
-        }
-    }
     return ret;
 }
 
@@ -1738,59 +1814,116 @@ static int32_t CheckPlaceHolderXattr(int32_t fd, const std::string &hmdfsPath)
     return E_OK;
 }
 
+struct ConvertedPlaceholderContext {
+    std::string mntSyncFolder;
+    int32_t userId = -1;
+    uint32_t syncFolderIndex = 0;
+};
+
+static int32_t LowerConvertedPlaceholderState(int32_t fd,
+                                              const std::string &hmdfsPath,
+                                              const ConvertedPlaceholderContext &context,
+                                              uint8_t &oldState)
+{
+    // Convert is a two-step 3/2/1 -> 1 -> 0 transition: the state must leave the fully
+    // hydrated value before the content is dropped.
+    int32_t ret = SetFilePlaceholderState(fd, PLACEHOLDER_STATE_UNHYDRATED, oldState);
+    if (ret != E_OK) {
+        LOGE("set placeholder state failed, path:%{public}s, errno:%{public}d",
+             GetAnonyStringStrictly(hmdfsPath).c_str(), ret);
+        return ConvertPlaceholderStateErrnoToCloudDiskError(ret);
+    }
+    if (!IsValidPlaceholderState(oldState)) {
+        LOGE("invalid old placeholder state, path:%{public}s, state:%{public}u",
+             GetAnonyStringStrictly(hmdfsPath).c_str(), oldState);
+        return E_INVALID_PLACEHOLDER_STATE;
+    }
+    // The file is now at state 1: uncounted states (3) become counted here, so the count
+    // and dentry have to follow the state write even if the truncation later fails.
+    if (!IsCountedPlaceholder(oldState) && !context.mntSyncFolder.empty()) {
+        (void)RefreshAncestorPlaceholderCount(context.mntSyncFolder, hmdfsPath, 1);
+        if (context.userId >= 0) {
+            (void)UpdateDentryPlaceholderState(context.userId, context.syncFolderIndex, hmdfsPath,
+                                               PLACEHOLDER_STATE_UNHYDRATED);
+        }
+    }
+    if (fsync(fd) < 0) {
+        int32_t error = errno;
+        LOGE("fsync state failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(),
+             error);
+        return ConvertErrnoToCloudDiskError(error);
+    }
+    return E_OK;
+}
+
+static int32_t TruncateConvertedPlaceholder(int32_t fd, const std::string &hmdfsPath)
+{
+    if (ftruncate(fd, 0) < 0) {
+        int32_t error = errno;
+        LOGE("ftruncate failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(), error);
+        return ConvertErrnoToCloudDiskError(error);
+    }
+    if (fsync(fd) < 0) {
+        int32_t error = errno;
+        LOGE("fsync content failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(),
+             error);
+        return ConvertErrnoToCloudDiskError(error);
+    }
+    return E_OK;
+}
+
+static int32_t PublishNormalFileState(int32_t fd,
+                                      const std::string &hmdfsPath,
+                                      const ConvertedPlaceholderContext &context)
+{
+    uint8_t oldState = PLACEHOLDER_STATE_NONE;
+    int32_t ret = SetFilePlaceholderState(fd, PLACEHOLDER_STATE_NONE, oldState);
+    if (ret != E_OK) {
+        LOGE("set normal file state failed, path:%{public}s, errno:%{public}d",
+             GetAnonyStringStrictly(hmdfsPath).c_str(), ret);
+        return ConvertPlaceholderStateErrnoToCloudDiskError(ret);
+    }
+    if (!context.mntSyncFolder.empty()) {
+        (void)RefreshAncestorPlaceholderCount(context.mntSyncFolder, hmdfsPath, -1);
+        if (context.userId >= 0) {
+            (void)UpdateDentryPlaceholderState(context.userId, context.syncFolderIndex, hmdfsPath,
+                                               PLACEHOLDER_STATE_NONE);
+        }
+    }
+    return E_OK;
+}
+
 static int32_t ConvertPlaceholderToEmptyFile(const std::string &hmdfsPath,
                                              const std::string &mntSyncFolder = "",
                                              int32_t userId = -1,
                                              uint32_t syncFolderIndex = 0)
 {
-    int32_t ret = 0;
-    int fd = -1;
-
-    if ((ret = CheckPathNotDir(hmdfsPath)) != E_OK) {
+    int32_t ret = CheckPathNotDir(hmdfsPath);
+    if (ret != E_OK) {
         LOGE("check dir failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(), ret);
         return ret;
     }
-
-    do {
-        if ((fd = open(hmdfsPath.c_str(), O_RDWR | O_CLOEXEC | O_NOFOLLOW)) < 0) {
-            ret = errno;
-            LOGE("open failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(), ret);
-            ret = ConvertErrnoToCloudDiskError(ret);
-            break;
-        }
-
-        if ((ret = CheckPlaceHolderXattr(fd, hmdfsPath)) != E_OK) {
-            break;
-        }
-
-        if (ftruncate(fd, 0) < 0) {
-            ret = errno;
-            LOGE("ftruncate failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(), ret);
-            ret = ConvertErrnoToCloudDiskError(ret);
-            break;
-        }
-
-        uint8_t oldPlaceholderState = PLACEHOLDER_STATE_NONE;
-        ret = SetFilePlaceholderState(fd, PLACEHOLDER_STATE_NONE, oldPlaceholderState);
-        if (ret != E_OK) {
-            LOGE("set placeholder state failed, path:%{public}s, errno:%{public}d",
-                 GetAnonyStringStrictly(hmdfsPath).c_str(), ret);
-            ret = ConvertPlaceholderStateErrnoToCloudDiskError(ret);
-            break;
-        }
-        if (IsCountedPlaceholder(oldPlaceholderState) && !mntSyncFolder.empty()) {
-            (void)RefreshAncestorPlaceholderCount(mntSyncFolder, hmdfsPath, -1);
-            if (userId >= 0) {
-                (void)UpdateDentryPlaceholderState(userId, syncFolderIndex, hmdfsPath, PLACEHOLDER_STATE_NONE);
-            }
-        }
-    } while (0);
-
-    if (fd >= 0) {
-        close(fd);
+    UniqueFd fd(open(hmdfsPath.c_str(), O_RDWR | O_CLOEXEC | O_NOFOLLOW));
+    if (fd < 0) {
+        int32_t error = errno;
+        LOGE("open failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(), error);
+        return ConvertErrnoToCloudDiskError(error);
     }
-
-    return ret;
+    ret = CheckPlaceHolderXattr(fd, hmdfsPath);
+    if (ret != E_OK) {
+        return ret;
+    }
+    const ConvertedPlaceholderContext context {mntSyncFolder, userId, syncFolderIndex};
+    uint8_t oldState = PLACEHOLDER_STATE_NONE;
+    ret = LowerConvertedPlaceholderState(fd, hmdfsPath, context, oldState);
+    if (ret != E_OK) {
+        return ret;
+    }
+    ret = TruncateConvertedPlaceholder(fd, hmdfsPath);
+    if (ret != E_OK) {
+        return ret;
+    }
+    return PublishNormalFileState(fd, hmdfsPath, context);
 }
 
 int32_t CloudDiskService::ConvertPlaceholderToFileInner(const std::string &syncFolder, const std::string &relativePath)
@@ -2352,19 +2485,39 @@ static int32_t ResolvePlaceholderUpdateCaller(const std::string &syncFolder, int
     return ret;
 }
 
-static int32_t ApplyUpdatedAttributes(int32_t fd,
-    const PlaceholderInfo &metaData,
-    const PlaceholderCustomInfo &customInfo,
-    const std::string &hmdfsPath,
-    uint8_t &oldState)
+static int32_t LowerUpdatedPlaceholderState(int32_t fd,
+                                            const std::string &hmdfsPath,
+                                            uint8_t &oldState,
+                                            const PlaceholderUpdateContext &context)
 {
-    if (!customInfo.data.empty() &&
-        fsetxattr(fd, CLOUD_DISK_CUSTOM_INFO_XATTR, customInfo.data.data(), customInfo.data.size(), 0) < 0) {
+    // Lower the state before dropping content: a fully hydrated state over an empty file must
+    // not be observable, even when a later step fails. The state change is also what makes the
+    // file counted again, so phcount/dentry follow it immediately.
+    int32_t ret = SetFilePlaceholderState(fd, PLACEHOLDER_STATE_UNHYDRATED, oldState);
+    if (ret != E_OK) {
+        LOGE("set placeholder state failed, path:%{public}s, errno:%{public}d",
+             GetAnonyStringStrictly(hmdfsPath).c_str(), ret);
+        return ConvertPlaceholderStateErrnoToCloudDiskError(ret);
+    }
+    if (!IsValidPlaceholderState(oldState)) {
+        LOGE("invalid old placeholder state, path:%{public}s, state:%{public}u",
+             GetAnonyStringStrictly(hmdfsPath).c_str(), oldState);
+        return E_INVALID_PLACEHOLDER_STATE;
+    }
+    RefreshUpdatedPlaceholderState(hmdfsPath, oldState, context);
+    if (fsync(fd) < 0) {
         int32_t error = errno;
-        LOGE("set custom info failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(),
-             error);
+        LOGE("flush placeholder state failed, path:%{public}s, errno:%{public}d",
+             GetAnonyStringStrictly(hmdfsPath).c_str(), error);
         return ConvertErrnoToCloudDiskError(error);
     }
+    return E_OK;
+}
+
+static int32_t TruncateUpdatedPlaceholder(int32_t fd,
+                                          const PlaceholderInfo &metaData,
+                                          const std::string &hmdfsPath)
+{
     if (ftruncate(fd, 0) < 0) {
         int32_t error = errno;
         LOGE("ftruncate to zero failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(),
@@ -2377,23 +2530,69 @@ static int32_t ApplyUpdatedAttributes(int32_t fd,
              GetAnonyStringStrictly(hmdfsPath).c_str(), error);
         return ConvertErrnoToCloudDiskError(error);
     }
-    int32_t ret = SetFilePlaceholderState(fd, PLACEHOLDER_STATE_UNHYDRATED, oldState);
-    if (ret != E_OK) {
-        LOGE("set placeholder state failed, path:%{public}s, errno:%{public}d",
-             GetAnonyStringStrictly(hmdfsPath).c_str(), ret);
-        return ConvertPlaceholderStateErrnoToCloudDiskError(ret);
+    if (fsync(fd) < 0) {
+        int32_t error = errno;
+        LOGE("flush placeholder content failed, path:%{public}s, errno:%{public}d",
+             GetAnonyStringStrictly(hmdfsPath).c_str(), error);
+        return ConvertErrnoToCloudDiskError(error);
     }
+    return E_OK;
+}
+
+static int32_t CommitUpdatedCustomInfo(int32_t fd,
+                                       const PlaceholderCustomInfo &customInfo,
+                                       const std::string &hmdfsPath)
+{
+    // Commit custom info only after the content steps succeeded: the old contract could expose
+    // new metadata over the previous content.
+    if (customInfo.data.empty()) {
+        return E_OK;
+    }
+    if (fsetxattr(fd, CLOUD_DISK_CUSTOM_INFO_XATTR, customInfo.data.data(), customInfo.data.size(), 0) < 0) {
+        int32_t error = errno;
+        LOGE("set custom info failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(),
+             error);
+        return ConvertErrnoToCloudDiskError(error);
+    }
+    return E_OK;
+}
+
+static int32_t RestoreUpdatedTimestamps(int32_t fd,
+                                        const PlaceholderInfo &metaData,
+                                        const std::string &hmdfsPath)
+{
     struct timespec times[2] = {
         MillisecondsToTimespec(metaData.atimeMs),
         MillisecondsToTimespec(metaData.mtimeMs),
     };
     if (futimens(fd, times) < 0) {
         int32_t error = errno;
-        LOGE("set times failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(),
-             error);
+        LOGE("set times failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(hmdfsPath).c_str(), error);
         return ConvertErrnoToCloudDiskError(error);
     }
     return E_OK;
+}
+
+static int32_t ApplyUpdatedAttributes(int32_t fd,
+    const PlaceholderInfo &metaData,
+    const PlaceholderCustomInfo &customInfo,
+    const std::string &hmdfsPath,
+    const PlaceholderUpdateContext &context)
+{
+    uint8_t oldState = PLACEHOLDER_STATE_NONE;
+    int32_t ret = LowerUpdatedPlaceholderState(fd, hmdfsPath, oldState, context);
+    if (ret != E_OK) {
+        return ret;
+    }
+    ret = TruncateUpdatedPlaceholder(fd, metaData, hmdfsPath);
+    if (ret != E_OK) {
+        return ret;
+    }
+    ret = CommitUpdatedCustomInfo(fd, customInfo, hmdfsPath);
+    if (ret != E_OK) {
+        return ret;
+    }
+    return RestoreUpdatedTimestamps(fd, metaData, hmdfsPath);
 }
 
 static int32_t UpdatePlaceholderAttr(const std::string &hmdfsPath,
@@ -2420,18 +2619,7 @@ static int32_t UpdatePlaceholderAttr(const std::string &hmdfsPath,
     if (ret != E_OK) {
         return ret;
     }
-    uint8_t oldState = PLACEHOLDER_STATE_NONE;
-    ret = ApplyUpdatedAttributes(fd, metaData, customInfo, hmdfsPath, oldState);
-    if (ret != E_OK) {
-        return ret;
-    }
-    if (!IsValidPlaceholderState(oldState)) {
-        LOGE("invalid old placeholder state, path:%{public}s, state:%{public}u",
-             GetAnonyStringStrictly(hmdfsPath).c_str(), oldState);
-        return E_INVALID_PLACEHOLDER_STATE;
-    }
-    RefreshUpdatedPlaceholderState(hmdfsPath, oldState, context);
-    return E_OK;
+    return ApplyUpdatedAttributes(fd, metaData, customInfo, hmdfsPath, context);
 }
 
 int32_t CloudDiskService::UpdatePlaceholderInner(const std::string &syncFolder,

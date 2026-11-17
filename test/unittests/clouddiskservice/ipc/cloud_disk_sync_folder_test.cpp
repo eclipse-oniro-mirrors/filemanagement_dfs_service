@@ -14,6 +14,7 @@
  */
 
 #include <cstring>
+#include <dlfcn.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -63,8 +64,34 @@ void CloudDiskSyncFolderTest::SetUp(void)
     GTEST_LOG_(INFO) << "SetUp";
     insMock = make_shared<AssistantMock>();
     Assistant::ins = insMock;
+    Assistant::mockFdApi = false;
+    Assistant::mockLstatApi = false;
+    Assistant::mockErrno = 0;
     syncFolderMock = make_shared<SyncFolderAssistantMock>();
     SyncFolderAssistant::ins = syncFolderMock;
+
+    // The libc interceptors forward these calls to the mock unconditionally. Cleanup tests use
+    // the real filesystem, so delegate the directory/stat calls back to libc by default.
+    ON_CALL(*insMock, readdir(_)).WillByDefault(Invoke([](DIR *dir) {
+        auto realReaddir = reinterpret_cast<struct dirent *(*)(DIR *)>(dlsym(RTLD_NEXT, "readdir"));
+        return realReaddir == nullptr ? nullptr : realReaddir(dir);
+    }));
+    ON_CALL(*insMock, CloseDir(_)).WillByDefault(Invoke([](DIR *dir) {
+        auto realClosedir = reinterpret_cast<int (*)(DIR *)>(dlsym(RTLD_NEXT, "closedir"));
+        return realClosedir == nullptr ? -1 : realClosedir(dir);
+    }));
+    ON_CALL(*insMock, fstat(_, _)).WillByDefault(Invoke([](int fd, struct stat *buf) {
+        auto realFstat = reinterpret_cast<int (*)(int, struct stat *)>(dlsym(RTLD_NEXT, "fstat"));
+        return realFstat == nullptr ? -1 : realFstat(fd, buf);
+    }));
+    ON_CALL(*insMock, fremovexattr(_, _)).WillByDefault(Invoke([](int, const char *) {
+        errno = ENODATA;
+        return -1;
+    }));
+    ON_CALL(*syncFolderMock, unlinkat(_, _, _)).WillByDefault(Invoke([](int dirFd, const char *name, int flags) {
+        auto realUnlinkat = reinterpret_cast<int (*)(int, const char *, int)>(dlsym(RTLD_NEXT, "unlinkat"));
+        return realUnlinkat == nullptr ? -1 : realUnlinkat(dirFd, name, flags);
+    }));
 }
 
 void CloudDiskSyncFolderTest::TearDown(void)
@@ -74,6 +101,27 @@ void CloudDiskSyncFolderTest::TearDown(void)
     insMock = nullptr;
     SyncFolderAssistant::ins = nullptr;
     syncFolderMock = nullptr;
+}
+
+static bool CleanupPathExists(const std::string &path)
+{
+    struct stat st {};
+    return stat(path.c_str(), &st) == 0;
+}
+
+static void ExpectCleanupState(uint8_t state)
+{
+    EXPECT_CALL(*CloudDiskSyncFolderTest::insMock,
+                fgetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+        .WillOnce(SetByteXattr(MakeFileSyncState(state, 0)));
+}
+
+static void ResetCleanupDir(const std::string &path)
+{
+    std::string command = "rm -rf " + path;
+    std::system(command.c_str());
+    command = "mkdir -p " + path;
+    std::system(command.c_str());
 }
 
 /**
@@ -445,167 +493,6 @@ HWTEST_F(CloudDiskSyncFolderTest, GetSyncFolderMapTest001, TestSize.Level1)
         GTEST_LOG_(INFO) << "GetSyncFolderMapTest001 failed";
     }
     GTEST_LOG_(INFO) << "GetSyncFolderMapTest001 end";
-}
-
-/**
- * @tc.name: RemoveXattrTest001
- * @tc.desc: Verify the RemoveXattr function
- * @tc.type: FUNC
- * @tc.require: NA
- */
-HWTEST_F(CloudDiskSyncFolderTest, RemoveXattrTest001, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "RemoveXattrTest001 start";
-    try {
-        CloudDiskSyncFolder &syncFolder = CloudDiskSyncFolder::GetInstance();
-        for (const auto &item : syncFolder.GetSyncFolderMap()) {
-            syncFolder.DeleteSyncFolder(item.first);
-        }
-        string path = "/valid/path";
-        string attrName = "user.test_attr";
-        syncFolder.RemoveXattr(path, attrName);
-        Mock::VerifyAndClearExpectations(insMock.get());
-    } catch (...) {
-        EXPECT_TRUE(false);
-        GTEST_LOG_(INFO) << "RemoveXattrTest001 failed";
-    }
-    GTEST_LOG_(INFO) << "RemoveXattrTest001 end";
-}
-
-/**
- * @tc.name: RemoveXattrTest002
- * @tc.desc: Verify the RemoveXattr function
- * @tc.type: FUNC
- * @tc.require: NA
- */
-HWTEST_F(CloudDiskSyncFolderTest, RemoveXattrTest002, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "RemoveXattrTest002 start";
-    try {
-        std::system("mkdir -p /data/test_tdd");
-        std::system("touch /data/test_tdd/test.txt");
-        EXPECT_CALL(*insMock, removexattr(_, _)).WillOnce(Return(-1));
-        Assistant::mockErrno = 1000;
-
-        const char *realOutputPath = "/data/test_tdd/test.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-        .WillOnce(DoAll(
-            SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
-            Return(const_cast<char*>(realOutputPath))
-        ));
-
-        string path = "/data/test_tdd";
-        string attrName = "user.test_attr";
-        CloudDiskSyncFolder::GetInstance().RemoveXattr(path, attrName);
-        EXPECT_EQ(errno, 1000);
-        std::system("rm -rf /data/test_tdd");
-    } catch (...) {
-        EXPECT_TRUE(false);
-        GTEST_LOG_(INFO) << "RemoveXattrTest002 failed";
-    }
-    GTEST_LOG_(INFO) << "RemoveXattrTest002 end";
-}
-
-/**
- * @tc.name: RemoveXattrTest003
- * @tc.desc: Verify the RemoveXattr function
- * @tc.type: FUNC
- * @tc.require: NA
- */
-HWTEST_F(CloudDiskSyncFolderTest, RemoveXattrTest003, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "RemoveXattrTest003 start";
-    try {
-        std::system("mkdir -p /data/test_tdd");
-        std::system("touch /data/test_tdd/test.txt");
-        EXPECT_CALL(*insMock, removexattr(_, _)).WillOnce(Return(-1));
-        Assistant::mockErrno = ENODATA;
-
-        const char *realOutputPath = "/data/test_tdd/test.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-        .WillOnce(DoAll(
-            SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
-            Return(const_cast<char*>(realOutputPath))
-        ));
-
-        string path = "/data/test_tdd";
-        string attrName = "user.test_attr";
-        CloudDiskSyncFolder::GetInstance().RemoveXattr(path, attrName);
-        EXPECT_EQ(errno, ENODATA);
-        std::system("rm -rf /data/test_tdd");
-    } catch (...) {
-        EXPECT_TRUE(false);
-        GTEST_LOG_(INFO) << "RemoveXattrTest003 failed";
-    }
-    GTEST_LOG_(INFO) << "RemoveXattrTest003 end";
-}
-
-/**
- * @tc.name: RemoveXattrTest004
- * @tc.desc: Verify the RemoveXattr function
- * @tc.type: FUNC
- * @tc.require: NA
- */
-HWTEST_F(CloudDiskSyncFolderTest, RemoveXattrTest004, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "RemoveXattrTest004 start";
-    try {
-        std::system("mkdir -p /data/test_tdd");
-        std::system("touch /data/test_tdd/test.txt");
-        EXPECT_CALL(*insMock, removexattr(_, _)).WillOnce(Return(0));
-        Assistant::mockErrno = 1000;
-
-        const char *realOutputPath = "/data/test_tdd/test.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-        .WillOnce(DoAll(
-            SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
-            Return(const_cast<char*>(realOutputPath))
-        ));
-
-        string path = "/data/test_tdd";
-        string attrName = "user.test_attr";
-        CloudDiskSyncFolder::GetInstance().RemoveXattr(path, attrName);
-        EXPECT_EQ(errno, 1000);
-        std::system("rm -rf /data/test_tdd");
-    } catch (...) {
-        EXPECT_TRUE(false);
-        GTEST_LOG_(INFO) << "RemoveXattrTest004 failed";
-    }
-    GTEST_LOG_(INFO) << "RemoveXattrTest004 end";
-}
-
-/**
- * @tc.name: RemoveXattrTest005
- * @tc.desc: Verify the RemoveXattr function
- * @tc.type: FUNC
- * @tc.require: NA
- */
-HWTEST_F(CloudDiskSyncFolderTest, RemoveXattrTest005, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "RemoveXattrTest005 start";
-    try {
-        std::system("mkdir -p /data/test_tdd");
-        std::system("touch /data/test_tdd/test.txt");
-        EXPECT_CALL(*insMock, removexattr(_, _)).WillOnce(Return(0));
-        Assistant::mockErrno = ENODATA;
-
-        const char *realOutputPath = "/data/test_tdd/test.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-        .WillOnce(DoAll(
-            SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
-            Return(const_cast<char*>(realOutputPath))
-        ));
-
-        string path = "/data/test_tdd";
-        string attrName = "user.test_attr";
-        CloudDiskSyncFolder::GetInstance().RemoveXattr(path, attrName);
-        EXPECT_EQ(errno, ENODATA);
-        std::system("rm -rf /data/test_tdd");
-    } catch (...) {
-        EXPECT_TRUE(false);
-        GTEST_LOG_(INFO) << "RemoveXattrTest005 failed";
-    }
-    GTEST_LOG_(INFO) << "RemoveXattrTest005 end";
 }
 
 /**
@@ -1086,52 +973,6 @@ HWTEST_F(CloudDiskSyncFolderTest, GetSyncFolderValueByIndexTest002, TestSize.Lev
 }
 
 /**
- * @tc.name: RemoveXattrTest006
- * @tc.desc: Verify the RemoveXattr function with invalid path
- * @tc.type: FUNC
- * @tc.require: NA
- */
-HWTEST_F(CloudDiskSyncFolderTest, RemoveXattrTest006, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "RemoveXattrTest006 start";
-    try {
-        string path = "/invalid/path/does/not/exist";
-        string attrName = "user.test_attr";
-        CloudDiskSyncFolder::GetInstance().RemoveXattr(path, attrName);
-    } catch (...) {
-        EXPECT_TRUE(false);
-        GTEST_LOG_(INFO) << "RemoveXattrTest006 failed";
-    }
-    GTEST_LOG_(INFO) << "RemoveXattrTest006 end";
-}
-
-/**
- * @tc.name: RemoveXattrTest007
- * @tc.desc: Verify the RemoveXattr function with realpath failure
- * @tc.type: FUNC
- * @tc.require: NA
- */
-HWTEST_F(CloudDiskSyncFolderTest, RemoveXattrTest007, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "RemoveXattrTest007 start";
-    try {
-        std::system("mkdir -p /data/test_tdd");
-        std::system("touch /data/test_tdd/test.txt");
-        
-        EXPECT_CALL(*syncFolderMock, realpath(_, _)).WillOnce(Return(nullptr));
-        
-        string path = "/data/test_tdd";
-        string attrName = "user.test_attr";
-        CloudDiskSyncFolder::GetInstance().RemoveXattr(path, attrName);
-        std::system("rm -rf /data/test_tdd");
-    } catch (...) {
-        EXPECT_TRUE(false);
-        GTEST_LOG_(INFO) << "RemoveXattrTest007 failed";
-    }
-    GTEST_LOG_(INFO) << "RemoveXattrTest007 end";
-}
-
-/**
  * @tc.name: DeleteSyncFolderTest002
  * @tc.desc: Verify the DeleteSyncFolder function with non-existent index
  * @tc.type: FUNC
@@ -1209,43 +1050,19 @@ HWTEST_F(CloudDiskSyncFolderTest, PathToMntPathBySandboxPathTest004, TestSize.Le
 }
 
 /**
- * @tc.name: ReplacePathPrefixTest006
- * @tc.desc: Verify the ReplacePathPrefix function with invalid prefix
+ * @tc.name: RemovePlaceholderFilesBatchTest001
+ * @tc.desc: Verify a missing cleanup root reports a failure without touching anything.
  * @tc.type: FUNC
  * @tc.require: NA
  */
-HWTEST_F(CloudDiskSyncFolderTest, ReplacePathPrefixTest006, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "ReplacePathPrefixTest006 start";
-    try {
-        string oldPrefix = "/storage/Users/currentUser";
-        string newPrefix = "/data/service/el2/100/hmdfs/account/files/Docs";
-        string inputPath = "/storage/Users/currentUser";
-        string outputPath = "";
-        CloudDiskSyncFolder &syncFolder = CloudDiskSyncFolder::GetInstance();
-        const char *outputRealPath = "/data/service/el2/100/hmdfs/account/files/Docs";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(outputRealPath, outputRealPath + strlen(outputRealPath) + 1),
-                Return(const_cast<char*>(outputRealPath))
-            ));
-        int32_t ret = syncFolder.ReplacePathPrefix(oldPrefix, newPrefix, inputPath, outputPath);
-        EXPECT_EQ(ret, E_OK);
-        EXPECT_EQ(outputPath, outputRealPath);
-    } catch (...) {
-        EXPECT_TRUE(false);
-        GTEST_LOG_(INFO) << "ReplacePathPrefixTest006 failed";
-    }
-    GTEST_LOG_(INFO) << "ReplacePathPrefixTest006 end";
-}
-
 HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest001, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest001 start";
     try {
-        CloudDiskSyncFolder &syncFolder = CloudDiskSyncFolder::GetInstance();
-        string path = "/invalid/path/does/not/exist";
-        syncFolder.RemovePlaceholderFilesBatch(path);
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_cleanup_missing_root/file.txt");
+        EXPECT_EQ(stats.failed, 1U);
+        EXPECT_NE(stats.firstError, 0);
     } catch (...) {
         EXPECT_TRUE(false);
         GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest001 failed";
@@ -1253,32 +1070,24 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest001, TestSize.L
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest001 end";
 }
 
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest002
+ * @tc.desc: Verify an unhydrated placeholder is removed through unlinkat.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
 HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest002, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest002 start";
     try {
-        std::system("mkdir -p /data/test_tdd_placeholder");
+        ResetCleanupDir("/data/test_tdd_placeholder");
         std::system("touch /data/test_tdd_placeholder/placeholder_file.txt");
+        ExpectCleanupState(PLACEHOLDER_STATE_UNHYDRATED);
 
-        struct stat st = {};
-        st.st_mode = S_IFREG;
-        EXPECT_CALL(*syncFolderMock, lstat(_, _))
-            .WillOnce(DoAll(SetArgPointee<1>(st), Return(0)));
-
-        const char *realOutputPath = "/data/test_tdd_placeholder/placeholder_file.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
-                Return(const_cast<char*>(realOutputPath))
-            ));
-
-        EXPECT_CALL(*syncFolderMock, getxattr(_, _, _, _))
-            .WillOnce(SetByteXattr(MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0)));
-        EXPECT_CALL(*syncFolderMock, unlink(_)).WillOnce(Return(0));
-
-        string path = "/data/test_tdd_placeholder";
-        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
-
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.removed, 1U);
+        EXPECT_FALSE(CleanupPathExists("/data/test_tdd_placeholder/placeholder_file.txt"));
         std::system("rm -rf /data/test_tdd_placeholder");
     } catch (...) {
         EXPECT_TRUE(false);
@@ -1287,32 +1096,24 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest002, TestSize.L
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest002 end";
 }
 
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest003
+ * @tc.desc: Verify a partially hydrated placeholder is removed through unlinkat.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
 HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest003, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest003 start";
     try {
-        std::system("mkdir -p /data/test_tdd_placeholder");
+        ResetCleanupDir("/data/test_tdd_placeholder");
         std::system("touch /data/test_tdd_placeholder/hydrating_file.txt");
+        ExpectCleanupState(PLACEHOLDER_STATE_PARTIALLY_HYDRATED);
 
-        struct stat st = {};
-        st.st_mode = S_IFREG;
-        EXPECT_CALL(*syncFolderMock, lstat(_, _))
-            .WillOnce(DoAll(SetArgPointee<1>(st), Return(0)));
-
-        const char *realOutputPath = "/data/test_tdd_placeholder/hydrating_file.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
-                Return(const_cast<char*>(realOutputPath))
-            ));
-
-        EXPECT_CALL(*syncFolderMock, getxattr(_, _, _, _))
-            .WillOnce(SetByteXattr(MakeFileSyncState(PLACEHOLDER_STATE_PARTIALLY_HYDRATED, 0)));
-        EXPECT_CALL(*syncFolderMock, unlink(_)).WillOnce(Return(0));
-
-        string path = "/data/test_tdd_placeholder";
-        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
-
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.removed, 1U);
+        EXPECT_FALSE(CleanupPathExists("/data/test_tdd_placeholder/hydrating_file.txt"));
         std::system("rm -rf /data/test_tdd_placeholder");
     } catch (...) {
         EXPECT_TRUE(false);
@@ -1321,32 +1122,25 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest003, TestSize.L
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest003 end";
 }
 
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest004
+ * @tc.desc: Verify a normal file is kept and its placeholder xattrs are cleared.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
 HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest004, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest004 start";
     try {
-        std::system("mkdir -p /data/test_tdd_placeholder");
+        ResetCleanupDir("/data/test_tdd_placeholder");
         std::system("touch /data/test_tdd_placeholder/regular_file.txt");
+        ExpectCleanupState(PLACEHOLDER_STATE_NONE);
 
-        struct stat st = {};
-        st.st_mode = S_IFREG;
-        EXPECT_CALL(*syncFolderMock, lstat(_, _))
-            .WillOnce(DoAll(SetArgPointee<1>(st), Return(0)));
-
-        const char *realOutputPath = "/data/test_tdd_placeholder/regular_file.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
-                Return(const_cast<char*>(realOutputPath))
-            ));
-
-        EXPECT_CALL(*syncFolderMock, getxattr(_, _, _, _))
-            .WillOnce(SetByteXattr(MakeFileSyncState(PLACEHOLDER_STATE_NONE, 0)));
-        EXPECT_CALL(*syncFolderMock, unlink(_)).Times(0);
-
-        string path = "/data/test_tdd_placeholder";
-        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
-
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.kept, 1U);
+        EXPECT_EQ(stats.removed, 0U);
+        EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder/regular_file.txt"));
         std::system("rm -rf /data/test_tdd_placeholder");
     } catch (...) {
         EXPECT_TRUE(false);
@@ -1355,32 +1149,29 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest004, TestSize.L
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest004 end";
 }
 
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest005
+ * @tc.desc: Verify a file with missing placeholder state is kept and reported.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
 HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest005, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest005 start";
     try {
-        std::system("mkdir -p /data/test_tdd_placeholder");
+        ResetCleanupDir("/data/test_tdd_placeholder");
         std::system("touch /data/test_tdd_placeholder/noxattr_file.txt");
+        EXPECT_CALL(*insMock, fgetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+            .WillOnce(Invoke([](int, const char *, void *, size_t) {
+                errno = ENODATA;
+                return static_cast<ssize_t>(-1);
+            }));
 
-        struct stat st = {};
-        st.st_mode = S_IFREG;
-        EXPECT_CALL(*syncFolderMock, lstat(_, _))
-            .WillOnce(DoAll(SetArgPointee<1>(st), Return(0)));
-
-        const char *realOutputPath = "/data/test_tdd_placeholder/noxattr_file.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
-                Return(const_cast<char*>(realOutputPath))
-            ));
-
-        errno = ENODATA;
-        EXPECT_CALL(*syncFolderMock, getxattr(_, _, _, _)).WillOnce(Return(-1));
-        EXPECT_CALL(*syncFolderMock, unlink(_)).Times(0);
-
-        string path = "/data/test_tdd_placeholder";
-        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
-
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.inconsistent, 1U);
+        EXPECT_EQ(stats.removed, 0U);
+        EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder/noxattr_file.txt"));
         std::system("rm -rf /data/test_tdd_placeholder");
     } catch (...) {
         EXPECT_TRUE(false);
@@ -1389,44 +1180,28 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest005, TestSize.L
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest005 end";
 }
 
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest006
+ * @tc.desc: Verify placeholders are removed recursively through directory fds.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
 HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest006, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest006 start";
     try {
+        ResetCleanupDir("/data/test_tdd_placeholder");
         std::system("mkdir -p /data/test_tdd_placeholder/subdir");
         std::system("touch /data/test_tdd_placeholder/placeholder_root.txt");
         std::system("touch /data/test_tdd_placeholder/subdir/placeholder_sub.txt");
+        ExpectCleanupState(PLACEHOLDER_STATE_UNHYDRATED);
+        ExpectCleanupState(PLACEHOLDER_STATE_UNHYDRATED);
 
-        EXPECT_CALL(*syncFolderMock, lstat(_, _))
-            .WillRepeatedly(Invoke([](const char *path, struct stat *buf) {
-                if (strcmp(path, "/data/test_tdd_placeholder/subdir") == 0) {
-                    buf->st_mode = S_IFDIR;
-                } else {
-                    buf->st_mode = S_IFREG;
-                }
-                return 0;
-            }));
-
-        const char *realOutputPath1 = "/data/test_tdd_placeholder/placeholder_root.txt";
-        const char *realOutputPath2 = "/data/test_tdd_placeholder/subdir/placeholder_sub.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath1, realOutputPath1 + strlen(realOutputPath1) + 1),
-                Return(const_cast<char*>(realOutputPath1))
-            ))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath2, realOutputPath2 + strlen(realOutputPath2) + 1),
-                Return(const_cast<char*>(realOutputPath2))
-            ));
-
-        EXPECT_CALL(*syncFolderMock, getxattr(_, _, _, _))
-            .WillOnce(SetByteXattr(MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0)))
-            .WillOnce(SetByteXattr(MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0)));
-        EXPECT_CALL(*syncFolderMock, unlink(_)).Times(2).WillRepeatedly(Return(0));
-
-        string path = "/data/test_tdd_placeholder";
-        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
-
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.removed, 2U);
+        EXPECT_FALSE(CleanupPathExists("/data/test_tdd_placeholder/placeholder_root.txt"));
+        EXPECT_FALSE(CleanupPathExists("/data/test_tdd_placeholder/subdir/placeholder_sub.txt"));
         std::system("rm -rf /data/test_tdd_placeholder");
     } catch (...) {
         EXPECT_TRUE(false);
@@ -1435,32 +1210,29 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest006, TestSize.L
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest006 end";
 }
 
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest007
+ * @tc.desc: Verify a state read failure keeps the file and reports the error.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
 HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest007, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest007 start";
     try {
-        std::system("mkdir -p /data/test_tdd_placeholder");
+        ResetCleanupDir("/data/test_tdd_placeholder");
         std::system("touch /data/test_tdd_placeholder/error_file.txt");
+        EXPECT_CALL(*insMock, fgetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
+            .WillOnce(Invoke([](int, const char *, void *, size_t) {
+                errno = EACCES;
+                return static_cast<ssize_t>(-1);
+            }));
 
-        struct stat st = {};
-        st.st_mode = S_IFREG;
-        EXPECT_CALL(*syncFolderMock, lstat(_, _))
-            .WillOnce(DoAll(SetArgPointee<1>(st), Return(0)));
-
-        const char *realOutputPath = "/data/test_tdd_placeholder/error_file.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
-                Return(const_cast<char*>(realOutputPath))
-            ));
-
-        errno = EACCES;
-        EXPECT_CALL(*syncFolderMock, getxattr(_, _, _, _)).WillOnce(Return(-1));
-        EXPECT_CALL(*syncFolderMock, unlink(_)).Times(0);
-
-        string path = "/data/test_tdd_placeholder";
-        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
-
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.failed, 1U);
+        EXPECT_EQ(stats.firstError, EACCES);
+        EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder/error_file.txt"));
         std::system("rm -rf /data/test_tdd_placeholder");
     } catch (...) {
         EXPECT_TRUE(false);
@@ -1469,33 +1241,29 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest007, TestSize.L
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest007 end";
 }
 
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest008
+ * @tc.desc: Verify an unlinkat failure keeps the incomplete placeholder and reports the error.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
 HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest008, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest008 start";
     try {
-        std::system("mkdir -p /data/test_tdd_placeholder");
+        ResetCleanupDir("/data/test_tdd_placeholder");
         std::system("touch /data/test_tdd_placeholder/unlink_fail.txt");
+        ExpectCleanupState(PLACEHOLDER_STATE_UNHYDRATED);
+        EXPECT_CALL(*syncFolderMock, unlinkat(_, _, _)).WillOnce(Invoke([](int, const char *, int) {
+            errno = EACCES;
+            return -1;
+        }));
 
-        struct stat st = {};
-        st.st_mode = S_IFREG;
-        EXPECT_CALL(*syncFolderMock, lstat(_, _))
-            .WillOnce(DoAll(SetArgPointee<1>(st), Return(0)));
-
-        const char *realOutputPath = "/data/test_tdd_placeholder/unlink_fail.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
-                Return(const_cast<char*>(realOutputPath))
-            ));
-
-        EXPECT_CALL(*syncFolderMock, getxattr(_, _, _, _))
-            .WillOnce(SetByteXattr(MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0)));
-        errno = EACCES;
-        EXPECT_CALL(*syncFolderMock, unlink(_)).WillOnce(Return(-1));
-
-        string path = "/data/test_tdd_placeholder";
-        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
-
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.failed, 1U);
+        EXPECT_EQ(stats.firstError, EACCES);
+        EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder/unlink_fail.txt"));
         std::system("rm -rf /data/test_tdd_placeholder");
     } catch (...) {
         EXPECT_TRUE(false);
@@ -1504,23 +1272,28 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest008, TestSize.L
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest008 end";
 }
 
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest009
+ * @tc.desc: Verify a symlink is skipped and its target is never removed.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
 HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest009, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest009 start";
     try {
-        std::system("mkdir -p /data/test_tdd_placeholder");
-        std::system("touch /data/test_tdd_placeholder/realpath_fail.txt");
+        ResetCleanupDir("/data/test_tdd_placeholder");
+        ResetCleanupDir("/data/test_tdd_placeholder_outside");
+        std::system("touch /data/test_tdd_placeholder_outside/target.txt");
+        std::system("ln -sfn /data/test_tdd_placeholder_outside "
+                    "/data/test_tdd_placeholder/outside_link");
 
-        struct stat st = {};
-        st.st_mode = S_IFREG;
-        EXPECT_CALL(*syncFolderMock, lstat(_, _))
-            .WillOnce(DoAll(SetArgPointee<1>(st), Return(0)));
-        EXPECT_CALL(*syncFolderMock, realpath(_, _)).WillOnce(Return(nullptr));
-
-        string path = "/data/test_tdd_placeholder";
-        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
-
-        std::system("rm -rf /data/test_tdd_placeholder");
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.skippedLinks, 1U);
+        EXPECT_EQ(stats.removed, 0U);
+        EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder_outside/target.txt"));
+        std::system("rm -rf /data/test_tdd_placeholder /data/test_tdd_placeholder_outside");
     } catch (...) {
         EXPECT_TRUE(false);
         GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest009 failed";
@@ -1528,47 +1301,28 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest009, TestSize.L
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest009 end";
 }
 
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest010
+ * @tc.desc: Verify mixed placeholder and normal files keep the expected removal counts.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
 HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest010, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest010 start";
     try {
-        std::system("mkdir -p /data/test_tdd_placeholder");
+        ResetCleanupDir("/data/test_tdd_placeholder");
         std::system("touch /data/test_tdd_placeholder/placeholder1.txt");
         std::system("touch /data/test_tdd_placeholder/placeholder2.txt");
         std::system("touch /data/test_tdd_placeholder/regular.txt");
+        ExpectCleanupState(PLACEHOLDER_STATE_UNHYDRATED);
+        ExpectCleanupState(PLACEHOLDER_STATE_UNHYDRATED);
+        ExpectCleanupState(PLACEHOLDER_STATE_NONE);
 
-        struct stat st = {};
-        st.st_mode = S_IFREG;
-        EXPECT_CALL(*syncFolderMock, lstat(_, _))
-            .Times(3)
-            .WillRepeatedly(DoAll(SetArgPointee<1>(st), Return(0)));
-
-        const char *realOutputPath1 = "/data/test_tdd_placeholder/placeholder1.txt";
-        const char *realOutputPath2 = "/data/test_tdd_placeholder/placeholder2.txt";
-        const char *realOutputPath3 = "/data/test_tdd_placeholder/regular.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath1, realOutputPath1 + strlen(realOutputPath1) + 1),
-                Return(const_cast<char*>(realOutputPath1))
-            ))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath2, realOutputPath2 + strlen(realOutputPath2) + 1),
-                Return(const_cast<char*>(realOutputPath2))
-            ))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath3, realOutputPath3 + strlen(realOutputPath3) + 1),
-                Return(const_cast<char*>(realOutputPath3))
-            ));
-
-        EXPECT_CALL(*syncFolderMock, getxattr(_, _, _, _))
-            .WillOnce(SetByteXattr(MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0)))
-            .WillOnce(SetByteXattr(MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0)))
-            .WillOnce(SetByteXattr(MakeFileSyncState(PLACEHOLDER_STATE_NONE, 0)));
-        EXPECT_CALL(*syncFolderMock, unlink(_)).Times(2).WillRepeatedly(Return(0));
-
-        string path = "/data/test_tdd_placeholder";
-        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
-
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.removed, 2U);
+        EXPECT_EQ(stats.kept, 1U);
         std::system("rm -rf /data/test_tdd_placeholder");
     } catch (...) {
         EXPECT_TRUE(false);
@@ -1579,38 +1333,25 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest010, TestSize.L
 
 /**
  * @tc.name: RemovePlaceholderFilesBatchTest011
- * @tc.desc: Verify the RemovePlaceholderFilesBatch function when lstat fails for one entry but succeeds for others
+ * @tc.desc: Verify a dangling symlink is skipped while a real placeholder is still cleaned.
  * @tc.type: FUNC
- * @tc.require: issueI56WJ7
+ * @tc.require: NA
  */
 HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest011, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest011 start";
     try {
-        std::system("mkdir -p /data/test_tdd_placeholder");
-        std::system("touch /data/test_tdd_placeholder/lstat_fail.txt");
-        std::system("touch /data/test_tdd_placeholder/normal_file.txt");
+        ResetCleanupDir("/data/test_tdd_placeholder");
+        std::system("ln -sfn /data/test_tdd_placeholder_missing "
+                    "/data/test_tdd_placeholder/dangling_link");
+        std::system("touch /data/test_tdd_placeholder/placeholder_file.txt");
+        ExpectCleanupState(PLACEHOLDER_STATE_UNHYDRATED);
 
-        struct stat st;
-        st.st_mode = S_IFREG;
-
-        EXPECT_CALL(*syncFolderMock, lstat(_, _))
-            .WillOnce(Return(-1))
-            .WillOnce(DoAll(SetArgPointee<1>(st), Return(0)));
-
-        const char *realOutputPath = "/data/test_tdd_placeholder/normal_file.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
-                Return(const_cast<char*>(realOutputPath))
-            ));
-
-        EXPECT_CALL(*syncFolderMock, getxattr(_, _, _, _))
-            .WillOnce(Return(-1));
-
-        string path = "/data/test_tdd_placeholder";
-        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
-
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.skippedLinks, 1U);
+        EXPECT_EQ(stats.removed, 1U);
+        EXPECT_FALSE(CleanupPathExists("/data/test_tdd_placeholder/placeholder_file.txt"));
         std::system("rm -rf /data/test_tdd_placeholder");
     } catch (...) {
         EXPECT_TRUE(false);
@@ -1621,31 +1362,145 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest011, TestSize.L
 
 /**
  * @tc.name: RemovePlaceholderFilesBatchTest012
- * @tc.desc: Verify the RemovePlaceholderFilesBatch function when file is neither DIR nor REG (FIFO)
+ * @tc.desc: Verify a FIFO entry is kept without being opened.
  * @tc.type: FUNC
- * @tc.require: issueI56WJ7
+ * @tc.require: NA
  */
 HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest012, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest012 start";
     try {
-        std::system("mkdir -p /data/test_tdd_placeholder");
+        ResetCleanupDir("/data/test_tdd_placeholder");
         std::system("mkfifo /data/test_tdd_placeholder/fifo_file");
 
-        struct stat st = {};
-        st.st_mode = S_IFIFO;
-        EXPECT_CALL(*syncFolderMock, lstat(_, _))
-            .WillOnce(DoAll(SetArgPointee<1>(st), Return(0)));
-
-        string path = "/data/test_tdd_placeholder";
-        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
-
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.kept, 1U);
+        EXPECT_EQ(stats.removed, 0U);
+        EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder/fifo_file"));
         std::system("rm -rf /data/test_tdd_placeholder");
     } catch (...) {
         EXPECT_TRUE(false);
         GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest012 failed";
     }
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest012 end";
+}
+
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest_RootSymlink_001
+ * @tc.desc: Verify a symlink used as the cleanup root is skipped.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest_RootSymlink_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_RootSymlink_001 start";
+    try {
+        ResetCleanupDir("/data/test_tdd_placeholder_real");
+        std::system("touch /data/test_tdd_placeholder_real/file.txt");
+        std::system("ln -sfn /data/test_tdd_placeholder_real /data/test_tdd_placeholder_link");
+
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder_link");
+        EXPECT_EQ(stats.skippedLinks, 1U);
+        EXPECT_EQ(stats.removed, 0U);
+        EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder_real/file.txt"));
+        std::system("rm -rf /data/test_tdd_placeholder_real /data/test_tdd_placeholder_link");
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_RootSymlink_001 failed";
+    }
+    GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_RootSymlink_001 end";
+}
+
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest_RootSymlinkComponent_001
+ * @tc.desc: Verify a symlink in a root path component rejects the whole cleanup.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest_RootSymlinkComponent_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_RootSymlinkComponent_001 start";
+    try {
+        ResetCleanupDir("/data/test_tdd_placeholder_real/subdir");
+        std::system("touch /data/test_tdd_placeholder_real/subdir/file.txt");
+        std::system("ln -sfn /data/test_tdd_placeholder_real /data/test_tdd_placeholder_link");
+
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder_link/subdir");
+        EXPECT_EQ(stats.skippedLinks, 1U);
+        EXPECT_EQ(stats.failed, 0U);
+        EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder_real/subdir/file.txt"));
+        std::system("rm -rf /data/test_tdd_placeholder_real /data/test_tdd_placeholder_link");
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_RootSymlinkComponent_001 failed";
+    }
+    GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_RootSymlinkComponent_001 end";
+}
+
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest_HardLink_001
+ * @tc.desc: Verify a hard-linked file is kept and its xattrs are not touched.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest_HardLink_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_HardLink_001 start";
+    try {
+        ResetCleanupDir("/data/test_tdd_placeholder");
+        ResetCleanupDir("/data/test_tdd_placeholder_outside");
+        std::system("touch /data/test_tdd_placeholder_outside/target.txt");
+        std::system("ln /data/test_tdd_placeholder_outside/target.txt "
+                    "/data/test_tdd_placeholder/hard_link.txt");
+
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.hardLinks, 1U);
+        EXPECT_EQ(stats.removed, 0U);
+        EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder/hard_link.txt"));
+        EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder_outside/target.txt"));
+        std::system("rm -rf /data/test_tdd_placeholder /data/test_tdd_placeholder_outside");
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_HardLink_001 failed";
+    }
+    GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_HardLink_001 end";
+}
+
+/**
+ * @tc.name: RemovePlaceholderFilesBatchTest_XattrFailure_001
+ * @tc.desc: Keep a fully hydrated file and report xattr removal failures.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest_XattrFailure_001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_XattrFailure_001 start";
+    try {
+        ResetCleanupDir("/data/test_tdd_placeholder");
+        std::system("touch /data/test_tdd_placeholder/fully_file.txt");
+        ExpectCleanupState(PLACEHOLDER_STATE_FULLY_HYDRATED);
+        EXPECT_CALL(*insMock, fremovexattr(_, _)).Times(2).WillRepeatedly(Invoke([](int, const char *) {
+            errno = EACCES;
+            return -1;
+        }));
+
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.kept, 1U);
+        EXPECT_EQ(stats.removed, 0U);
+        EXPECT_EQ(stats.failed, 2U);
+        EXPECT_EQ(stats.firstError, EACCES);
+        EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder/fully_file.txt"));
+        std::system("rm -rf /data/test_tdd_placeholder");
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_XattrFailure_001 failed";
+    }
+    GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_XattrFailure_001 end";
 }
 
 /**
@@ -1658,29 +1513,16 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest_FullyHydrated_
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_FullyHydrated_001 start";
     try {
-        std::system("mkdir -p /data/test_tdd_placeholder");
+        ResetCleanupDir("/data/test_tdd_placeholder");
         std::system("touch /data/test_tdd_placeholder/fully_file.txt");
+        ExpectCleanupState(PLACEHOLDER_STATE_FULLY_HYDRATED);
+        EXPECT_CALL(*insMock, fremovexattr(_, _)).WillRepeatedly(Return(0));
 
-        struct stat st = {};
-        st.st_mode = S_IFREG;
-        EXPECT_CALL(*syncFolderMock, lstat(_, _))
-            .WillOnce(DoAll(SetArgPointee<1>(st), Return(0)));
-
-        const char *realOutputPath = "/data/test_tdd_placeholder/fully_file.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
-                Return(const_cast<char*>(realOutputPath))
-            ));
-
-        EXPECT_CALL(*syncFolderMock, getxattr(_, _, _, _))
-            .WillOnce(SetByteXattr(MakeFileSyncState(PLACEHOLDER_STATE_FULLY_HYDRATED, 0)));
-        EXPECT_CALL(*syncFolderMock, unlink(_)).Times(0);
-        EXPECT_CALL(*insMock, removexattr(_, _)).WillRepeatedly(Return(0));
-
-        string path = "/data/test_tdd_placeholder";
-        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
-
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.kept, 1U);
+        EXPECT_EQ(stats.removed, 0U);
+        EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder/fully_file.txt"));
         std::system("rm -rf /data/test_tdd_placeholder");
     } catch (...) {
         EXPECT_TRUE(false);
@@ -1699,29 +1541,15 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest_FullyHydrated_
 {
     GTEST_LOG_(INFO) << "RemovePlaceholderFilesBatchTest_FullyHydrated_NoUnlink_002 start";
     try {
-        std::system("mkdir -p /data/test_tdd_placeholder");
+        ResetCleanupDir("/data/test_tdd_placeholder");
         std::system("touch /data/test_tdd_placeholder/fully_file.txt");
+        ExpectCleanupState(PLACEHOLDER_STATE_FULLY_HYDRATED);
+        EXPECT_CALL(*insMock, fremovexattr(_, _)).WillRepeatedly(Return(0));
 
-        struct stat st = {};
-        st.st_mode = S_IFREG;
-        EXPECT_CALL(*syncFolderMock, lstat(_, _))
-            .WillOnce(DoAll(SetArgPointee<1>(st), Return(0)));
-
-        const char *realOutputPath = "/data/test_tdd_placeholder/fully_file.txt";
-        EXPECT_CALL(*syncFolderMock, realpath(_, _))
-            .WillOnce(DoAll(
-                SetArrayArgument<1>(realOutputPath, realOutputPath + strlen(realOutputPath) + 1),
-                Return(const_cast<char*>(realOutputPath))
-            ));
-
-        EXPECT_CALL(*syncFolderMock, getxattr(_, _, _, _))
-            .WillOnce(SetByteXattr(MakeFileSyncState(PLACEHOLDER_STATE_FULLY_HYDRATED, 0)));
-        EXPECT_CALL(*syncFolderMock, unlink(_)).Times(0);
-        EXPECT_CALL(*insMock, removexattr(_, _)).WillRepeatedly(Return(0));
-
-        string path = "/data/test_tdd_placeholder";
-        CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(path);
-
+        PlaceholderCleanupStats stats = CloudDiskSyncFolder::GetInstance().RemovePlaceholderFilesBatch(
+            "/data/test_tdd_placeholder");
+        EXPECT_EQ(stats.kept, 1U);
+        EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder/fully_file.txt"));
         std::system("rm -rf /data/test_tdd_placeholder");
     } catch (...) {
         EXPECT_TRUE(false);

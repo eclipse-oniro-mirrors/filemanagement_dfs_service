@@ -22,6 +22,7 @@
 #include <cstring>
 #include <dirent.h>
 #include <fcntl.h>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <set>
@@ -45,6 +46,7 @@ constexpr size_t REQUEST_KEY_SIZE = sizeof(uint64_t);
 constexpr size_t BITS_PER_BYTE = CHAR_BIT;
 constexpr size_t MAX_CANCELLATION_RECORDS_PER_APP = 16;
 constexpr size_t MAX_CANCELLATION_RECORDS_GLOBAL = 32;
+constexpr size_t MAX_HYDRATION_RANGES = 1024;
 constexpr auto HYDRATION_IDLE_TIMEOUT = std::chrono::minutes(5);
 constexpr auto CANCELLATION_RECORD_TTL = std::chrono::seconds(60);
 
@@ -131,11 +133,15 @@ int32_t WriteHydrationData(int32_t fd, const CallbackExecuteRequest &request)
             if (error == EINTR) {
                 continue;
             }
-            LOGE("Write hydration data failed, errno:%{public}d", error);
+            LOGE("Write hydration data failed, offset:%{public}" PRIu64 ", size:%{public}" PRIu64
+                 ", written:%{public}zu, errno:%{public}d",
+                 request.offset, request.size, writtenSize, error);
             return ConvertHydrationIoError(error);
         }
         if (written == 0) {
-            LOGE("Hydration write made no progress");
+            LOGE("Hydration write made no progress, offset:%{public}" PRIu64 ", size:%{public}" PRIu64
+                 ", written:%{public}zu",
+                 request.offset, request.size, writtenSize);
             return E_TRY_AGAIN;
         }
         writtenSize += static_cast<size_t>(written);
@@ -199,6 +205,53 @@ int32_t CopyHydrationTempToOutput(const std::shared_ptr<PlaceholderTaskRecord> &
     }
     RestoreHydrationTimestamps(task);
     return E_OK;
+}
+
+void RecordHydrationRange(const std::shared_ptr<PlaceholderTaskRecord> &task, uint64_t offset, uint64_t size)
+{
+    if (size == 0 || task->receivedRangesOverflow) {
+        return;
+    }
+    uint64_t start = offset;
+    uint64_t end = offset + size;
+    auto &ranges = task->receivedRanges;
+    auto it = ranges.lower_bound(start);
+    if (it != ranges.begin()) {
+        auto prev = std::prev(it);
+        if (prev->second >= start) {
+            start = prev->first;
+            end = std::max(end, prev->second);
+            it = ranges.erase(prev);
+        }
+    }
+    while (it != ranges.end() && it->first <= end) {
+        end = std::max(end, it->second);
+        it = ranges.erase(it);
+    }
+    ranges.emplace(start, end);
+    if (ranges.size() > MAX_HYDRATION_RANGES) {
+        // Stop tracking instead of failing the write: the provider contract and Execute return
+        // value stay unchanged, and an unverifiable final delivery simply keeps state 2.
+        LOGW("Hydration range count exceeds limit, count:%{public}zu, path:%{private}s", ranges.size(),
+             task->hmdfsPath.c_str());
+        ranges.clear();
+        task->receivedRangesOverflow = true;
+    }
+}
+
+bool IsHydrationCoverageComplete(const std::shared_ptr<PlaceholderTaskRecord> &task, uint64_t logicalSize)
+{
+    if (task->receivedRangesOverflow) {
+        return false;
+    }
+    if (logicalSize == 0) {
+        return task->receivedRanges.empty();
+    }
+    if (task->receivedRanges.size() != 1) {
+        return false;
+    }
+    const auto &range = *task->receivedRanges.begin();
+    return range.first == 0 && range.second == logicalSize;
 }
 
 bool ShouldNotifyCancellation(PlaceholderTaskCancelReason reason)
@@ -485,6 +538,7 @@ void PlaceholderTaskManager::StopScheduler()
     std::lock_guard<std::mutex> lock(mapMutex_);
     deadlineMap_.clear();
     taskKeyIndex_.clear();
+    unregisteringFolders_.clear();
     activeByKey_.clear();
     cancellationRecordMap_.clear();
     cancellationOrder_.clear();
@@ -523,13 +577,18 @@ int32_t PlaceholderTaskManager::PrepareHydrateTaskLocked(const std::string &sync
         LOGW("Reject hydrate task while scheduler is stopping");
         return E_TRY_AGAIN;
     }
+    if (unregisteringFolders_.find(syncFolderIndex) != unregisteringFolders_.end()) {
+        LOGW("Reject hydrate task for unregistering sync folder");
+        return E_TRY_AGAIN;
+    }
     auto taskKey = MakeTaskKey(syncFolder, filePath, syncFolderIndex);
     auto indexItem = taskKeyIndex_.find(taskKey);
     if (indexItem != taskKeyIndex_.end()) {
         auto taskItem = taskMap_.find(indexItem->second);
         if (taskItem != taskMap_.end() &&
             (taskItem->second->state == PlaceholderTaskState::PENDING ||
-             taskItem->second->state == PlaceholderTaskState::IN_PROGRESS)) {
+             taskItem->second->state == PlaceholderTaskState::IN_PROGRESS ||
+             taskItem->second->cleanupPending.load())) {
             LOGW("Reject duplicate active hydrate task");
             return E_HYDRATE_IN_PROGRESS;
         }
@@ -594,6 +653,7 @@ int32_t PlaceholderTaskManager::CreateHydrateTask(const std::string &syncFolder,
         task->deviceId = static_cast<uint64_t>(metadata.st_dev);
         task->inodeId = static_cast<uint64_t>(metadata.st_ino);
         task->totalSize = static_cast<uint64_t>(metadata.st_size);
+        task->logicalSize = static_cast<uint64_t>(metadata.st_size);
         task->createSeq = nextCreateSeq_++;
         taskMap_[reqKey] = task;
         taskKeyIndex_[MakeTaskKey(syncFolder, filePath, syncFolderIndex)] = reqKey;
@@ -621,8 +681,10 @@ bool PlaceholderTaskManager::HasOutstandingTask(const std::string &syncFolder,
         taskKeyIndex_.erase(indexItem);
         return false;
     }
+    // A terminal task remains outstanding while EraseTaskLocked tears down its fds and temp file.
     auto state = taskItem->second->state.load();
-    if (state != PlaceholderTaskState::PENDING && state != PlaceholderTaskState::IN_PROGRESS) {
+    if (state != PlaceholderTaskState::PENDING && state != PlaceholderTaskState::IN_PROGRESS &&
+        !taskItem->second->cleanupPending.load()) {
         taskKeyIndex_.erase(indexItem);
         return false;
     }
@@ -683,6 +745,37 @@ void PlaceholderTaskManager::CancelTasksBySyncFolder(const std::string &bundleNa
         }
     }
     ScheduleDispatch();
+}
+
+void PlaceholderTaskManager::BeginUnregisterSyncFolder(uint32_t syncFolderIndex)
+{
+    std::vector<std::shared_ptr<PlaceholderTaskRecord>> tasks;
+    {
+        std::lock_guard<std::mutex> lock(mapMutex_);
+        // Insert the marker and snapshot tasks under the same lock: a task created after this
+        // point is rejected by PrepareHydrateTaskLocked instead of racing the cleanup.
+        unregisteringFolders_.insert(syncFolderIndex);
+        for (const auto &[_, task] : taskMap_) {
+            if (task->syncFolderIndex == syncFolderIndex) {
+                tasks.push_back(task);
+            }
+        }
+    }
+    for (const auto &task : tasks) {
+        // Wait for an in-flight Execute to leave the task mutex, then erase the task and its
+        // temp file before the caller starts walking the filesystem.
+        std::lock_guard<std::mutex> lock(task->mutex);
+        if (task->state == PlaceholderTaskState::PENDING || task->state == PlaceholderTaskState::IN_PROGRESS) {
+            CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::UNREGISTER);
+        }
+    }
+    ScheduleDispatch();
+}
+
+void PlaceholderTaskManager::EndUnregisterSyncFolder(uint32_t syncFolderIndex)
+{
+    std::lock_guard<std::mutex> lock(mapMutex_);
+    unregisteringFolders_.erase(syncFolderIndex);
 }
 
 void PlaceholderTaskManager::CancelAllTasks(PlaceholderTaskCancelReason reason)
@@ -894,6 +987,7 @@ void PlaceholderTaskManager::ActivateAndDispatch(const std::shared_ptr<Placehold
         return;
     }
     task->totalSize = metadata.logicalSize;
+    task->logicalSize = metadata.logicalSize;
     // Snapshot timestamps at activation so the copy-back can restore them; the copy is
     // the only operation that moves the target's timestamps, with the task-end restore
     // in EraseTaskLocked as a catch-all. Hydration itself must not change atime/mtime.
@@ -1100,6 +1194,8 @@ int32_t PlaceholderTaskManager::ExecuteFetchDataLocked(const std::shared_ptr<Pla
     if (ret != E_OK) {
         return ret;
     }
+    // A written chunk is trustworthy progress; a failed write is not recorded (A-05 contract).
+    RecordHydrationRange(task, request.offset, request.size);
     task->tempSize = std::max(task->tempSize, request.offset + request.size);
     ret = CommitFetchDataLocked(task, request);
     if (ret != E_OK) {
@@ -1109,6 +1205,9 @@ int32_t PlaceholderTaskManager::ExecuteFetchDataLocked(const std::shared_ptr<Pla
     uint64_t remainingSize = task->cachedSize < task->totalSize ? task->totalSize - task->cachedSize : 0;
     task->cachedSize += std::min(request.size, remainingSize);
     if (request.isComplete) {
+        // Keep the task outstanding until EraseTaskLocked has released the fds and unlinked the
+        // temp file; the file state is already 3 at this point.
+        task->cleanupPending = true;
         task->state = PlaceholderTaskState::COMPLETED;
         NotifyProgressLocked(task);
         EraseTaskLocked(task);
@@ -1118,6 +1217,37 @@ int32_t PlaceholderTaskManager::ExecuteFetchDataLocked(const std::shared_ptr<Pla
         NotifyProgressLocked(task);
     }
     return E_OK;
+}
+
+static void RepairHydrationMetadata(const std::shared_ptr<PlaceholderTaskRecord> &task)
+{
+    if (task->mountSyncFolder.empty()) {
+        return;
+    }
+    // The file transitions from counted (1/2) to uncounted (3): decrease the count.
+    int32_t countRet = RefreshAncestorPlaceholderCount(task->mountSyncFolder, task->hmdfsPath, -1);
+    int32_t dentryRet = E_OK;
+    if (task->userId >= 0) {
+        dentryRet = UpdateDentryPlaceholderState(task->userId, task->syncFolderIndex, task->hmdfsPath,
+                                                 PLACEHOLDER_STATE_FULLY_HYDRATED);
+    }
+    if (countRet == E_OK && dentryRet == E_OK) {
+        return;
+    }
+    // The data and the fully hydrated state are already published, so the task cannot stay
+    // outstanding forever. Report the metadata drift and repair the subtree now; the retry-state
+    // machine is tracked separately (D-04).
+    LOGW("Hydration metadata update failed, countRet:%{public}d, dentryRet:%{public}d, path:%{private}s", countRet,
+         dentryRet, task->hmdfsPath.c_str());
+    if (task->userId < 0) {
+        return;
+    }
+    int32_t recountRet =
+        RecountPlaceholderState(task->mountSyncFolder, task->hmdfsPath, task->userId, task->syncFolderIndex);
+    if (recountRet != E_OK) {
+        LOGW("Hydration metadata recount failed, ret:%{public}d, path:%{private}s", recountRet,
+             task->hmdfsPath.c_str());
+    }
 }
 
 int32_t PlaceholderTaskManager::CommitFetchDataLocked(const std::shared_ptr<PlaceholderTaskRecord> &task,
@@ -1130,6 +1260,10 @@ int32_t PlaceholderTaskManager::CommitFetchDataLocked(const std::shared_ptr<Plac
     // bytes are copied back from the service-private temp file in one shot; the copy
     // restores the snapshot timestamps on all of its exits, and a failure here leaves
     // the task retryable with the temp file intact.
+    // The activation-time logical size is authoritative; the provider-reported totalSize is not.
+    bool fullyWritten = task->logicalSize == 0 ||
+                        (task->tempSize == task->logicalSize &&
+                         IsHydrationCoverageComplete(task, task->logicalSize));
     int32_t ret = CopyHydrationTempToOutput(task);
     if (ret != E_OK) {
         LOGE("Copy hydration temp data to target failed, ret:%{public}d, path:%{private}s", ret,
@@ -1141,18 +1275,19 @@ int32_t PlaceholderTaskManager::CommitFetchDataLocked(const std::shared_ptr<Plac
         LOGE("Flush completed hydration failed, errno:%{public}d", error);
         return ConvertHydrationIoError(error);
     }
+    if (!fullyWritten) {
+        // Keep the original Execute result and task lifecycle. Only the state promotion is
+        // withheld, so the next read starts a new hydration instead of trusting missing data.
+        LOGW("Hydration final delivery is incomplete, keep partial state, tempSize:%{public}" PRIu64
+             ", logicalSize:%{public}" PRIu64 ", path:%{private}s",
+             task->tempSize, task->logicalSize, task->hmdfsPath.c_str());
+        return E_OK;
+    }
     ret = SetCompleteStateLocked(task);
     if (ret != E_OK) {
         return ret;
     }
-    if (!task->mountSyncFolder.empty()) {
-        // The file transitions from counted (1/2) to uncounted (3): decrease the count.
-        (void)RefreshAncestorPlaceholderCount(task->mountSyncFolder, task->hmdfsPath, -1);
-        if (task->userId >= 0) {
-            (void)UpdateDentryPlaceholderState(task->userId, task->syncFolderIndex, task->hmdfsPath,
-                                               PLACEHOLDER_STATE_FULLY_HYDRATED);
-        }
-    }
+    RepairHydrationMetadata(task);
     return E_OK;
 }
 
@@ -1164,6 +1299,9 @@ void PlaceholderTaskManager::CancelTaskRecordLocked(const std::shared_ptr<Placeh
         return;
     }
     bool notifyCallback = !task->cancelCallbackAttempted && ShouldNotifyCancellation(reason);
+    // Cancellation also tears down fds and the temp file; keep the identity index outstanding
+    // until EraseTaskLocked removes the record.
+    task->cleanupPending = true;
     task->state = PlaceholderTaskState::CANCELLED;
     NotifyProgressLocked(task, cancelOwner);
     if (notifyCallback) {

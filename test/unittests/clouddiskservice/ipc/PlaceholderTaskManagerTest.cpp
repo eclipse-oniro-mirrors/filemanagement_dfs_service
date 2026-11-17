@@ -760,6 +760,38 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationQueueIndex_StaleTerminal_001, Test
 }
 
 /**
+ * @tc.name: HydrationQueueIndex_CleanupPending_001
+ * @tc.desc: A terminal task stays outstanding until EraseTaskLocked removes its identity index.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationQueueIndex_CleanupPending_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "cleanup-pending.txt", TEST_BUNDLE_NAME,
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    auto task = manager.taskMap_.at(key);
+    task->cleanupPending = true;
+    task->state = PlaceholderTaskState::COMPLETED;
+
+    EXPECT_TRUE(manager.HasOutstandingTask(TEST_SYNC_FOLDER, "cleanup-pending.txt", TEST_SYNC_FOLDER_INDEX));
+    EXPECT_EQ(manager.taskKeyIndex_.size(), 1U);
+    PlaceholderTaskManager::RequestKey duplicateKey;
+    EXPECT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "cleanup-pending.txt", TEST_BUNDLE_NAME,
+                                        TEST_SYNC_FOLDER_INDEX, CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(),
+                                        duplicateKey),
+              E_HYDRATE_IN_PROGRESS);
+    EXPECT_EQ(manager.taskKeyIndex_.size(), 1U);
+
+    manager.EraseTaskLocked(task);
+    EXPECT_FALSE(manager.HasOutstandingTask(TEST_SYNC_FOLDER, "cleanup-pending.txt", TEST_SYNC_FOLDER_INDEX));
+    EXPECT_TRUE(manager.taskMap_.empty());
+    EXPECT_TRUE(manager.taskKeyIndex_.empty());
+}
+
+/**
  * @tc.name: ActiveSlotBookkeeping_Mark_001
  * @tc.desc: Cover duplicate and missing-task active-slot marking paths.
  * @tc.type: FUNC
@@ -1232,6 +1264,178 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_EmptyFile_001, TestSize.Level1)
     EXPECT_EQ(GetPlaceholderStateFromFileSyncState(stateByte), PLACEHOLDER_STATE_FULLY_HYDRATED);
     PlaceholderTaskState state;
     EXPECT_FALSE(manager.GetTaskState(key, state));
+}
+
+/**
+ * @tc.name: HydrationComplete_ShortDeliveryKeepsPartialState_001
+ * @tc.desc: A short final delivery returns E_OK, completes the task, and keeps the partial state.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationComplete_ShortDeliveryKeepsPartialState_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    HydrationTestFile file;
+    ASSERT_TRUE(file.IsValid());
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, file.DuplicateFd(), key),
+              E_OK);
+    int32_t targetFd = ActivateTask(manager, key, file.DuplicateFd());
+    ASSERT_GE(targetFd, 0);
+    ASSERT_EQ(truncate(file.GetPath().c_str(), 8), 0);
+    auto task = manager.taskMap_.at(key);
+    task->totalSize = 8;
+    task->logicalSize = 8;
+
+    EXPECT_CALL(*mock_, fgetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t))).Times(0);
+    EXPECT_CALL(*mock_, fsetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0)).Times(0);
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 0, {1, 2, 3, 4}, 8, true)),
+              E_OK);
+    EXPECT_EQ(task->tempSize, 4u);
+    PlaceholderTaskState taskState;
+    EXPECT_FALSE(manager.GetTaskState(key, taskState));
+}
+
+/**
+ * @tc.name: HydrationComplete_UnderReportedSizeKeepsPartialState_001
+ * @tc.desc: A totalSize smaller than the target logical size returns E_OK and keeps the partial state.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationComplete_UnderReportedSizeKeepsPartialState_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    HydrationTestFile file;
+    ASSERT_TRUE(file.IsValid());
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, file.DuplicateFd(), key),
+              E_OK);
+    int32_t targetFd = ActivateTask(manager, key, file.DuplicateFd());
+    ASSERT_GE(targetFd, 0);
+    ASSERT_EQ(truncate(file.GetPath().c_str(), 12), 0);
+    auto task = manager.taskMap_.at(key);
+    task->totalSize = 8;
+    task->logicalSize = 12;
+
+    EXPECT_CALL(*mock_, fgetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t))).Times(0);
+    EXPECT_CALL(*mock_, fsetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0)).Times(0);
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 0, {1, 2, 3, 4, 5, 6, 7, 8}, 8, true)),
+              E_OK);
+    PlaceholderTaskState taskState;
+    EXPECT_FALSE(manager.GetTaskState(key, taskState));
+}
+
+/**
+ * @tc.name: HydrationComplete_MiddleHoleKeepsPartialState_001
+ * @tc.desc: A final delivery with a middle hole returns E_OK and keeps the partial state.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationComplete_MiddleHoleKeepsPartialState_001, TestSize.Level2)
+{
+    constexpr uint64_t totalSize = 12;
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    HydrationTestFile file;
+    ASSERT_TRUE(file.IsValid());
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, file.DuplicateFd(), key),
+              E_OK);
+    int32_t targetFd = ActivateTask(manager, key, file.DuplicateFd());
+    ASSERT_GE(targetFd, 0);
+    ASSERT_EQ(truncate(file.GetPath().c_str(), totalSize), 0);
+    auto task = manager.taskMap_.at(key);
+    task->totalSize = totalSize;
+    task->logicalSize = totalSize;
+
+    EXPECT_CALL(*mock_, fgetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t))).Times(0);
+    EXPECT_CALL(*mock_, fsetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0)).Times(0);
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 0, {1, 2, 3, 4}, totalSize, false)),
+              E_OK);
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 8, {9, 10, 11, 12}, totalSize, true)),
+              E_OK);
+    EXPECT_EQ(task->tempSize, totalSize);
+    PlaceholderTaskState taskState;
+    EXPECT_FALSE(manager.GetTaskState(key, taskState));
+}
+
+/**
+ * @tc.name: HydrationComplete_OutOfOrderOverlapMarksHydrated_001
+ * @tc.desc: Out-of-order and overlapping chunks merge into one full range and publish the hydrated state.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationComplete_OutOfOrderOverlapMarksHydrated_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    HydrationTestFile file;
+    ASSERT_TRUE(file.IsValid());
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, file.DuplicateFd(), key),
+              E_OK);
+    int32_t targetFd = ActivateTask(manager, key, file.DuplicateFd());
+    ASSERT_GE(targetFd, 0);
+    ASSERT_EQ(truncate(file.GetPath().c_str(), 12), 0);
+    auto task = manager.taskMap_.at(key);
+    task->totalSize = 12;
+    task->logicalSize = 12;
+
+    uint8_t stateByte = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
+    ExpectStateTransitions(targetFd, stateByte);
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 4, {5, 6, 7, 8}, 12, false)),
+              E_OK);
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 0, {1, 2, 3, 4, 5, 6}, 12, false)),
+              E_OK);
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 6, {7, 8, 9, 10, 11, 12}, 12, true)),
+              E_OK);
+    EXPECT_EQ(GetPlaceholderStateFromFileSyncState(stateByte), PLACEHOLDER_STATE_FULLY_HYDRATED);
+    PlaceholderTaskState taskState;
+    EXPECT_FALSE(manager.GetTaskState(key, taskState));
+}
+
+/**
+ * @tc.name: HydrationComplete_ContiguousDeliveryMarksHydrated_001
+ * @tc.desc: A final delivery covering the whole logical size still publishes the fully hydrated state.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationComplete_ContiguousDeliveryMarksHydrated_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    HydrationTestFile file;
+    ASSERT_TRUE(file.IsValid());
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, file.DuplicateFd(), key),
+              E_OK);
+    int32_t targetFd = ActivateTask(manager, key, file.DuplicateFd());
+    ASSERT_GE(targetFd, 0);
+    ASSERT_EQ(truncate(file.GetPath().c_str(), 8), 0);
+    auto task = manager.taskMap_.at(key);
+    task->totalSize = 8;
+    task->logicalSize = 8;
+
+    uint8_t stateByte = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
+    ExpectStateTransitions(targetFd, stateByte);
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 0, {1, 2, 3, 4}, 8, false)),
+              E_OK);
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 4, {5, 6, 7, 8}, 8, true)),
+              E_OK);
+    EXPECT_EQ(GetPlaceholderStateFromFileSyncState(stateByte), PLACEHOLDER_STATE_FULLY_HYDRATED);
+    PlaceholderTaskState taskState;
+    EXPECT_FALSE(manager.GetTaskState(key, taskState));
 }
 
 /**
@@ -2103,6 +2307,43 @@ HWTEST_F(PlaceholderTaskManagerTest, CancelTasksBySyncFolder_001, TestSize.Level
     manager.ClearCancellationRecords();
     EXPECT_TRUE(manager.cancellationRecordMap_.empty());
     EXPECT_TRUE(manager.cancellationOrder_.empty());
+}
+
+/**
+ * @tc.name: UnregisterSyncFolderStopsTasks_001
+ * @tc.desc: Unregister teardown cancels folder tasks and rejects new hydration until released.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, UnregisterSyncFolderStopsTasks_001, TestSize.Level1)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    PlaceholderTaskManager::RequestKey otherKey;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "stop.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "keep.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX + 1,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), otherKey),
+              E_OK);
+
+    manager.BeginUnregisterSyncFolder(TEST_SYNC_FOLDER_INDEX);
+    EXPECT_EQ(manager.taskMap_.count(key), 0U);
+    EXPECT_EQ(manager.taskMap_.count(otherKey), 1U);
+    PlaceholderTaskManager::RequestKey rejectedKey;
+    EXPECT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "rejected.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), rejectedKey),
+              E_TRY_AGAIN);
+    EXPECT_TRUE(rejectedKey.empty());
+
+    manager.EndUnregisterSyncFolder(TEST_SYNC_FOLDER_INDEX);
+    EXPECT_TRUE(manager.unregisteringFolders_.empty());
+    PlaceholderTaskManager::RequestKey recreatedKey;
+    EXPECT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "recreated.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), recreatedKey),
+              E_OK);
+    EXPECT_EQ(manager.CancelTask(TEST_SYNC_FOLDER, "recreated.txt", TEST_SYNC_FOLDER_INDEX), E_OK);
+    EXPECT_EQ(manager.CancelTask(TEST_SYNC_FOLDER, "keep.txt", TEST_SYNC_FOLDER_INDEX + 1), E_OK);
 }
 
 /**

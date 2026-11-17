@@ -89,10 +89,6 @@ bool CloudDiskSyncFolder::GetIndexBySyncFolder(uint32_t &syncFolderIndex, const 
     return true;
 }
 
-void CloudDiskSyncFolder::RemoveXattr(std::string &path, const std::string &attrName)
-{
-}
-
 int32_t CloudDiskSyncFolder::PathToPhysicalPath(const std::string &path,
                                                 const std::string &userId, std::string &realpath)
 {
@@ -109,8 +105,9 @@ int32_t CloudDiskSyncFolder::PathToPhysicalPath(const std::string &path,
     return E_OK;
 }
 
-void CloudDiskSyncFolder::RemovePlaceholderFilesBatch(const std::string &path)
+PlaceholderCleanupStats CloudDiskSyncFolder::RemovePlaceholderFilesBatch(const std::string &path)
 {
+    return PlaceholderCleanupStats{};
 }
 
 int32_t CloudDiskSyncFolder::PathToMntPathBySandboxPath(const std::string &path,

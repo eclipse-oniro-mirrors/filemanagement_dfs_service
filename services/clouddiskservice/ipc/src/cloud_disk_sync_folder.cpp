@@ -16,13 +16,18 @@
 #include "cloud_disk_sync_folder.h"
 #include "cloud_disk_service_error.h"
 
+#include <cerrno>
+#include <cstring>
 #include <dirent.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/xattr.h>
 #include <unistd.h>
+#include <utility>
 
 #include "disk_monitor.h"
 #include "placeholder_helper.h"
+#include "unique_fd.h"
 #include "utils_log.h"
 
 namespace OHOS {
@@ -110,97 +115,412 @@ std::unordered_map<uint32_t, SyncFolderValue> CloudDiskSyncFolder::GetSyncFolder
     return syncFolderMap;
 }
 
-void CloudDiskSyncFolder::RemoveXattr(string &path, const string &attrName)
+namespace {
+void RecordCleanupFailure(PlaceholderCleanupStats &stats, int32_t error)
 {
-    DIR *dir = opendir(path.c_str());
-    if (!dir) {
-        LOGE("Open failed, err:%{public}d", errno);
-        return;
+    ++stats.failed;
+    if (stats.firstError == 0) {
+        stats.firstError = error;
     }
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-        char realPath[PATH_MAX] = {'\0'};
-        std::string pathToRemove = path + "/" + entry->d_name;
-        if (realpath(pathToRemove.c_str(), realPath) == nullptr) {
-            LOGE("get realPath failed, errno: %{public}d", errno);
-            continue;
-        }
-
-        struct stat st;
-        if (lstat(realPath, &st) == -1) {
-            LOGE("lstat failed");
-            continue;
-        }
-        if (removexattr(realPath, attrName.c_str()) == -1 && errno != ENODATA) {
-            LOGE("removexattr failed for path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(realPath).c_str(),
-                 errno);
-        }
-        if (S_ISDIR(st.st_mode)) {
-            RemoveXattr(pathToRemove, attrName);
-        }
-    }
-    closedir(dir);
 }
 
-void CloudDiskSyncFolder::RemovePlaceholderFilesSingle(const string &path)
+bool RemoveNodeXattr(int fd, const char *attrName, const std::string &path, PlaceholderCleanupStats &stats)
 {
-    char realPath[PATH_MAX] = {'\0'};
-    if (realpath(path.c_str(), realPath) == nullptr) {
-        LOGE("get realPath failed, errno: %{public}d", errno);
-        return;
+    if (fremovexattr(fd, attrName) == 0 || errno == ENODATA || errno == ENOENT) {
+        return true;
     }
+    int32_t error = errno;
+    LOGE("remove xattr failed for path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(path).c_str(), error);
+    RecordCleanupFailure(stats, error);
+    return false;
+}
 
-    uint8_t placeholderState = PLACEHOLDER_STATE_NONE;
-    int32_t ret = GetFilePlaceholderState(realPath, placeholderState);
-    if (ret != E_OK) {
+struct CleanupEntry {
+    int dirFd = -1;
+    std::string name;
+    std::string path;
+    struct stat stat {};
+};
+
+void CleanPlaceholderDirectory(int dirFd, const std::string &path, PlaceholderCleanupStats &stats);
+
+// Walk from "/" one component at a time so no component of the cleanup root can be a symlink.
+// The final component is returned as a name so callers can decide its type without opening it.
+int32_t OpenParentNoFollow(const std::string &path, UniqueFd &parentFd, std::string &leaf)
+{
+    if (path.empty() || path.front() != '/') {
+        LOGE("Cleanup path is not absolute");
+        return EINVAL;
+    }
+    std::string normalized = path;
+    while (normalized.size() > 1 && normalized.back() == '/') {
+        normalized.pop_back();
+    }
+    size_t slash = normalized.find_last_of('/');
+    if (slash == std::string::npos) {
+        return EINVAL;
+    }
+    leaf = normalized.substr(slash + 1);
+    if (leaf.empty() || leaf == "." || leaf == "..") {
+        LOGE("Cleanup path has invalid leaf");
+        return EINVAL;
+    }
+    std::string parent = slash == 0 ? "/" : normalized.substr(0, slash);
+
+    UniqueFd current(open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+    if (current < 0) {
+        int32_t error = errno;
+        LOGE("Open cleanup anchor failed, errno:%{public}d", error);
+        return error;
+    }
+    size_t start = 1;
+    while (start < parent.size()) {
+        size_t end = parent.find('/', start);
+        std::string component = parent.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        if (component.empty() || component == "." || component == "..") {
+            LOGE("Cleanup path has invalid component");
+            return EINVAL;
+        }
+        UniqueFd next(openat(current.Get(), component.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+        if (next < 0) {
+            int32_t error = errno;
+            LOGE("Open cleanup path component failed, errno:%{public}d", error);
+            return error;
+        }
+        current = std::move(next);
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    parentFd = std::move(current);
+    return E_OK;
+}
+
+bool ValidateCleanupFile(const CleanupEntry &entry, int fileFd, struct stat &opened,
+                         PlaceholderCleanupStats &stats)
+{
+    if (fstat(fileFd, &opened) != 0) {
+        int32_t error = errno;
+        LOGE("fstat failed for path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(entry.path).c_str(), error);
+        RecordCleanupFailure(stats, error);
+        return false;
+    }
+    if (opened.st_dev != entry.stat.st_dev || opened.st_ino != entry.stat.st_ino) {
+        ++stats.inconsistent;
+        LOGW("skip replaced cleanup entry, path:%{public}s", GetAnonyStringStrictly(entry.path).c_str());
+        return false;
+    }
+    if (!S_ISREG(opened.st_mode)) {
+        ++stats.kept;
+        return false;
+    }
+    if (opened.st_nlink > 1) {
+        // Hard links share the inode with names outside the sync root; clearing xattr or
+        // unlinking one name would affect the other names. Keep the entry untouched.
+        ++stats.hardLinks;
+        LOGW("skip hard-linked placeholder, path:%{public}s, nlink:%{public}lu",
+             GetAnonyStringStrictly(entry.path).c_str(), static_cast<unsigned long>(opened.st_nlink));
+        return false;
+    }
+    return true;
+}
+
+bool ReadCleanupFileState(const CleanupEntry &entry, int fileFd, uint8_t &state, PlaceholderCleanupStats &stats)
+{
+    // Missing state is not the same as state 0: a file inside a sync root that lost its xattr
+    // must be reported instead of being treated as an unmanaged file.
+    uint8_t stateByte = 0;
+    int32_t ret = GetFileSyncStateByte(fileFd, stateByte, false);
+    if (ret == ENODATA) {
+        ++stats.inconsistent;
+        LOGW("keep file with missing placeholder state, path:%{public}s",
+             GetAnonyStringStrictly(entry.path).c_str());
+        return false;
+    }
+    if (ret != 0) {
         LOGE("get placeholder state failed for path:%{public}s, errno:%{public}d",
-             GetAnonyStringStrictly(realPath).c_str(), ret);
-    } else if (placeholderState == PLACEHOLDER_STATE_FULLY_HYDRATED) {
-        LOGI("keep fully hydrated placeholder, path:%{public}s", GetAnonyStringStrictly(realPath).c_str());
-    } else if (IsPlaceholderState(placeholderState)) {
-        if (unlink(realPath) < 0) {
-            LOGE("unlink failed for path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(realPath).c_str(),
-                 errno);
-        }
+             GetAnonyStringStrictly(entry.path).c_str(), ret);
+        RecordCleanupFailure(stats, ret);
+        return false;
     }
-
-    return;
+    state = GetPlaceholderStateFromFileSyncState(stateByte);
+    if (!IsValidPlaceholderState(state)) {
+        ++stats.inconsistent;
+        LOGW("keep file with invalid placeholder state, path:%{public}s, state:%{public}u",
+             GetAnonyStringStrictly(entry.path).c_str(), state);
+        return false;
+    }
+    return true;
 }
 
-void CloudDiskSyncFolder::RemovePlaceholderFilesBatch(const string &path)
+bool UnlinkCleanupPlaceholder(const CleanupEntry &entry, const struct stat &opened, PlaceholderCleanupStats &stats)
 {
-    DIR *dir = opendir(path.c_str());
-    if (!dir) {
-        LOGE("Open failed, err:%{public}d", errno);
+    struct stat current {};
+    if (fstatat(entry.dirFd, entry.name.c_str(), &current, AT_SYMLINK_NOFOLLOW) != 0) {
+        int32_t error = errno;
+        if (error == ENOENT) {
+            LOGW("cleanup entry disappeared before unlink, path:%{public}s",
+                 GetAnonyStringStrictly(entry.path).c_str());
+            return false;
+        }
+        LOGE("fstatat before unlink failed for path:%{public}s, errno:%{public}d",
+             GetAnonyStringStrictly(entry.path).c_str(), error);
+        RecordCleanupFailure(stats, error);
+        return false;
+    }
+    if (S_ISLNK(current.st_mode)) {
+        ++stats.skippedLinks;
+        return false;
+    }
+    if (S_ISREG(current.st_mode) && current.st_nlink > 1) {
+        ++stats.hardLinks;
+        LOGW("skip hard-linked placeholder before unlink, path:%{public}s",
+             GetAnonyStringStrictly(entry.path).c_str());
+        return false;
+    }
+    if (!S_ISREG(current.st_mode) || current.st_dev != opened.st_dev || current.st_ino != opened.st_ino) {
+        ++stats.inconsistent;
+        LOGW("skip replaced cleanup entry before unlink, path:%{public}s",
+             GetAnonyStringStrictly(entry.path).c_str());
+        return false;
+    }
+    if (unlinkat(entry.dirFd, entry.name.c_str(), 0) != 0) {
+        int32_t error = errno;
+        if (error == ENOENT) {
+            return false;
+        }
+        // Keep the state xattr: the file is still an incomplete placeholder and a later
+        // retry must be able to identify it.
+        LOGE("unlinkat failed for path:%{public}s, errno:%{public}d",
+             GetAnonyStringStrictly(entry.path).c_str(), error);
+        RecordCleanupFailure(stats, error);
+        return false;
+    }
+    ++stats.removed;
+    return true;
+}
+
+void CleanPlaceholderFile(const CleanupEntry &entry, int fileFd, PlaceholderCleanupStats &stats)
+{
+    struct stat opened {};
+    if (!ValidateCleanupFile(entry, fileFd, opened, stats)) {
         return;
     }
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != nullptr) {
+    uint8_t state = 0;
+    if (!ReadCleanupFileState(entry, fileFd, state, stats)) {
+        return;
+    }
+    if (state == PLACEHOLDER_STATE_UNHYDRATED || state == PLACEHOLDER_STATE_PARTIALLY_HYDRATED) {
+        (void)UnlinkCleanupPlaceholder(entry, opened, stats);
+        return;
+    }
+    ++stats.kept;
+    (void)RemoveNodeXattr(fileFd, CLOUD_DISK_FILE_SYNC_STATE_XATTR, entry.path, stats);
+    (void)RemoveNodeXattr(fileFd, CLOUD_DISK_PLACEHOLDER_COUNT_XATTR, entry.path, stats);
+}
+
+void CleanDirectoryChildDirectory(int dirFd, const CleanupEntry &entry, PlaceholderCleanupStats &stats)
+{
+    UniqueFd childFd(openat(dirFd, entry.name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+    if (childFd < 0) {
+        int32_t error = errno;
+        if (error == ELOOP) {
+            ++stats.skippedLinks;
+        } else if (error != ENOENT) {
+            LOGE("open directory failed for path:%{public}s, errno:%{public}d",
+                 GetAnonyStringStrictly(entry.path).c_str(), error);
+            RecordCleanupFailure(stats, error);
+        }
+        return;
+    }
+    CleanPlaceholderDirectory(childFd.Release(), entry.path, stats);
+}
+
+void CleanDirectoryChildFile(int dirFd, const CleanupEntry &entry, PlaceholderCleanupStats &stats)
+{
+    UniqueFd fileFd(openat(dirFd, entry.name.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK));
+    if (fileFd < 0) {
+        int32_t error = errno;
+        if (error == ELOOP) {
+            ++stats.skippedLinks;
+        } else if (error != ENOENT) {
+            LOGE("open file failed for path:%{public}s, errno:%{public}d",
+                 GetAnonyStringStrictly(entry.path).c_str(), error);
+            RecordCleanupFailure(stats, error);
+        }
+        return;
+    }
+    CleanPlaceholderFile(entry, fileFd.Get(), stats);
+}
+
+void CleanDirectoryEntry(int dirFd, const CleanupEntry &entry, PlaceholderCleanupStats &stats)
+{
+    if (S_ISLNK(entry.stat.st_mode)) {
+        ++stats.skippedLinks;
+        LOGW("skip symlink during placeholder cleanup, path:%{public}s",
+             GetAnonyStringStrictly(entry.path).c_str());
+        return;
+    }
+    if (S_ISDIR(entry.stat.st_mode)) {
+        CleanDirectoryChildDirectory(dirFd, entry, stats);
+        return;
+    }
+    if (!S_ISREG(entry.stat.st_mode)) {
+        ++stats.kept;
+        return;
+    }
+    CleanDirectoryChildFile(dirFd, entry, stats);
+}
+
+struct dirent *ReadNextDirEntry(DIR *dir)
+{
+    errno = 0;
+    return readdir(dir);
+}
+
+void CleanupDirectoryEntries(DIR *dir, int dirFd, const std::string &path, PlaceholderCleanupStats &stats)
+{
+    for (struct dirent *entry = ReadNextDirEntry(dir); entry != nullptr; entry = ReadNextDirEntry(dir)) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
         }
-
-        std::string childPath = path + "/" + entry->d_name;
-
-        struct stat st;
-        if (lstat(childPath.c_str(), &st) == -1) {
-            LOGE("lstat failed for path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(childPath).c_str(),
-                 errno);
+        CleanupEntry item {dirFd, entry->d_name, path + "/" + entry->d_name, {}};
+        if (fstatat(dirFd, item.name.c_str(), &item.stat, AT_SYMLINK_NOFOLLOW) != 0) {
+            int32_t error = errno;
+            if (error == ENOENT) {
+                continue;
+            }
+            LOGE("fstatat failed for path:%{public}s, errno:%{public}d",
+                 GetAnonyStringStrictly(item.path).c_str(), error);
+            RecordCleanupFailure(stats, error);
             continue;
         }
-
-        if (S_ISDIR(st.st_mode)) {
-            RemovePlaceholderFilesBatch(childPath);
-        } else if (S_ISREG(st.st_mode)) {
-            RemovePlaceholderFilesSingle(childPath);
-        }
+        CleanDirectoryEntry(dirFd, item, stats);
     }
-    closedir(dir);
-    removexattr(path.c_str(), CLOUD_DISK_PLACEHOLDER_COUNT_XATTR);
-    removexattr(path.c_str(), CLOUD_DISK_FILE_SYNC_STATE_XATTR);
+    if (errno != 0) {
+        int32_t error = errno;
+        LOGE("read directory failed, path:%{public}s, errno:%{public}d",
+             GetAnonyStringStrictly(path).c_str(), error);
+        RecordCleanupFailure(stats, error);
+    }
+}
+
+void CleanPlaceholderDirectory(int dirFd, const std::string &path, PlaceholderCleanupStats &stats)
+{
+    DIR *dir = fdopendir(dirFd);
+    if (dir == nullptr) {
+        int32_t error = errno;
+        close(dirFd);
+        LOGE("open directory failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(path).c_str(),
+             error);
+        RecordCleanupFailure(stats, error);
+        return;
+    }
+    uint32_t failedBefore = stats.failed;
+    uint32_t inconsistentBefore = stats.inconsistent;
+    uint32_t hardLinksBefore = stats.hardLinks;
+    CleanupDirectoryEntries(dir, dirFd, path, stats);
+
+    bool subtreeClean = stats.failed == failedBefore && stats.inconsistent == inconsistentBefore &&
+                        stats.hardLinks == hardLinksBefore;
+    if (subtreeClean) {
+        (void)RemoveNodeXattr(dirFd, CLOUD_DISK_PLACEHOLDER_COUNT_XATTR, path, stats);
+        (void)RemoveNodeXattr(dirFd, CLOUD_DISK_FILE_SYNC_STATE_XATTR, path, stats);
+    } else {
+        // Directory xattrs describe the whole subtree; only drop them when every child was
+        // handled successfully and consistently, so a retry can still walk the incomplete
+        // placeholders and the count cannot silently diverge.
+        LOGW("keep directory xattrs because child cleanup was incomplete, path:%{public}s",
+             GetAnonyStringStrictly(path).c_str());
+    }
+    if (closedir(dir) != 0) {
+        LOGW("close directory failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(path).c_str(),
+             errno);
+    }
+}
+
+void CleanCleanupRoot(int parentFd, const CleanupEntry &rootEntry, PlaceholderCleanupStats &stats)
+{
+    if (S_ISLNK(rootEntry.stat.st_mode)) {
+        ++stats.skippedLinks;
+        LOGW("skip symlink root during placeholder cleanup, path:%{public}s",
+             GetAnonyStringStrictly(rootEntry.path).c_str());
+        return;
+    }
+    if (S_ISDIR(rootEntry.stat.st_mode)) {
+        UniqueFd dirFd(openat(parentFd, rootEntry.name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+        if (dirFd < 0) {
+            int32_t error = errno;
+            if (error == ELOOP) {
+                ++stats.skippedLinks;
+            } else {
+                LOGE("open cleanup root failed, path:%{public}s, errno:%{public}d",
+                     GetAnonyStringStrictly(rootEntry.path).c_str(), error);
+                RecordCleanupFailure(stats, error);
+            }
+            return;
+        }
+        CleanPlaceholderDirectory(dirFd.Release(), rootEntry.path, stats);
+        return;
+    }
+    if (!S_ISREG(rootEntry.stat.st_mode)) {
+        ++stats.kept;
+        return;
+    }
+    UniqueFd fileFd(openat(parentFd, rootEntry.name.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK));
+    if (fileFd < 0) {
+        int32_t error = errno;
+        if (error == ELOOP) {
+            ++stats.skippedLinks;
+        } else {
+            LOGE("open cleanup root file failed, path:%{public}s, errno:%{public}d",
+                 GetAnonyStringStrictly(rootEntry.path).c_str(), error);
+            RecordCleanupFailure(stats, error);
+        }
+        return;
+    }
+    CleanPlaceholderFile(rootEntry, fileFd.Get(), stats);
+}
+
+void RecordCleanupRootOpenFailure(const std::string &path, int32_t ret, PlaceholderCleanupStats &stats)
+{
+    if (ret == ELOOP) {
+        ++stats.skippedLinks;
+        LOGW("skip symlink in cleanup root path, path:%{public}s", GetAnonyStringStrictly(path).c_str());
+        return;
+    }
+    LOGE("resolve cleanup root failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(path).c_str(), ret);
+    RecordCleanupFailure(stats, ret);
+}
+
+} // namespace
+
+PlaceholderCleanupStats CloudDiskSyncFolder::RemovePlaceholderFilesBatch(const string &path)
+{
+    PlaceholderCleanupStats stats;
+    UniqueFd parentFd;
+    std::string leaf;
+    int32_t ret = OpenParentNoFollow(path, parentFd, leaf);
+    if (ret != E_OK) {
+        RecordCleanupRootOpenFailure(path, ret, stats);
+        return stats;
+    }
+
+    CleanupEntry rootEntry {parentFd.Get(), leaf, path, {}};
+    if (fstatat(parentFd.Get(), leaf.c_str(), &rootEntry.stat, AT_SYMLINK_NOFOLLOW) != 0) {
+        int32_t error = errno;
+        LOGE("stat cleanup root failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(path).c_str(),
+             error);
+        RecordCleanupFailure(stats, error);
+        return stats;
+    }
+    CleanCleanupRoot(parentFd.Get(), rootEntry, stats);
+    LOGI("Placeholder cleanup finished, removed:%{public}u, kept:%{public}u, skippedLinks:%{public}u, "
+         "hardLinks:%{public}u, inconsistent:%{public}u, failed:%{public}u, firstError:%{public}d, path:%{private}s",
+         stats.removed, stats.kept, stats.skippedLinks, stats.hardLinks, stats.inconsistent, stats.failed,
+         stats.firstError, path.c_str());
+    return stats;
 }
 
 /* Verify the path specified by inputPath, replace its prefix oldPrefix with the new prefix newPrefix. */

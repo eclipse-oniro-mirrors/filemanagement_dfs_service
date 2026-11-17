@@ -494,49 +494,6 @@ HWTEST_F(CloudDiskSyncFolderTest, GetSyncFolderMapTest001, TestSize.Level1)
 }
 
 /**
- * @tc.name: RemoveXattrTest001
- * @tc.desc: Verify the RemoveXattr function
- * @tc.type: FUNC
- * @tc.require: NA
- */
-HWTEST_F(CloudDiskSyncFolderTest, RemoveXattrTest001, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "RemoveXattrTest001 start";
-    try {
-        CloudDiskSyncFolder &syncFolderInstance = CloudDiskSyncFolder::GetInstance();
-        syncFolderInstance.ClearMap();
-        string testPath = "/valid/path";
-        string attrName = "user.test_attr";
-        syncFolderInstance.RemoveXattr(testPath, attrName);
-        Mock::VerifyAndClearExpectations(assistantMock.get());
-    } catch (...) {
-        EXPECT_TRUE(false);
-        GTEST_LOG_(INFO) << "RemoveXattrTest001 failed";
-    }
-    GTEST_LOG_(INFO) << "RemoveXattrTest001 end";
-}
-
-/**
- * @tc.name: RemoveXattrTest006
- * @tc.desc: Verify the RemoveXattr function with opendir failure
- * @tc.type: FUNC
- * @tc.require: NA
- */
-HWTEST_F(CloudDiskSyncFolderTest, RemoveXattrTest002, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "RemoveXattrTest002 start";
-    try {
-        string invalidPath = "/invalid/nonexistent/path";
-        string attrName = "user.test_attr";
-        CloudDiskSyncFolder::GetInstance().RemoveXattr(invalidPath, attrName);
-    } catch (...) {
-        EXPECT_TRUE(false);
-        GTEST_LOG_(INFO) << "RemoveXattrTest002 failed";
-    }
-    GTEST_LOG_(INFO) << "RemoveXattrTest002 end";
-}
-
-/**
  * @tc.name: PathToPhysicalPathTest001
  * @tc.desc: Verify the PathToPhysicalPath function
  * @tc.type: FUNC
