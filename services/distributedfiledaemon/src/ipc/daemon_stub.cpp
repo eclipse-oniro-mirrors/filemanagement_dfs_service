@@ -31,7 +31,7 @@ namespace Storage {
 namespace DistributedFile {
 using namespace OHOS::FileManagement;
 const int32_t DATA_UID = 3012;
-const uint32_t DFS_UID = 1009;
+const pid_t DFS_UID = 1009;
 const int32_t PASTEBOARDUSERID = 3816;
 const int32_t UDMFUSERID = 3012;
 
@@ -232,6 +232,10 @@ int32_t DaemonStub::HandlePrepareSession(MessageParcel &data, MessageParcel &rep
         LOGE("read info.copyPath failed");
         return E_IPC_READ_FAILED;
     }
+    if (!FileSizeUtils::IsPathValid(info.copyPath)) {
+        LOGE("info.copyPath verify failed");
+        return E_PERMISSION_DENIED;
+    }
     if (!data.ReadBool(info.dirExistFlag)) {
         LOGE("read info.dirExistFlag failed");
         return E_IPC_READ_FAILED;
@@ -248,7 +252,7 @@ int32_t DaemonStub::HandlePrepareSession(MessageParcel &data, MessageParcel &rep
 
 int32_t DaemonStub::HandleRequestSendFile(MessageParcel &data, MessageParcel &reply)
 {
-    uint32_t fullTokenId = IPCSkeleton::GetDCallingUid();
+    pid_t fullTokenId = IPCSkeleton::GetDCallingUid();
     LOGI("calling fullTokenId %{public}d", fullTokenId);
     if (fullTokenId != DFS_UID) {
         return E_IPC_READ_FAILED;
@@ -281,7 +285,7 @@ int32_t DaemonStub::HandleRequestSendFile(MessageParcel &data, MessageParcel &re
 
 int32_t DaemonStub::HandleRequestSendFileACL(MessageParcel &data, MessageParcel &reply)
 {
-    uint32_t fullTokenId = IPCSkeleton::GetDCallingUid();
+    pid_t fullTokenId = IPCSkeleton::GetDCallingUid();
     LOGI("calling fullTokenId %{public}d", fullTokenId);
     if (fullTokenId != DFS_UID) {
         return E_IPC_READ_FAILED;
@@ -330,7 +334,7 @@ int32_t DaemonStub::HandleRequestSendFileACL(MessageParcel &data, MessageParcel 
 
 int32_t DaemonStub::HandleGetRemoteCopyInfo(MessageParcel &data, MessageParcel &reply)
 {
-    uint32_t fullTokenId = IPCSkeleton::GetDCallingUid();
+    pid_t fullTokenId = IPCSkeleton::GetDCallingUid();
     LOGI("calling fullTokenId %{public}d", fullTokenId);
     if (fullTokenId != DFS_UID) {
         return E_PERMISSION_DENIED;
@@ -369,7 +373,7 @@ int32_t DaemonStub::HandleGetRemoteCopyInfo(MessageParcel &data, MessageParcel &
 
 int32_t DaemonStub::HandleGetRemoteCopyInfoACL(MessageParcel &data, MessageParcel &reply)
 {
-    uint32_t fullTokenId = IPCSkeleton::GetDCallingUid();
+    pid_t fullTokenId = IPCSkeleton::GetDCallingUid();
     LOGI("calling fullTokenId %{public}d", fullTokenId);
     if (fullTokenId != DFS_UID) {
         return E_PERMISSION_DENIED;
