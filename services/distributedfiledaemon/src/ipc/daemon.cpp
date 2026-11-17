@@ -1710,12 +1710,12 @@ bool Daemon::CheckPathPermission(const std::string& path)
     std::vector<bool> persistErrorResults;
     std::vector<bool> errorResults;
     auto persistCheckRet = SandboxManagerKit::CheckPersistPolicy(tokenId, uriPolicies, persistErrorResults);
-    if (persistCheckRet == ERR_OK && persistErrorResults[0]) {
+    if (persistCheckRet == ERR_OK && !persistErrorResults.empty() && persistErrorResults[0]) {
         LOGI("Check path persist permission success");
         return true;
     }
     auto tmpCheckRet = SandboxManagerKit::CheckPolicy(tokenId, uriPolicies, errorResults);
-    if (tmpCheckRet == ERR_OK && errorResults[0]) {
+    if (tmpCheckRet == ERR_OK && !errorResults.empty() && errorResults[0]) {
         LOGI("Check path tmp permission success");
         return true;
     }
