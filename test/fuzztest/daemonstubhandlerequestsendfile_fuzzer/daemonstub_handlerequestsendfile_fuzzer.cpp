@@ -40,7 +40,7 @@ pid_t IPCSkeleton::GetCallingAppUid()
 {
     return APPUID;
 }
-pid_t IPCSkeleton::GetDCallingAppUid()
+pid_t IPCSkeleton::GetDCallingUid()
 {
     return APPUID;
 }
