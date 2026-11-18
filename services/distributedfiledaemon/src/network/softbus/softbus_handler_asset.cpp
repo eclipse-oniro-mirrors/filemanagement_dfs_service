@@ -666,7 +666,7 @@ bool SoftBusHandlerAsset::HasSymlinkInPath(const std::string &filenameWithPath, 
     struct stat symStat;
     while (sub.size() > dir.size()) {
         if (lstat(sub.c_str(), &symStat) == 0 && S_ISLNK(symStat.st_mode)) {
-            LOGE("symlink component rejected: %s", sub.c_str());
+            LOGE("symlink component rejected: %｛private｝s", sub.c_str());
             return true;
         }
         size_t p = sub.rfind('/');

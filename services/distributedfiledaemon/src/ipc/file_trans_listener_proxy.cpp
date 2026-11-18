@@ -31,7 +31,7 @@ int32_t FileTransListenerProxy::OnFileReceive(uint64_t totalBytes, uint64_t proc
 {
     MessageParcel data;
     MessageParcel reply;
-    MessageOption option(MessageOption::TF_ASYNC);
+    MessageOption option;
     if (!data.WriteInterfaceToken(GetDescriptor())) {
         LOGE("Failed to write interface token");
         return E_BROKEN_IPC;
