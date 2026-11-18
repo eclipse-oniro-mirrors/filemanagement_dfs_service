@@ -1388,15 +1388,23 @@ HWTEST_F(DiskMonitorTest, EventProcessTest010, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "EventProcessTest010 Begin";
     try {
+        CloudDiskServiceSyncFolder::ResetPostedEvents();
+        DiskMonitor::GetInstance().modifiedFiles_.clear();
         DiskMonitor::GetInstance().syncFolderPrefix_ = "a";
-        string filePath = "abc";
+        string filePath = "abc/child.txt";
         DiskMonitor::GetInstance().blockList_.clear();
         CloudDiskSyncFolder::GetInstance().syncFolderMap.clear();
         CloudDiskSyncFolder::GetInstance().syncFolderMap.insert({1, {"bundleName", "abc"}});
+        struct stat st = {};
+        st.st_ino = 456;
+        EXPECT_CALL(*insMock_, MockStat(_, _)).Times(AnyNumber()).WillRepeatedly(
+            DoAll(SetArgPointee<1>(st), Return(0)));
         fanotify_event_metadata metaData;
         metaData.mask = FAN_OPEN | FAN_CLOSE_WRITE;
         DiskMonitor::GetInstance().EventProcess(&metaData, filePath);
-        EXPECT_TRUE(true);
+        EXPECT_EQ(CloudDiskServiceSyncFolder::GetPostedCount(), 2);
+        EXPECT_EQ(CloudDiskServiceSyncFolder::GetLastPostedOperateType(), OperationType::FILE_OPEN);
+        CloudDiskServiceSyncFolder::ResetPostedEvents();
     } catch (...) {
         EXPECT_TRUE(false);
         GTEST_LOG_(INFO) << "EventProcessTest010 Error";

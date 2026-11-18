@@ -740,6 +740,15 @@ HWTEST_F(CloudDiskServiceCallbackManagerTest, LegacyRegisterFullEventTest, TestS
         auto &inst = callbackManager.callbackIndexMap_[folderIndex];
         EXPECT_FALSE(inst.isWithEvents);
         EXPECT_TRUE(inst.operationTypes.empty());
+        EXPECT_CALL(*dfsuAccessTokenMock_, GetUserId()).WillOnce(Return(456));
+        CloudDiskSyncFolder &syncFolder = CloudDiskSyncFolder::GetInstance();
+        for (const auto &item : syncFolder.GetSyncFolderMap()) {
+            syncFolder.DeleteSyncFolder(item.first);
+        }
+        SyncFolderValue value;
+        value.bundleName = name;
+        value.path = "/data/service/el2/456/hmdfs/account/files/Docs";
+        syncFolder.AddSyncFolder(folderIndex, value);
         ChangeData cdOpen;
         cdOpen.operationType = OperationType::FILE_OPEN;
         ChangeData cdCreate;
@@ -747,7 +756,7 @@ HWTEST_F(CloudDiskServiceCallbackManagerTest, LegacyRegisterFullEventTest, TestS
         std::vector<ChangeData> input = {cdOpen, cdCreate};
         callbackManager.OnChangeData(folderIndex, input);
         EXPECT_TRUE(callback->onChangeDataCalled);
-        EXPECT_EQ(callback->lastChangeData.size(), 1u);
+        ASSERT_EQ(callback->lastChangeData.size(), 1u);
         EXPECT_EQ(callback->lastChangeData[0].operationType, OperationType::CREATE);
     } catch (...) {
         EXPECT_TRUE(false);

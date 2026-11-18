@@ -1170,6 +1170,15 @@ HWTEST_F(CloudDiskServiceCallbackManagerTest, OnChangeDataWithEventsFilterTest00
         string name = "com.test.events.invalid";
         uint32_t folderIndex = 31;
         sptr<TrackingCallbackMock> callback = sptr(new TrackingCallbackMock());
+        EXPECT_CALL(*dfsuAccessTokenMock_, GetUserId()).WillOnce(Return(456));
+        CloudDiskSyncFolder &syncFolder = CloudDiskSyncFolder::GetInstance();
+        for (const auto &item : syncFolder.GetSyncFolderMap()) {
+            syncFolder.DeleteSyncFolder(item.first);
+        }
+        SyncFolderValue value;
+        value.bundleName = name;
+        value.path = "/data/service/el2/456/hmdfs/account/files/Docs/testfile.txt";
+        syncFolder.AddSyncFolder(folderIndex, value);
         set<OperationType> types = {OperationType::FILE_OPEN, OperationType::SYNC_FOLDER_INVALID};
         bool ret = callbackManager.RegisterSyncFolderMapWithEvents(name, folderIndex, types, callback);
         EXPECT_TRUE(ret);
@@ -1179,8 +1188,8 @@ HWTEST_F(CloudDiskServiceCallbackManagerTest, OnChangeDataWithEventsFilterTest00
         cdCreate.operationType = OperationType::CREATE;
         std::vector<ChangeData> input = {cdInvalid, cdCreate};
         callbackManager.OnChangeData(folderIndex, input);
-        EXPECT_TRUE(callback->onChangeDataCalled);
-        EXPECT_EQ(callback->lastChangeData.size(), 1u);
+        EXPECT_TRUE(callback->wasCalled);
+        ASSERT_EQ(callback->lastChangeData.size(), 1u);
         EXPECT_EQ(callback->lastChangeData[0].operationType, OperationType::SYNC_FOLDER_INVALID);
     } catch (...) {
         EXPECT_TRUE(false);
@@ -1461,7 +1470,7 @@ HWTEST_F(CloudDiskServiceCallbackManagerTest, GetSyncFolderChangesWithEventsTest
     try {
         int32_t userId = 1;
         uint64_t syncFolderIndex = 1;
-        uint64_t start = 1;
+        uint64_t start = 0;
         uint64_t count = 1;
         set<OperationType> operationTypes = {OperationType::FILE_OPEN, OperationType::CREATE};
         ChangesResult changesResult;
@@ -1487,7 +1496,7 @@ HWTEST_F(CloudDiskServiceCallbackManagerTest, GetSyncFolderChangesWithEventsTest
     try {
         int32_t userId = 1;
         uint64_t syncFolderIndex = 1;
-        uint64_t start = 1;
+        uint64_t start = 0;
         uint64_t count = 1;
         set<OperationType> operationTypes = {OperationType::FILE_OPEN};
         ChangesResult changesResult;
@@ -1648,11 +1657,6 @@ HWTEST_F(CloudDiskServiceCallbackManagerTest, GetSyncFolderChangesWithEventsTest
         int32_t userId = 100;
         uint32_t syncFolderIndex = 200;
         string path = "/data/service/el2/100/hmdfs/account/files/Docs/testdir";
-        EXPECT_CALL(*insMock_, MockStat(_, _)).WillOnce(DoAll(
-            [](const char *, struct stat *buf) {
-                buf->st_ino = 12345;
-                buf->st_mode = S_IFDIR;
-            }, Return(0)));
         LogFileMgr::GetInstance().RegisterSyncFolder(userId, syncFolderIndex, path);
         uint64_t start = 0;
         uint64_t count = 0;
