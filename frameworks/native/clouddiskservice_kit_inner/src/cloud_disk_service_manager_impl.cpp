@@ -191,6 +191,74 @@ int32_t CloudDiskServiceManagerImpl::GetSyncFolderChanges(const std::string &syn
 #endif
 }
 
+int32_t CloudDiskServiceManagerImpl::RegisterSyncFolderChangesWithEvents(
+    const std::string &syncFolder,
+    const std::vector<OperationType> &operationTypes,
+    const std::shared_ptr<CloudDiskServiceCallback> callback)
+{
+#ifdef SUPPORT_CLOUD_DISK_SERVICE
+    if (!callback) {
+        LOGE("callback is null");
+        return E_INVALID_ARG;
+    }
+    if (operationTypes.empty()) {
+        LOGE("operationTypes is empty");
+        return E_INVALID_ARG;
+    }
+    std::vector<uint64_t> types;
+    types.reserve(operationTypes.size());
+    for (auto t : operationTypes) {
+        types.push_back(static_cast<uint64_t>(t));
+    }
+    auto serviceProxy = ServiceProxy::GetInstance();
+    if (!serviceProxy) {
+        LOGE("proxy is null");
+        return E_IPC_FAILED;
+    }
+    auto ret = serviceProxy->RegisterSyncFolderChangesWithEventsInner(
+        syncFolder, types, sptr(new (std::nothrow) CloudDiskServiceCallbackClient(callback)));
+    {
+        unique_lock<mutex> lock(callbackMutex_);
+        callback_ = callback;
+    }
+    SetDeathRecipient(serviceProxy->AsObject());
+    LOGI("RegisterSyncFolderChangesWithEvents ret %{public}d", ret);
+    return ret;
+#else
+    return E_NOT_SUPPORTED;
+#endif
+}
+
+int32_t CloudDiskServiceManagerImpl::GetSyncFolderChangesWithEvents(const std::string &syncFolder,
+                                                                    uint64_t count,
+                                                                    uint64_t startUsn,
+                                                                    const std::vector<OperationType> &operationTypes,
+                                                                    ChangesResult &changesResult)
+{
+#ifdef SUPPORT_CLOUD_DISK_SERVICE
+    if (operationTypes.empty()) {
+        LOGE("operationTypes is empty");
+        return E_INVALID_ARG;
+    }
+    std::vector<uint64_t> types;
+    types.reserve(operationTypes.size());
+    for (auto t : operationTypes) {
+        types.push_back(static_cast<uint64_t>(t));
+    }
+    auto serviceProxy = ServiceProxy::GetInstance();
+    if (!serviceProxy) {
+        LOGE("proxy is null");
+        return E_IPC_FAILED;
+    }
+    auto ret = serviceProxy->GetSyncFolderChangesWithEventsInner(syncFolder, count, startUsn, types, changesResult);
+    SetDeathRecipient(serviceProxy->AsObject());
+    LOGI("GetSyncFolderChangesWithEventsInner ret %{public}d", ret);
+    return ret;
+#else
+    return E_NOT_SUPPORTED;
+#endif
+}
+
 int32_t CloudDiskServiceManagerImpl::SetFileSyncStates(const std::string &syncFolder,
                                                        const std::vector<FileSyncState> &fileSyncStates,
                                                        std::vector<FailedList> &failedList)

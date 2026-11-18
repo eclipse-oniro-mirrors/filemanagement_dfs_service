@@ -130,6 +130,10 @@ private:
                                   const std::string &path,
                                   const std::string &name,
                                   struct LogGenerateCtx &ctx);
+    int32_t ProduceOpenLog(const std::shared_ptr<CloudDiskServiceMetaFile> parentMetaFile,
+                           const std::string &path,
+                           const std::string &name,
+                           struct LogGenerateCtx &ctx);
 
     int32_t WriteLogFile(const struct LogBlock &logBlock);
     int32_t ReadLogFile(const uint64_t line, struct LogBlock &logBlock);

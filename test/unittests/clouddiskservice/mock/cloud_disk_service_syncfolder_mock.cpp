@@ -40,6 +40,13 @@ int32_t CloudDiskServiceSyncFolder::GetSyncFolderChanges(const int32_t userId, c
     return 0;
 }
 
+int32_t CloudDiskServiceSyncFolder::GetSyncFolderChangesWithEvents(const int32_t userId,
+    const uint32_t syncFolderIndex, const uint64_t start, const uint64_t count,
+    const std::set<OperationType> &operationTypes, struct ChangesResult &changesResult)
+{
+    return 0;
+}
+
 int32_t CloudDiskServiceSyncFolder::SetSyncFolderChanges(const struct EventInfo &eventInfos)
 {
     return 0;

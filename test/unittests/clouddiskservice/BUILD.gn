@@ -169,6 +169,7 @@ ohos_unittest("cloud_disk_service_callback_manager_test") {
   sources = [
     "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_common.cpp",
     "${distributedfile_path}/test/unittests/clouddiskservice/mock/cloud_disk_service_access_token_mock.cpp",
+    "${distributedfile_path}/test/unittests/clouddiskservice/mock/cloud_disk_service_manager_mock.cpp",
     "${distributedfile_path}/test/unittests/clouddiskservice/mock/cloud_disk_service_metafile_mock.cpp",
     "${distributedfile_path}/test/unittests/clouddiskservice/mock/disk_monitor_mock.cpp",
     "${distributedfile_path}/utils/cloud_disk/src/cloud_file_utils.cpp",
@@ -186,6 +187,7 @@ ohos_unittest("cloud_disk_service_callback_manager_test") {
     "${services_path}/clouddiskservice/sync_folder/src/cloud_disk_service_logfile.cpp",
     "${services_path}/clouddiskservice/sync_folder/src/cloud_disk_service_syncfolder.cpp",
     "${services_path}/clouddiskservice/sync_folder/src/convertor.cpp",
+    "${services_path}/clouddiskservice/sync_folder/src/uuid_helper.cpp",
     "ipc/cloud_disk_service_callback_manager_test.cpp",
     "ipc/placeholder_callback_manager_test.cpp",
   ]
@@ -232,6 +234,48 @@ ohos_unittest("cloud_disk_service_callback_manager_test") {
     external_deps += [ "hicollie:libhicollie" ]
     defines += [ "HICOLLIE_ENABLE" ]
   }
+
+  use_exceptions = true
+}
+
+ohos_unittest("cloud_disk_service_syncfolder_test") {
+  module_out_path = "dfs_service/dfs_service"
+
+  sources = [
+    "${distributedfile_path}/frameworks/native/clouddiskservice_kit_inner/src/cloud_disk_common.cpp",
+    "${distributedfile_path}/test/unittests/clouddiskservice/mock/cloud_disk_service_logfile_mgr_mock.cpp",
+    "${distributedfile_path}/test/unittests/clouddiskservice/mock/cloud_disk_service_metafile_mock.cpp",
+    "${distributedfile_path}/utils/log/src/utils_log.cpp",
+    "${services_path}/clouddiskservice/sync_folder/src/cloud_disk_service_syncfolder.cpp",
+    "sync_folder/cloud_disk_service_syncfolder_test.cpp",
+  ]
+
+  include_dirs = [
+    "${distributedfile_path}/interfaces/inner_api/native/clouddiskservice_kit_inner",
+    "${distributedfile_path}/test/unittests/clouddiskservice/mock",
+    "${distributedfile_path}/utils/inner_api",
+    "${distributedfile_path}/utils/log/include",
+    "${distributedfile_path}/utils/clouddiskservice/include",
+    "${services_path}/clouddiskservice/sync_folder/include",
+    "${services_path}/clouddiskservice/monitor/include",
+  ]
+
+  deps = []
+
+  external_deps = [
+    "c_utils:utils",
+    "ffrt:libffrt",
+    "googletest:gmock_main",
+    "googletest:gtest_main",
+    "hilog:libhilog",
+    "ipc:ipc_single",
+  ]
+
+  defines = [
+    "private=public",
+    "LOG_DOMAIN=0xD003900",
+    "LOG_TAG=\"CloudDiskService\"",
+  ]
 
   use_exceptions = true
 }
@@ -1067,6 +1111,7 @@ group("clouddisk_service_test") {
     ":cloud_disk_service_logfile_test",
     ":cloud_disk_service_metafile_static_test",
     ":cloud_disk_service_metafile_test",
+    ":cloud_disk_service_syncfolder_test",
     ":cloud_disk_sync_folder_test",
     ":convertor_test",
     ":disk_monitor_test",

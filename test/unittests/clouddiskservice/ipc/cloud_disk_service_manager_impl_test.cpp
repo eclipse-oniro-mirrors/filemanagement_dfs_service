@@ -79,6 +79,14 @@ public:
                 (const std::string &, uint64_t, uint64_t, ChangesResult &),
                 (override));
     MOCK_METHOD(ErrCode,
+                RegisterSyncFolderChangesWithEventsInner,
+                (const std::string &, const std::vector<uint64_t> &, const sptr<IRemoteObject> &),
+                (override));
+    MOCK_METHOD(ErrCode,
+                GetSyncFolderChangesWithEventsInner,
+                (const std::string &, uint64_t, uint64_t, const std::vector<uint64_t> &, ChangesResult &),
+                (override));
+    MOCK_METHOD(ErrCode,
                 SetFileSyncStatesInner,
                 (const std::string &, const std::vector<FileSyncState> &, std::vector<FailedList> &),
                 (override));
@@ -853,6 +861,166 @@ HWTEST_F(CloudDiskServiceManagerImplTest, StartHydrationByPath_001, TestSize.Lev
     EXPECT_EQ(manager.StartHydrationByPath("/path", 0, 2, 11), E_IPC_FAILED);
 #else
     EXPECT_EQ(manager.StartHydrationByPath("/path", 0, 2, 11), E_NOT_SUPPORTED);
+#endif
+}
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEvents_001
+ * @tc.desc: Reject null callback / empty operationTypes, cover missing proxy, success and service failure.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceManagerImplTest, RegisterSyncFolderChangesWithEvents_001, TestSize.Level1)
+{
+    auto &manager = CloudDiskServiceManagerImpl::GetInstance();
+    std::vector<OperationType> operationTypes{OperationType::CREATE, OperationType::DELETE};
+#ifdef SUPPORT_CLOUD_DISK_SERVICE
+    EXPECT_EQ(manager.RegisterSyncFolderChangesWithEvents("/sync", operationTypes, nullptr), E_INVALID_ARG);
+    EXPECT_EQ(manager.RegisterSyncFolderChangesWithEvents("/sync", std::vector<OperationType>{}, nullptr),
+              E_INVALID_ARG);
+    auto callback = std::make_shared<RecordingLegacyCallback>();
+    EXPECT_EQ(manager.RegisterSyncFolderChangesWithEvents("/sync", std::vector<OperationType>{}, callback),
+              E_INVALID_ARG);
+
+    ServiceProxy::serviceProxy_ = nullptr;
+    EXPECT_EQ(manager.RegisterSyncFolderChangesWithEvents("/sync", operationTypes, callback), E_IPC_FAILED);
+
+    RestoreRemote();
+    EXPECT_CALL(*remote_, RegisterSyncFolderChangesWithEventsInner("/sync", _, _)).WillOnce(Return(E_IPC_FAILED));
+    EXPECT_EQ(manager.RegisterSyncFolderChangesWithEvents("/sync", operationTypes, callback), E_IPC_FAILED);
+
+    Mock::VerifyAndClearExpectations(remote_.GetRefPtr());
+    EXPECT_CALL(*remote_, RegisterSyncFolderChangesWithEventsInner("/sync", _, _))
+        .WillOnce(Invoke([](const std::string &, const std::vector<uint64_t> &types,
+                            const sptr<IRemoteObject> &) {
+            EXPECT_THAT(types, ElementsAre(static_cast<uint64_t>(OperationType::CREATE),
+                                          static_cast<uint64_t>(OperationType::DELETE)));
+            return E_OK;
+        }));
+    EXPECT_EQ(manager.RegisterSyncFolderChangesWithEvents("/sync", operationTypes, callback), E_OK);
+#else
+    EXPECT_EQ(manager.RegisterSyncFolderChangesWithEvents("/sync", operationTypes, nullptr), E_NOT_SUPPORTED);
+#endif
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEvents_001
+ * @tc.desc: Reject empty operationTypes, cover missing proxy, success, service failure and changes passthrough.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceManagerImplTest, GetSyncFolderChangesWithEvents_001, TestSize.Level1)
+{
+    auto &manager = CloudDiskServiceManagerImpl::GetInstance();
+    std::vector<OperationType> operationTypes{OperationType::CREATE, OperationType::FILE_OPEN};
+    ChangesResult changesResult;
+#ifdef SUPPORT_CLOUD_DISK_SERVICE
+    EXPECT_EQ(manager.GetSyncFolderChangesWithEvents("/sync", 10, 0,
+        std::vector<OperationType>{}, changesResult), E_INVALID_ARG);
+
+    ServiceProxy::serviceProxy_ = nullptr;
+    EXPECT_EQ(manager.GetSyncFolderChangesWithEvents("/sync", 10, 0,
+        operationTypes, changesResult), E_IPC_FAILED);
+
+    RestoreRemote();
+    EXPECT_CALL(*remote_, GetSyncFolderChangesWithEventsInner("/sync", 10, 0, _, _)).WillOnce(Return(E_OK));
+    EXPECT_EQ(manager.GetSyncFolderChangesWithEvents("/sync", 10, 0,
+        operationTypes, changesResult), E_OK);
+#else
+    EXPECT_EQ(manager.GetSyncFolderChangesWithEvents("/sync", 10, 0,
+        operationTypes, changesResult), E_NOT_SUPPORTED);
+#endif
+}
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEvents_002
+ * @tc.desc: Verify single FILE_OPEN type is passed correctly as uint64_t.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceManagerImplTest, RegisterSyncFolderChangesWithEvents_002, TestSize.Level1)
+{
+    auto &manager = CloudDiskServiceManagerImpl::GetInstance();
+    std::vector<OperationType> operationTypes{OperationType::FILE_OPEN};
+#ifdef SUPPORT_CLOUD_DISK_SERVICE
+    auto callback = std::make_shared<RecordingLegacyCallback>();
+    RestoreRemote();
+    EXPECT_CALL(*remote_, RegisterSyncFolderChangesWithEventsInner("/sync", _, _))
+        .WillOnce(Invoke([](const std::string &, const std::vector<uint64_t> &types,
+                            const sptr<IRemoteObject> &) {
+            EXPECT_EQ(types.size(), 1U);
+            EXPECT_EQ(types[0], static_cast<uint64_t>(OperationType::FILE_OPEN));
+            return E_OK;
+        }));
+    EXPECT_EQ(manager.RegisterSyncFolderChangesWithEvents("/sync", operationTypes, callback), E_OK);
+    Mock::VerifyAndClearExpectations(remote_.GetRefPtr());
+#else
+    EXPECT_EQ(manager.RegisterSyncFolderChangesWithEvents("/sync", operationTypes, nullptr), E_NOT_SUPPORTED);
+#endif
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEvents_002
+ * @tc.desc: Verify single FILE_OPEN type is passed correctly and result passthrough.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceManagerImplTest, GetSyncFolderChangesWithEvents_002, TestSize.Level1)
+{
+    auto &manager = CloudDiskServiceManagerImpl::GetInstance();
+    std::vector<OperationType> operationTypes{OperationType::FILE_OPEN};
+    ChangesResult changesResult;
+#ifdef SUPPORT_CLOUD_DISK_SERVICE
+    RestoreRemote();
+    EXPECT_CALL(*remote_, GetSyncFolderChangesWithEventsInner("/sync", 100, 0, _, _))
+        .WillOnce(Invoke([](const std::string &, uint64_t, uint64_t, const std::vector<uint64_t> &types,
+                            ChangesResult &output) {
+            EXPECT_EQ(types.size(), 1U);
+            EXPECT_EQ(types[0], static_cast<uint64_t>(OperationType::FILE_OPEN));
+            output.changesData.resize(1);
+            output.changesData[0].operationType = OperationType::FILE_OPEN;
+            return E_OK;
+        }));
+    EXPECT_EQ(manager.GetSyncFolderChangesWithEvents("/sync", 100, 0,
+        operationTypes, changesResult), E_OK);
+    ASSERT_EQ(changesResult.changesData.size(), 1U);
+    EXPECT_EQ(changesResult.changesData[0].operationType, OperationType::FILE_OPEN);
+    Mock::VerifyAndClearExpectations(remote_.GetRefPtr());
+#else
+    EXPECT_EQ(manager.GetSyncFolderChangesWithEvents("/sync", 100, 0,
+        operationTypes, changesResult), E_NOT_SUPPORTED);
+#endif
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEvents_003
+ * @tc.desc: Verify service failure is propagated and changes passthrough on Invoke.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceManagerImplTest, GetSyncFolderChangesWithEvents_003, TestSize.Level1)
+{
+    auto &manager = CloudDiskServiceManagerImpl::GetInstance();
+    std::vector<OperationType> operationTypes{OperationType::CREATE, OperationType::FILE_OPEN};
+    ChangesResult changesResult;
+#ifdef SUPPORT_CLOUD_DISK_SERVICE
+    RestoreRemote();
+    EXPECT_CALL(*remote_, GetSyncFolderChangesWithEventsInner("/sync", 10, 0, _, _))
+        .WillOnce(Invoke([](const std::string &, uint64_t, uint64_t, const std::vector<uint64_t> &types,
+                            ChangesResult &output) {
+            EXPECT_THAT(types, ElementsAre(static_cast<uint64_t>(OperationType::CREATE),
+                                           static_cast<uint64_t>(OperationType::FILE_OPEN)));
+            output.changesData.resize(1);
+            output.changesData[0].operationType = OperationType::FILE_OPEN;
+            return E_OK;
+        }));
+    EXPECT_EQ(manager.GetSyncFolderChangesWithEvents("/sync", 10, 0,
+        operationTypes, changesResult), E_OK);
+    ASSERT_EQ(changesResult.changesData.size(), 1U);
+    EXPECT_EQ(changesResult.changesData[0].operationType, OperationType::FILE_OPEN);
+#else
+    EXPECT_EQ(manager.GetSyncFolderChangesWithEvents("/sync", 10, 0,
+        operationTypes, changesResult), E_NOT_SUPPORTED);
 #endif
 }
 

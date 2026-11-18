@@ -16,9 +16,11 @@
 #ifndef CLOUD_DISK_SERVICE_SYNCFOLDER_H
 #define CLOUD_DISK_SERVICE_SYNCFOLDER_H
 
+#include <set>
 #include <string>
 #include <vector>
 
+#include "cloud_disk_common.h"
 #include "disk_types.h"
 
 namespace OHOS::FileManagement::CloudDiskService {
@@ -31,6 +33,10 @@ public:
     static void UnRegisterSyncFolderChanges(const int32_t userId, const uint32_t syncFolderIndex);
     static int32_t GetSyncFolderChanges(const int32_t userId, const uint32_t syncFolderIndex, const uint64_t start,
                                         const uint64_t count, struct ChangesResult &changesResult);
+    static int32_t GetSyncFolderChangesWithEvents(const int32_t userId, const uint32_t syncFolderIndex,
+                                                  const uint64_t start, const uint64_t count,
+                                                  const std::set<OperationType> &operationTypes,
+                                                  struct ChangesResult &changesResult);
     static int32_t SetSyncFolderChanges(const struct EventInfo &eventInfos);
     static void CloudDiskServiceClearAll();
 };

@@ -24,6 +24,8 @@ using namespace std;
 constexpr size_t U32_AT_SIZE = 4;
 constexpr size_t MAX_BUFFER_LENGTH = 10000;
 constexpr size_t MAX_PATH_LENGTH = 4096;
+constexpr size_t MAX_OPERATION_TYPE_COUNT = 8;
+constexpr size_t OPERATION_TYPE_MOD_BASE = 16;
 
 static void OnChangeDataCallback(
     const CloudDisk_SyncFolderPath syncFolderPath, const CloudDisk_ChangeData changeDatas[], size_t length)
@@ -162,6 +164,59 @@ void OHGetFileSyncStatesFuzzTest(const uint8_t *data, size_t size)
     }
 }
 
+void OHRegisterSyncFolderChangesWithEventsFuzzTest(const uint8_t *data, size_t size)
+{
+    OHOS::FuzzData fuzzData(data, size);
+    size_t syncLength = fuzzData.GetRemainSize();
+    if (syncLength > MAX_PATH_LENGTH) {
+        return;
+    }
+    std::string path = fuzzData.GetStringFromData(syncLength);
+    CloudDisk_SyncFolderPath syncFolderPath = {.value = path.data(), .length = path.length()};
+    size_t typeCount = fuzzData.GetData<uint8_t>();
+    if (typeCount == 0 || typeCount > MAX_OPERATION_TYPE_COUNT) {
+        typeCount = 1;
+    }
+    CloudDisk_OperationType types[MAX_OPERATION_TYPE_COUNT];
+    for (size_t i = 0; i < typeCount; i++) {
+        types[i] = static_cast<CloudDisk_OperationType>(fuzzData.GetData<uint8_t>() % OPERATION_TYPE_MOD_BASE);
+    }
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = static_cast<int64_t>(typeCount)};
+    OH_CloudDisk_RegisterSyncFolderChangesWithEvents(syncFolderPath, &typeArray, &OnChangeDataCallback);
+}
+
+void OHGetSyncFolderChangesWithEventsFuzzTest(const uint8_t *data, size_t size)
+{
+    OHOS::FuzzData fuzzData(data, size);
+    uint64_t startUsn = fuzzData.GetData<uint64_t>();
+    size_t count = fuzzData.GetData<size_t>();
+    size_t syncLength = fuzzData.GetRemainSize();
+    if (syncLength > MAX_PATH_LENGTH) {
+        return;
+    }
+    std::string path = fuzzData.GetStringFromData(syncLength);
+    CloudDisk_SyncFolderPath syncFolderPath = {.value = path.data(), .length = path.length()};
+    size_t typeCount = fuzzData.GetData<uint8_t>();
+    if (typeCount == 0 || typeCount > MAX_OPERATION_TYPE_COUNT) {
+        typeCount = 1;
+    }
+    CloudDisk_OperationType types[MAX_OPERATION_TYPE_COUNT];
+    for (size_t i = 0; i < typeCount; i++) {
+        types[i] = static_cast<CloudDisk_OperationType>(fuzzData.GetData<uint8_t>() % OPERATION_TYPE_MOD_BASE);
+    }
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = static_cast<int64_t>(typeCount)};
+    CloudDisk_ChangesResult *changesResult = nullptr;
+    OH_CloudDisk_GetSyncFolderChangesWithEvents(syncFolderPath, startUsn, count, &typeArray, &changesResult);
+    if (changesResult != nullptr) {
+        for (size_t index = 0; index < changesResult->bufferLength; ++index) {
+            delete[] changesResult->changeDatas[index].fileId.value;
+            delete[] changesResult->changeDatas[index].parentFileId.value;
+            delete[] changesResult->changeDatas[index].relativePathInfo.value;
+        }
+        delete changesResult;
+    }
+}
+
 /* Fuzzer entry point */
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
@@ -176,5 +231,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     OHGetSyncFolderChangesFuzzTest(data, size);
     OHSetFileSyncStatesFuzzTest(data, size);
     OHGetFileSyncStatesFuzzTest(data, size);
+    OHRegisterSyncFolderChangesWithEventsFuzzTest(data, size);
+    OHGetSyncFolderChangesWithEventsFuzzTest(data, size);
     return 0;
 }

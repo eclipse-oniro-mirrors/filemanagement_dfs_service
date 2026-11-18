@@ -16,8 +16,11 @@
 #ifndef OHOS_FILEMGMT_CLOUD_DISK_SERVICE_CALLBACK_MANAGER_H
 #define OHOS_FILEMGMT_CLOUD_DISK_SERVICE_CALLBACK_MANAGER_H
 
+#include <set>
+
 #include "nocopyable.h"
 
+#include "cloud_disk_common.h"
 #include "i_cloud_disk_service_callback.h"
 #include "svc_death_recipient.h"
 
@@ -29,6 +32,10 @@ public:
     bool RegisterSyncFolderMap(std::string &bundleName,
                                uint32_t syncFolderIndex,
                                const sptr<ICloudDiskServiceCallback> &callback);
+    bool RegisterSyncFolderMapWithEvents(std::string &bundleName,
+                                         uint32_t syncFolderIndex,
+                                         const std::set<OperationType> &operationTypes,
+                                         const sptr<ICloudDiskServiceCallback> &callback);
     void UnregisterSyncFolderMap(const std::string &bundleName, uint32_t syncFolderIndex);
     bool UnregisterSyncFolderForChangesMap(std::string &bundleName, uint32_t syncFolderIndex);
     void AddCallback(const std::string &bundleName, const sptr<ICloudDiskServiceCallback> &callback);
@@ -40,9 +47,20 @@ public:
         std::vector<uint32_t> syncFolderIndexs;
     };
 
+    struct InstanceValue {
+        sptr<ICloudDiskServiceCallback> callback;
+        std::set<OperationType> operationTypes;
+        bool isWithEvents{false};
+    };
+
 private:
+    bool RegisterSyncFolderMapInternal(std::string &bundleName,
+                                       uint32_t syncFolderIndex,
+                                       const sptr<ICloudDiskServiceCallback> &callback,
+                                       const std::set<OperationType> &operationTypes,
+                                       bool isWithEvents);
     std::map<std::string, CallbackValue> callbackAppMap_;
-    std::map<uint32_t, sptr<ICloudDiskServiceCallback>> callbackIndexMap_;
+    std::map<uint32_t, InstanceValue> callbackIndexMap_;
     std::mutex callbackMutex_;
 };
 } // namespace OHOS::FileManagement::CloudDiskService

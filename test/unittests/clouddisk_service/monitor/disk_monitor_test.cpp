@@ -1119,4 +1119,120 @@ HWTEST_F(DiskMonitorTest, GetSyncFolderIndexTest004, TestSize.Level1)
     }
     GTEST_LOG_(INFO) << "GetSyncFolderIndexTest004 End";
 }
+
+/**
+ * @tc.name: EventProcessTest009
+ * @tc.desc: Verify EventProcess FAN_OPEN with FAN_ONDIR (directory open filtered)
+ * @tc.type: FUNC
+ */
+HWTEST_F(DiskMonitorTest, EventProcessTest009, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "EventProcessTest009 Begin";
+    try {
+        DiskMonitor::GetInstance().syncFolderPrefix_ = "a";
+        string filePath = "abc";
+        DiskMonitor::GetInstance().blockList_.clear();
+        CloudDiskSyncFolder::GetInstance().syncFolderMap.clear();
+        CloudDiskSyncFolder::GetInstance().syncFolderMap.insert({1, {"bundleName", "abc"}});
+        fanotify_event_metadata metaData;
+        metaData.mask = FAN_OPEN | FAN_ONDIR;
+        DiskMonitor::GetInstance().EventProcess(&metaData, filePath);
+        EXPECT_TRUE(true);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "EventProcessTest009 Error";
+    }
+    GTEST_LOG_(INFO) << "EventProcessTest009 End";
+}
+
+/**
+ * @tc.name: HandleOpenTest001
+ * @tc.desc: Verify HandleOpen with path not in sync folder
+ * @tc.type: FUNC
+ */
+HWTEST_F(DiskMonitorTest, HandleOpenTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "HandleOpenTest001 Begin";
+    try {
+        DiskMonitor::GetInstance().syncFolderPrefix_ = "b";
+        string path = "abc";
+        DiskMonitor::GetInstance().HandleOpen(path);
+        EXPECT_TRUE(true);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "HandleOpenTest001 Error";
+    }
+    GTEST_LOG_(INFO) << "HandleOpenTest001 End";
+}
+
+/**
+ * @tc.name: HandleOpenTest002
+ * @tc.desc: Verify HandleOpen with path in sync folder
+ * @tc.type: FUNC
+ */
+HWTEST_F(DiskMonitorTest, HandleOpenTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "HandleOpenTest002 Begin";
+    try {
+        DiskMonitor::GetInstance().syncFolderPrefix_ = "a";
+        string path = "abc";
+        DiskMonitor::GetInstance().blockList_.clear();
+        CloudDiskSyncFolder::GetInstance().syncFolderMap.clear();
+        CloudDiskSyncFolder::GetInstance().syncFolderMap.insert({1, {"bundleName", "abc"}});
+        DiskMonitor::GetInstance().HandleOpen(path);
+        EXPECT_TRUE(true);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "HandleOpenTest002 Error";
+    }
+    GTEST_LOG_(INFO) << "HandleOpenTest002 End";
+}
+
+/**
+ * @tc.name: HandleOpenTest003
+ * @tc.desc: Verify HandleOpen with path in blockList
+ * @tc.type: FUNC
+ */
+HWTEST_F(DiskMonitorTest, HandleOpenTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "HandleOpenTest003 Begin";
+    try {
+        DiskMonitor::GetInstance().syncFolderPrefix_ = "a";
+        string path = "abc";
+        DiskMonitor::GetInstance().blockList_ = {"abc"};
+        CloudDiskSyncFolder::GetInstance().syncFolderMap.clear();
+        CloudDiskSyncFolder::GetInstance().syncFolderMap.insert({1, {"bundleName", "abc"}});
+        DiskMonitor::GetInstance().HandleOpen(path);
+        EXPECT_TRUE(true);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "HandleOpenTest003 Error";
+    }
+    GTEST_LOG_(INFO) << "HandleOpenTest003 End";
+}
+
+/**
+ * @tc.name: EventProcessTest010
+ * @tc.desc: Verify EventProcess compound mask FAN_OPEN|FAN_CLOSE_WRITE
+ * @tc.type: FUNC
+ */
+HWTEST_F(DiskMonitorTest, EventProcessTest010, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "EventProcessTest010 Begin";
+    try {
+        DiskMonitor::GetInstance().syncFolderPrefix_ = "a";
+        string filePath = "abc";
+        DiskMonitor::GetInstance().blockList_.clear();
+        CloudDiskSyncFolder::GetInstance().syncFolderMap.clear();
+        CloudDiskSyncFolder::GetInstance().syncFolderMap.insert({1, {"bundleName", "abc"}});
+        fanotify_event_metadata metaData;
+        metaData.mask = FAN_OPEN | FAN_CLOSE_WRITE;
+        DiskMonitor::GetInstance().EventProcess(&metaData, filePath);
+        EXPECT_TRUE(true);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "EventProcessTest010 Error";
+    }
+    GTEST_LOG_(INFO) << "EventProcessTest010 End";
+}
 } // namespace OHOS::FileManagement::CloudDiskService::Test

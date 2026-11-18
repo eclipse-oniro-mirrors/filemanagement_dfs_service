@@ -2329,4 +2329,56 @@ HWTEST_F(LogFileMgrTest, OnDataChangeTest002, TestSize.Level1)
     GTEST_LOG_(INFO) << "OnDataChangeTest002 end";
 }
 
+/**
+ * @tc.name: ProductLogForOperateTest008
+ * @tc.desc: Verify the ProductLogForOperate function with FILE_OPEN operation type
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, ProductLogForOperateTest008, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ProductLogForOperateTest008 start";
+    try {
+        shared_ptr<CloudDiskServiceMetaFile> parentMetaFile = make_shared<CloudDiskServiceMetaFile>(0, 0, 0);
+        string path = "path";
+        string name = "name";
+        struct LogGenerateCtx ctx;
+        OperationType operator1 = OperationType::FILE_OPEN;
+        struct stat statInfo;
+        statInfo.st_mode = S_IFREG;
+        statInfo.st_atime = 100;
+        statInfo.st_mtime = 200;
+        statInfo.st_size = 1024;
+        EXPECT_CALL(*insMock_, stat(_, _)).WillOnce(DoAll(SetArgPointee<1>(statInfo), Return(0)));
+        int32_t ret = logFile_->ProductLogForOperate(parentMetaFile, path, name, ctx, operator1);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "ProductLogForOperateTest008 failed";
+    }
+    GTEST_LOG_(INFO) << "ProductLogForOperateTest008 end";
+}
+
+/**
+ * @tc.name: ProduceOpenLogTest001
+ * @tc.desc: Verify ProduceOpenLog with stat success and DoUpdate success returns E_OK
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, ProduceOpenLogTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ProduceOpenLogTest001 start";
+    try {
+        shared_ptr<CloudDiskServiceMetaFile> parentMetaFile = make_shared<CloudDiskServiceMetaFile>(0, 0, 0);
+        string path = "path";
+        string name = "name";
+        struct LogGenerateCtx ctx;
+        EXPECT_CALL(*insMock_, stat(_, _)).WillOnce(Return(0));
+        int32_t ret = logFile_->ProduceOpenLog(parentMetaFile, path, name, ctx);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "ProduceOpenLogTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "ProduceOpenLogTest001 end";
+}
+
 } // namespace OHOS::FileManagement::CloudDiskService::Test

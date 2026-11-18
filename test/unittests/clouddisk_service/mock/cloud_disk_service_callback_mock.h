@@ -22,12 +22,18 @@ using namespace std;
 class CloudDiskServiceCallbackMock : public IRemoteStub<ICloudDiskServiceCallback> {
 public:
     int code_;
+    bool onChangeDataCalled{false};
+    vector<ChangeData> lastChangeData;
     CloudDiskServiceCallbackMock() : code_(0) {}
     virtual ~CloudDiskServiceCallbackMock() {}
 
     MOCK_METHOD4(SendRequest, int(uint32_t code, MessageParcel &data, MessageParcel &reply, MessageOption &option));
 
-    void OnChangeData(const string& sandboxPath, const vector<ChangeData> &changeData) override {}
+    void OnChangeData(const string& sandboxPath, const vector<ChangeData> &changeData) override
+    {
+        onChangeDataCalled = true;
+        lastChangeData = changeData;
+    }
 };
 }
 #endif // OHOS_FILEMGMT_CLOUD_DISK_SERVICE_MOCK

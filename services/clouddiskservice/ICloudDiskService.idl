@@ -49,4 +49,6 @@ interface OHOS.FileManagement.CloudDiskService.ICloudDiskService
     void RegisterProgressCallbackInner([in] unsigned long accessorId, [in] IRemoteObject remoteObject);
     void UnregisterProgressCallbackInner([in] unsigned long accessorId);
     int GetPlaceholderStateInner([in] String syncFolder, [in] String relativePath);
+    void RegisterSyncFolderChangesWithEventsInner([in] String syncFolder, [in] unsigned long[] operationTypes, [in] IRemoteObject remoteobject);
+    ChangesResult GetSyncFolderChangesWithEventsInner([in] String syncFolder, [in] unsigned long count, [in] unsigned long startUSN, [in] unsigned long[] operationTypes);
 }

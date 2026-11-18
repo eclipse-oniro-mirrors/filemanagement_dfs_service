@@ -29,6 +29,7 @@ enum class OperationType : uint8_t {
     CLOSE_WRITE,
     OH_CLOUD_DISK_CLOSE_MODIFY,
     SYNC_FOLDER_INVALID,
+    FILE_OPEN,
     OPERATION_MAX,
 };
 } // namespace OHOS::FileManagement::CloudDiskService

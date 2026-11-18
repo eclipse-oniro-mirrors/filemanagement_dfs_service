@@ -38,6 +38,14 @@ public:
                                          uint64_t count,
                                          uint64_t startUsn,
                                          ChangesResult &changesResult) = 0;
+    virtual int32_t RegisterSyncFolderChangesWithEvents(const std::string &syncFolder,
+                                                        const std::vector<OperationType> &operationTypes,
+                                                        const std::shared_ptr<CloudDiskServiceCallback> callback) = 0;
+    virtual int32_t GetSyncFolderChangesWithEvents(const std::string &syncFolder,
+                                                   uint64_t count,
+                                                   uint64_t startUsn,
+                                                   const std::vector<OperationType> &operationTypes,
+                                                   ChangesResult &changesResult) = 0;
     virtual int32_t SetFileSyncStates(const std::string &syncFolder,
                                       const std::vector<FileSyncState> &fileSyncStates,
                                       std::vector<FailedList> &failedList) = 0;

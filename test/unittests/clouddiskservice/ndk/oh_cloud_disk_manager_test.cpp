@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,7 @@ using namespace testing::ext;
 
 namespace {
 void PlaceholderCallback(const OH_CloudDisk_CallbackReqHead, OH_CloudDisk_CallbackContext) {}
+void OnChangeDataCallback(const CloudDisk_SyncFolderPath, const CloudDisk_ChangeData[], size_t) {}
 } // namespace
 
 class OhCloudDiskManagerTest : public testing::Test {
@@ -1225,7 +1227,469 @@ HWTEST_F(OhCloudDiskManagerTest, Execute_003, TestSize.Level1)
         }));
     EXPECT_EQ(OH_CloudDisk_Execute(head, context, response), CLOUD_DISK_OK);
 }
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEvents_001
+ * @tc.desc: Verify duplicate operationTypes are deduplicated before reaching the manager.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_001, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType input[] = {
+        CloudDisk_OperationType::CREATE, CloudDisk_OperationType::CREATE,
+        CloudDisk_OperationType::DELETE, CloudDisk_OperationType::DELETE,
+        CloudDisk_OperationType::FILE_OPEN};
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = input, .length = sizeof(input) / sizeof(input[0])};
+    std::vector<OperationType> captured;
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
+                RegisterSyncFolderChangesWithEvents(testSyncFolderPath, _, _))
+        .WillOnce(DoAll(SaveArg<1>(&captured), Return(E_OK)));
+    CloudDisk_ErrorCode ret = OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        syncFolderPath, &typeArray, OnChangeDataCallback);
+    EXPECT_EQ(ret, CloudDisk_ErrorCode::CLOUD_DISK_OK);
+    EXPECT_EQ(captured.size(), 3U);
+    EXPECT_EQ(captured[0], OperationType::CREATE);
+    EXPECT_EQ(captured[1], OperationType::DELETE);
+    EXPECT_EQ(captured[2], OperationType::FILE_OPEN);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEvents_002
+ * @tc.desc: Verify invalid arguments are rejected before calling the manager.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_002, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType valid[] = {CloudDisk_OperationType::CREATE};
+    CloudDisk_OperationType bad[] = {static_cast<CloudDisk_OperationType>(8)};
+    OH_CloudDisk_OperationTypeArray validArray = {.data = valid, .length = 1};
+    OH_CloudDisk_OperationTypeArray badArray = {.data = bad, .length = 1};
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(), RegisterSyncFolderChangesWithEvents(_, _, _)).Times(0);
+    EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        syncFolderPath, nullptr,
+        OnChangeDataCallback), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        syncFolderPath, &validArray, nullptr), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    OH_CloudDisk_OperationTypeArray emptyLenArray = {.data = valid, .length = 0};
+    EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        syncFolderPath, &emptyLenArray,
+        OnChangeDataCallback), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    OH_CloudDisk_OperationTypeArray negLenArray = {.data = valid, .length = -1};
+    EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        syncFolderPath, &negLenArray,
+        OnChangeDataCallback), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        syncFolderPath, &badArray,
+        OnChangeDataCallback), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEvents_003
+ * @tc.desc: Verify a large array with duplicates is deduplicated and accepted.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_003, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType nineCreate[] = {
+        CloudDisk_OperationType::CREATE, CloudDisk_OperationType::CREATE,
+        CloudDisk_OperationType::CREATE, CloudDisk_OperationType::CREATE,
+        CloudDisk_OperationType::CREATE, CloudDisk_OperationType::CREATE,
+        CloudDisk_OperationType::CREATE, CloudDisk_OperationType::CREATE,
+        CloudDisk_OperationType::CREATE};
+    OH_CloudDisk_OperationTypeArray typeArray = {
+        .data = nineCreate, .length = sizeof(nineCreate) / sizeof(nineCreate[0])};
+    std::vector<OperationType> captured;
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
+                RegisterSyncFolderChangesWithEvents(testSyncFolderPath, _, _))
+        .WillOnce(DoAll(SaveArg<1>(&captured), Return(E_OK)));
+    EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        syncFolderPath, &typeArray,
+        OnChangeDataCallback), CloudDisk_ErrorCode::CLOUD_DISK_OK);
+    EXPECT_EQ(captured.size(), 1U);
+    EXPECT_EQ(captured[0], OperationType::CREATE);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEvents_001
+ * @tc.desc: Verify duplicate operationTypes are deduplicated before reaching the manager.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_001, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType input[] = {
+        CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_FROM,
+        CloudDisk_OperationType::MOVE_TO, CloudDisk_OperationType::MOVE_TO,
+        CloudDisk_OperationType::CLOSE_WRITE};
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = input, .length = sizeof(input) / sizeof(input[0])};
+    std::vector<OperationType> captured;
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
+                GetSyncFolderChangesWithEvents(testSyncFolderPath, _, _, _, _))
+        .WillOnce(DoAll(SaveArg<3>(&captured), Return(E_OK)));
+    CloudDisk_ChangesResult *changesResult = nullptr;
+    CloudDisk_ErrorCode ret = OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        syncFolderPath, 0, 10, &typeArray, &changesResult);
+    EXPECT_EQ(ret, CloudDisk_ErrorCode::CLOUD_DISK_OK);
+    EXPECT_EQ(captured.size(), 3U);
+    EXPECT_EQ(captured[0], OperationType::MOVE_FROM);
+    EXPECT_EQ(captured[1], OperationType::MOVE_TO);
+    EXPECT_EQ(captured[2], OperationType::CLOSE_WRITE);
+    if (changesResult != nullptr) {
+        free(changesResult);
+    }
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEvents_002
+ * @tc.desc: Verify invalid arguments are rejected before calling the manager.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_002, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType valid[] = {CloudDisk_OperationType::CREATE};
+    CloudDisk_OperationType bad[] = {static_cast<CloudDisk_OperationType>(8)};
+    OH_CloudDisk_OperationTypeArray validArray = {.data = valid, .length = 1};
+    OH_CloudDisk_OperationTypeArray badArray = {.data = bad, .length = 1};
+    CloudDisk_ChangesResult *changesResult = nullptr;
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(), GetSyncFolderChangesWithEvents(_, _, _, _, _)).Times(0);
+    EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        syncFolderPath, 0, 10, &validArray, nullptr), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        syncFolderPath, 0, 10, nullptr, &changesResult), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    OH_CloudDisk_OperationTypeArray emptyLenArray = {.data = valid, .length = 0};
+    EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        syncFolderPath, 0, 10, &emptyLenArray, &changesResult), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    OH_CloudDisk_OperationTypeArray negLenArray = {.data = valid, .length = -1};
+    EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        syncFolderPath, 0, 10, &negLenArray, &changesResult), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        syncFolderPath, 0, 10, &badArray, &changesResult), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEvents_003
+ * @tc.desc: Verify a large array with duplicates is deduplicated and accepted.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_003, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType nineMove[] = {
+        CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_FROM,
+        CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_FROM,
+        CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_FROM,
+        CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_FROM,
+        CloudDisk_OperationType::MOVE_FROM};
+    OH_CloudDisk_OperationTypeArray typeArray = {
+        .data = nineMove, .length = sizeof(nineMove) / sizeof(nineMove[0])};
+    std::vector<OperationType> captured;
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
+                GetSyncFolderChangesWithEvents(testSyncFolderPath, _, _, _, _))
+        .WillOnce(DoAll(SaveArg<3>(&captured), Return(E_OK)));
+    CloudDisk_ChangesResult *changesResult = nullptr;
+    EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        syncFolderPath, 0, 10, &typeArray, &changesResult),
+        CloudDisk_ErrorCode::CLOUD_DISK_OK);
+    EXPECT_EQ(captured.size(), 1U);
+    EXPECT_EQ(captured[0], OperationType::MOVE_FROM);
+    if (changesResult != nullptr) {
+        free(changesResult);
+    }
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEvents_004
+ * @tc.desc: Verify invalid path is rejected.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_004, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath invalidPath = {.value = nullptr, .length = 0};
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(), RegisterSyncFolderChangesWithEvents(_, _, _)).Times(0);
+    EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        invalidPath, &typeArray,
+        OnChangeDataCallback), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEvents_005
+ * @tc.desc: Verify struct with null data pointer is rejected.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_005, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    OH_CloudDisk_OperationTypeArray nullDataArray = {.data = nullptr, .length = 1};
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(), RegisterSyncFolderChangesWithEvents(_, _, _)).Times(0);
+    EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        syncFolderPath, &nullDataArray,
+        OnChangeDataCallback), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEvents_006
+ * @tc.desc: Verify manager error return is propagated through ConvertToErrorCode.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_006, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
+                RegisterSyncFolderChangesWithEvents(testSyncFolderPath, _, _))
+        .WillOnce(Return(E_LISTENER_ALREADY_REGISTERED));
+    EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        syncFolderPath, &typeArray,
+        OnChangeDataCallback), CloudDisk_ErrorCode::CLOUD_DISK_LISTENER_ALREADY_REGISTERED);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEvents_007
+ * @tc.desc: Verify single FILE_OPEN type passes validation and reaches manager.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_007, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
+    std::vector<OperationType> captured;
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
+                RegisterSyncFolderChangesWithEvents(testSyncFolderPath, _, _))
+        .WillOnce(DoAll(SaveArg<1>(&captured), Return(E_OK)));
+    EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        syncFolderPath, &typeArray,
+        OnChangeDataCallback), CloudDisk_ErrorCode::CLOUD_DISK_OK);
+    EXPECT_EQ(captured.size(), 1U);
+    EXPECT_EQ(captured[0], OperationType::FILE_OPEN);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEvents_008
+ * @tc.desc: Verify all 8 operation types pass validation and reach manager.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_008, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType types[] = {
+        CloudDisk_OperationType::CREATE, CloudDisk_OperationType::DELETE,
+        CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_TO,
+        CloudDisk_OperationType::CLOSE_WRITE, CloudDisk_OperationType::SYNC_FOLDER_INVALID,
+        CloudDisk_OperationType::OH_CLOUD_DISK_CLOSE_MODIFY, CloudDisk_OperationType::FILE_OPEN};
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = sizeof(types) / sizeof(types[0])};
+    std::vector<OperationType> captured;
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
+                RegisterSyncFolderChangesWithEvents(testSyncFolderPath, _, _))
+        .WillOnce(DoAll(SaveArg<1>(&captured), Return(E_OK)));
+    EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        syncFolderPath, &typeArray,
+        OnChangeDataCallback), CloudDisk_ErrorCode::CLOUD_DISK_OK);
+    EXPECT_EQ(captured.size(), 8U);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEvents_004
+ * @tc.desc: Verify invalid path is rejected.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_004, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath invalidPath = {.value = nullptr, .length = 0};
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
+    CloudDisk_ChangesResult *changesResult = nullptr;
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(), GetSyncFolderChangesWithEvents(_, _, _, _, _)).Times(0);
+    EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        invalidPath, 0, 10, &typeArray, &changesResult), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEvents_005
+ * @tc.desc: Verify struct with null data pointer is rejected.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_005, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    OH_CloudDisk_OperationTypeArray nullDataArray = {.data = nullptr, .length = 1};
+    CloudDisk_ChangesResult *changesResult = nullptr;
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(), GetSyncFolderChangesWithEvents(_, _, _, _, _)).Times(0);
+    EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        syncFolderPath, 0, 10, &nullDataArray, &changesResult), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEvents_006
+ * @tc.desc: Verify manager error return is propagated.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_006, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
+    CloudDisk_ChangesResult *changesResult = nullptr;
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
+                GetSyncFolderChangesWithEvents(testSyncFolderPath, _, _, _, _))
+        .WillOnce(Return(E_LISTENER_ALREADY_REGISTERED));
+    EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        syncFolderPath, 0, 10, &typeArray, &changesResult),
+        CloudDisk_ErrorCode::CLOUD_DISK_LISTENER_ALREADY_REGISTERED);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEvents_007
+ * @tc.desc: Verify single FILE_OPEN type passes and result is returned.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_007, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
+    std::vector<OperationType> captured;
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
+                GetSyncFolderChangesWithEvents(testSyncFolderPath, _, _, _, _))
+        .WillOnce(DoAll(SaveArg<3>(&captured), Return(E_OK)));
+    CloudDisk_ChangesResult *changesResult = nullptr;
+    EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        syncFolderPath, 0, 10, &typeArray, &changesResult), CloudDisk_ErrorCode::CLOUD_DISK_OK);
+    EXPECT_EQ(captured.size(), 1U);
+    EXPECT_EQ(captured[0], OperationType::FILE_OPEN);
+    if (changesResult != nullptr) {
+        free(changesResult);
+    }
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
 #endif
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEvents_009
+ * @tc.desc: Verify operationTypes length exceeds OPERATION_MAX is rejected
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_009, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType types[] = {
+        CloudDisk_OperationType::CREATE, CloudDisk_OperationType::DELETE,
+        CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_TO,
+        CloudDisk_OperationType::CLOSE_WRITE, CloudDisk_OperationType::SYNC_FOLDER_INVALID,
+        CloudDisk_OperationType::OH_CLOUD_DISK_CLOSE_MODIFY, CloudDisk_OperationType::FILE_OPEN,
+        CloudDisk_OperationType::CREATE};
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 9};
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(), RegisterSyncFolderChangesWithEvents(_, _, _)).Times(0);
+    EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        syncFolderPath, &typeArray,
+        OnChangeDataCallback), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEvents_008
+ * @tc.desc: Verify operationTypes length exceeds OPERATION_MAX is rejected
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_008, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType types[] = {
+        CloudDisk_OperationType::CREATE, CloudDisk_OperationType::DELETE,
+        CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_TO,
+        CloudDisk_OperationType::CLOSE_WRITE, CloudDisk_OperationType::SYNC_FOLDER_INVALID,
+        CloudDisk_OperationType::OH_CLOUD_DISK_CLOSE_MODIFY, CloudDisk_OperationType::FILE_OPEN,
+        CloudDisk_OperationType::CREATE};
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 9};
+    CloudDisk_ChangesResult *changesResult = nullptr;
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(), GetSyncFolderChangesWithEvents(_, _, _, _, _)).Times(0);
+    EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        syncFolderPath, 0, 10, &typeArray, &changesResult), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEvents_009
+ * @tc.desc: Verify ConvertChangesResult fills ChangeData fields from manager return
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_009, TestSize.Level1)
+{
+    CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
+    EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
+                GetSyncFolderChangesWithEvents(testSyncFolderPath, _, _, _, _))
+        .WillOnce(Invoke([](const std::string &, uint64_t, uint64_t, const std::vector<OperationType> &,
+                            ChangesResult &output) {
+            output.nextUsn = 42;
+            output.isEof = true;
+            ChangeData cd;
+            cd.fileId = "file-123";
+            cd.parentFileId = "parent-456";
+            cd.relativePath = "/docs/test.txt";
+            cd.updateSequenceNumber = 10;
+            cd.operationType = OperationType::FILE_OPEN;
+            cd.size = 1024;
+            cd.mtime = 1700000000;
+            cd.timeStamp = 1700000001;
+            output.changesData.push_back(cd);
+            return E_OK;
+        }));
+    CloudDisk_ChangesResult *changesResult = nullptr;
+    EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        syncFolderPath, 0, 10, &typeArray, &changesResult), CloudDisk_ErrorCode::CLOUD_DISK_OK);
+    ASSERT_NE(changesResult, nullptr);
+    EXPECT_EQ(changesResult->nextUsn, 42U);
+    EXPECT_TRUE(changesResult->isEof);
+    EXPECT_EQ(changesResult->bufferLength, 1U);
+    EXPECT_EQ(changesResult->changeDatas[0].operationType, CloudDisk_OperationType::FILE_OPEN);
+    EXPECT_EQ(changesResult->changeDatas[0].size, 1024U);
+    EXPECT_EQ(changesResult->changeDatas[0].mtime, 1700000000U);
+    if (changesResult != nullptr) {
+        free(changesResult);
+    }
+    Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
+}
 
 } // namespace Test
 } // namespace FileManagement::CloudDiskService

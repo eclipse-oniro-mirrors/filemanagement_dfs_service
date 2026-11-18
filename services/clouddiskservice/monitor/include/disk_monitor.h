@@ -49,6 +49,7 @@ private:
     void HandleMoveTo(const std::string &filePath);
     void HandleModify(const std::string &filePath);
     void HandleCloseWrite(const std::string &filePath);
+    void HandleOpen(const std::string &filePath);
     void PostEvent(const EventInfo &eventInfo);
     ino_t GetFileInode(const std::string &filePath);
     // events filter

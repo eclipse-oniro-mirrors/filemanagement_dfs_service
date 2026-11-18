@@ -39,6 +39,10 @@ public:
                  int32_t(const std::string &, const std::shared_ptr<CloudDiskServiceCallbackTable> &));
     MOCK_METHOD1(UnregisterCallbackTable, int32_t(const std::string &));
     MOCK_METHOD4(GetSyncFolderChanges, int32_t(const std::string &, uint64_t, uint64_t, ChangesResult &));
+    MOCK_METHOD3(RegisterSyncFolderChangesWithEvents, int32_t(const std::string &,
+        const std::vector<OperationType> &, const std::shared_ptr<CloudDiskServiceCallback>));
+    MOCK_METHOD5(GetSyncFolderChangesWithEvents, int32_t(const std::string &, uint64_t, uint64_t,
+        const std::vector<OperationType> &, ChangesResult &));
     MOCK_METHOD3(SetFileSyncStates, int32_t(const std::string &,
         const std::vector<FileSyncState> &, std::vector<FailedList> &));
     MOCK_METHOD3(GetFileSyncStates, int32_t(const std::string &, const std::vector<std::string> &,

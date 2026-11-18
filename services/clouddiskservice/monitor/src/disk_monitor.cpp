@@ -31,7 +31,7 @@ constexpr uint32_t INIT_FLAGS = FAN_CLASS_NOTIF | FAN_REPORT_DFID_NAME | FAN_UNL
 constexpr uint32_t INIT_EVENT_FLAGS = O_RDONLY | O_LARGEFILE;
 constexpr uint32_t MARK_FLAGS = FAN_MARK_ADD | FAN_MARK_FILESYSTEM;
 constexpr uint64_t MARK_MASK = FAN_CREATE | FAN_DELETE | FAN_MOVED_FROM | FAN_MOVED_TO | FAN_ONDIR | FAN_CLOSE_WRITE
-    | FAN_MODIFY;
+    | FAN_MODIFY | FAN_OPEN;
 constexpr int32_t INVALID_SYNC_FOLDER = 0;
 constexpr uint32_t EVENTS_BUF_SIZE = 4096;
 const string MOUNT_PATH = "/data/service";
@@ -184,6 +184,9 @@ void DiskMonitor::EventProcess(struct fanotify_event_metadata *metaData, const s
     } else if (metaData->mask & FAN_MODIFY) {
         HandleModify(filePath);
     }
+    if ((metaData->mask & FAN_OPEN) && !(metaData->mask & FAN_ONDIR)) {
+        HandleOpen(filePath);
+    }
 }
 
 void DiskMonitor::HandleCreate(const string &filePath)
@@ -319,6 +322,16 @@ void DiskMonitor::HandleCloseWrite(const string &filePath)
     }
     
     auto eventInfo = EventInfo(userId_, syncFolderIndex, OperationType::CLOSE_WRITE, filePath);
+    PostEvent(eventInfo);
+}
+
+void DiskMonitor::HandleOpen(const string &filePath)
+{
+    auto [syncFolderIndex, isSyncFolder] = GetSyncFolderIndex(filePath);
+    if (syncFolderIndex == INVALID_SYNC_FOLDER || isSyncFolder) {
+        return;
+    }
+    auto eventInfo = EventInfo(userId_, syncFolderIndex, OperationType::FILE_OPEN, filePath);
     PostEvent(eventInfo);
 }
 

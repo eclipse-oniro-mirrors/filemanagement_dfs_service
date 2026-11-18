@@ -37,6 +37,7 @@ uint8_t GetLastMetaFileCreatePlaceholderState();
 void SetMetaFileRemoveResult(int32_t result);
 void SetMetaFileRenameOldResult(int32_t result);
 void SetMetaFileRenameNewResult(int32_t result);
+void SetMetaFileUpdateResult(int32_t result);
 uint8_t GetLastMetaFileRenameNewPlaceholderState();
 } // namespace OHOS::FileManagement::CloudDiskService
 
@@ -2282,6 +2283,134 @@ HWTEST_F(CloudDiskServiceLogFileTest, GenerateChangeDataTest014, TestSize.Level1
         GTEST_LOG_(INFO) << "GenerateChangeDataTest014 failed";
     }
     GTEST_LOG_(INFO) << "GenerateChangeDataTest014 end";
+}
+
+/**
+ * @tc.name: ProductLogForOperateTest009
+ * @tc.desc: Verify the ProductLogForOperate function with FILE_OPEN operation type
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, ProductLogForOperateTest009, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ProductLogForOperateTest009 start";
+    try {
+        shared_ptr<CloudDiskServiceMetaFile> parentMetaFile = make_shared<CloudDiskServiceMetaFile>(0, 0, 0);
+        string path = "path";
+        string name = "name";
+        struct LogGenerateCtx ctx;
+        OperationType operator1 = OperationType::FILE_OPEN;
+        struct stat statInfo;
+        statInfo.st_mode = S_IFREG;
+        statInfo.st_atime = 100;
+        statInfo.st_mtime = 200;
+        statInfo.st_size = 1024;
+        EXPECT_CALL(*insMock_, MockStat(_, _)).WillOnce(DoAll(SetArgPointee<1>(statInfo), Return(0)));
+        int32_t ret = logFile_->ProductLogForOperate(parentMetaFile, path, name, ctx, operator1);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "ProductLogForOperateTest009 failed";
+    }
+    GTEST_LOG_(INFO) << "ProductLogForOperateTest009 end";
+}
+
+/**
+ * @tc.name: ProduceOpenLogTest001
+ * @tc.desc: Verify ProduceOpenLog with dentry not exist (DoUpdate returns ENOENT, returns E_OK, ctx default)
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, ProduceOpenLogTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ProduceOpenLogTest001 start";
+    try {
+        SetMetaFileUpdateResult(ENOENT);
+        shared_ptr<CloudDiskServiceMetaFile> parentMetaFile = make_shared<CloudDiskServiceMetaFile>(0, 0, 0);
+        string path = "path";
+        string name = "name";
+        struct LogGenerateCtx ctx;
+        EXPECT_CALL(*insMock_, MockStat(_, _)).WillOnce(Return(0));
+        int32_t ret = logFile_->ProduceOpenLog(parentMetaFile, path, name, ctx);
+        EXPECT_EQ(ret, E_OK);
+        EXPECT_TRUE(ctx.recordId.empty());
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "ProduceOpenLogTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "ProduceOpenLogTest001 end";
+}
+
+/**
+ * @tc.name: ProduceOpenLogTest002
+ * @tc.desc: Verify ProduceOpenLog with DoUpdate failure returns -1
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, ProduceOpenLogTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ProduceOpenLogTest002 start";
+    try {
+        SetMetaFileUpdateResult(EIO);
+        shared_ptr<CloudDiskServiceMetaFile> parentMetaFile = make_shared<CloudDiskServiceMetaFile>(0, 0, 0);
+        string path = "path";
+        string name = "name";
+        struct LogGenerateCtx ctx;
+        EXPECT_CALL(*insMock_, MockStat(_, _)).WillOnce(Return(0));
+        int32_t ret = logFile_->ProduceOpenLog(parentMetaFile, path, name, ctx);
+        EXPECT_EQ(ret, -1);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "ProduceOpenLogTest002 failed";
+    }
+    GTEST_LOG_(INFO) << "ProduceOpenLogTest002 end";
+}
+
+/**
+ * @tc.name: ProduceOpenLogTest003
+ * @tc.desc: Verify ProduceOpenLog with DoUpdate success returns E_OK, ctx filled
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, ProduceOpenLogTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ProduceOpenLogTest003 start";
+    try {
+        shared_ptr<CloudDiskServiceMetaFile> parentMetaFile = make_shared<CloudDiskServiceMetaFile>(0, 0, 0);
+        string path = "path";
+        string name = "name";
+        struct LogGenerateCtx ctx;
+        EXPECT_CALL(*insMock_, MockStat(_, _)).WillOnce(Return(0));
+        int32_t ret = logFile_->ProduceOpenLog(parentMetaFile, path, name, ctx);
+        EXPECT_EQ(ret, E_OK);
+        EXPECT_EQ(ctx.recordId, "record-id");
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "ProduceOpenLogTest003 failed";
+    }
+    GTEST_LOG_(INFO) << "ProduceOpenLogTest003 end";
+}
+
+/**
+ * @tc.name: ProduceOpenLogTest004
+ * @tc.desc: Verify ProduceOpenLog with stat failure returns errno
+ * @tc.type: FUNC
+ */
+HWTEST_F(CloudDiskServiceLogFileTest, ProduceOpenLogTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "ProduceOpenLogTest004 start";
+    try {
+        shared_ptr<CloudDiskServiceMetaFile> parentMetaFile = make_shared<CloudDiskServiceMetaFile>(0, 0, 0);
+        string path = "path";
+        string name = "name";
+        struct LogGenerateCtx ctx;
+        EXPECT_CALL(*insMock_, MockStat(_, _)).WillOnce([&]() {
+            errno = ENOENT;
+            return 1;
+        });
+        int32_t ret = logFile_->ProduceOpenLog(parentMetaFile, path, name, ctx);
+        EXPECT_EQ(ret, ENOENT);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "ProduceOpenLogTest004 failed";
+    }
+    GTEST_LOG_(INFO) << "ProduceOpenLogTest004 end";
 }
 
 } // namespace OHOS::FileManagement::CloudDiskService::Test

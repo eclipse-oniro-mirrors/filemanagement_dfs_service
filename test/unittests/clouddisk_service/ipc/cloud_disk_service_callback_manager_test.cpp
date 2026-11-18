@@ -662,6 +662,99 @@ HWTEST_F(CloudDiskServiceCallbackManagerTest, ClearMapTest003, TestSize.Level1)
     }
     GTEST_LOG_(INFO) << "ClearMapTest003 end";
 }
+
+/**
+ * @tc.name: RegisterSyncFolderMapWithEventsTest001
+ * @tc.desc: Verify RegisterSyncFolderMapWithEvents with FILE_OPEN only
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceCallbackManagerTest, RegisterSyncFolderMapWithEventsTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterSyncFolderMapWithEventsTest001 start";
+    try {
+        CloudDiskServiceCallbackManager callbackManager;
+        string name = "com.test.example";
+        uint32_t folderIndex = 10;
+        sptr<ICloudDiskServiceCallback> callback = sptr(new CloudDiskServiceCallbackMock());
+        std::set<OperationType> types = {OperationType::FILE_OPEN};
+        bool ret = callbackManager.RegisterSyncFolderMapWithEvents(name, folderIndex, types, callback);
+        EXPECT_TRUE(ret);
+        EXPECT_EQ(callbackManager.callbackIndexMap_.size(), 1);
+        auto &inst = callbackManager.callbackIndexMap_[folderIndex];
+        EXPECT_TRUE(inst.isWithEvents);
+        EXPECT_EQ(inst.operationTypes.size(), 1);
+        ret = callbackManager.RegisterSyncFolderMapWithEvents(name, folderIndex, types, callback);
+        EXPECT_FALSE(ret);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RegisterSyncFolderMapWithEventsTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "RegisterSyncFolderMapWithEventsTest001 end";
+}
+
+/**
+ * @tc.name: RegisterSyncFolderMapWithEventsTest002
+ * @tc.desc: Verify legacy register then WithEvents register returns false
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceCallbackManagerTest, RegisterSyncFolderMapWithEventsTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterSyncFolderMapWithEventsTest002 start";
+    try {
+        CloudDiskServiceCallbackManager callbackManager;
+        string name = "com.test.example";
+        uint32_t folderIndex = 10;
+        sptr<ICloudDiskServiceCallback> callback = sptr(new CloudDiskServiceCallbackMock());
+        bool ret = callbackManager.RegisterSyncFolderMap(name, folderIndex, callback);
+        EXPECT_TRUE(ret);
+        std::set<OperationType> types = {OperationType::FILE_OPEN};
+        ret = callbackManager.RegisterSyncFolderMapWithEvents(name, folderIndex, types, callback);
+        EXPECT_FALSE(ret);
+        auto &inst = callbackManager.callbackIndexMap_[folderIndex];
+        EXPECT_FALSE(inst.isWithEvents);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "RegisterSyncFolderMapWithEventsTest002 failed";
+    }
+    GTEST_LOG_(INFO) << "RegisterSyncFolderMapWithEventsTest002 end";
+}
+
+/**
+ * @tc.name: LegacyRegisterFullEventTest
+ * @tc.desc: Verify legacy register instance excludes FILE_OPEN (no filtering except OPEN)
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceCallbackManagerTest, LegacyRegisterFullEventTest, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "LegacyRegisterFullEventTest start";
+    try {
+        CloudDiskServiceCallbackManager callbackManager;
+        string name = "com.test.example";
+        uint32_t folderIndex = 10;
+        sptr<CloudDiskServiceCallbackMock> callback = sptr(new CloudDiskServiceCallbackMock());
+        bool ret = callbackManager.RegisterSyncFolderMap(name, folderIndex, callback);
+        EXPECT_TRUE(ret);
+        auto &inst = callbackManager.callbackIndexMap_[folderIndex];
+        EXPECT_FALSE(inst.isWithEvents);
+        EXPECT_TRUE(inst.operationTypes.empty());
+        ChangeData cdOpen;
+        cdOpen.operationType = OperationType::FILE_OPEN;
+        ChangeData cdCreate;
+        cdCreate.operationType = OperationType::CREATE;
+        std::vector<ChangeData> input = {cdOpen, cdCreate};
+        callbackManager.OnChangeData(folderIndex, input);
+        EXPECT_TRUE(callback->onChangeDataCalled);
+        EXPECT_EQ(callback->lastChangeData.size(), 1u);
+        EXPECT_EQ(callback->lastChangeData[0].operationType, OperationType::CREATE);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "LegacyRegisterFullEventTest failed";
+    }
+    GTEST_LOG_(INFO) << "LegacyRegisterFullEventTest end";
+}
 } // namespace Test
 } // namespace FileManagement::CloudDiskService
 } // namespace OHOS
