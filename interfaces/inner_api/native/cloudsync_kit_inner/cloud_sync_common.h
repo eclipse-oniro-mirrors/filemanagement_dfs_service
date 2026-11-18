@@ -126,7 +126,10 @@ struct DowngradeProgress : public Parcelable {
         TEMPERATURE_LIMIT,
         USER_STOPPED,
         APP_UNLOAD,
-        OTHER_REASON
+        OTHER_REASON,
+        CONTENT_NOT_FOUND,
+        FREQUENT_USER_REQUESTS,
+        LOW_BATTERY
     };
     State state;
     StopReason stopReason;
