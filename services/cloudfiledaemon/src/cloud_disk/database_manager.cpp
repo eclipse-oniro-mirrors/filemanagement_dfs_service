@@ -37,10 +37,6 @@ shared_ptr<CloudDiskRdbStore> DatabaseManager::GetRdbStore(const string &bundleN
     std::unique_lock<std::shared_mutex> wLock(mapLock_, std::defer_lock);
 
     wLock.lock();
-    auto it = rdbMap_.find(key);
-    if (it != rdbMap_.end() && (it->second == nullptr || !it->second->IsRdbFileValid())) {
-        rdbMap_.erase(it);
-    }
     if (rdbMap_.find(key) == rdbMap_.end()) {
         rdbMap_[key] = make_shared<CloudDiskRdbStore>(bundleName, userId);
     }

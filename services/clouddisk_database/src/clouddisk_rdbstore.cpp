@@ -135,7 +135,6 @@ int32_t CloudDiskRdbStore::ReBuildDatabase(const string &databasePath)
         return errCode;
     }
     DatabaseRestore();
-    UpdateDbFileInfo();
     return E_OK;
 }
 
@@ -223,36 +222,7 @@ int32_t CloudDiskRdbStore::RdbInit()
     }
     
     if (errCode == NativeRdb::E_SQLITE_CORRUPT) { DatabaseRestore(); }
-    UpdateDbFileInfo();
     return E_OK;
-}
-
-void CloudDiskRdbStore::UpdateDbFileInfo()
-{
-    databasePath_ = config_.GetPath();
-    dbDev_ = 0;
-    dbIno_ = 0;
-    struct stat statbuf;
-    if (databasePath_.empty() || stat(databasePath_.c_str(), &statbuf) != 0) {
-        LOGE("stat failed, path=%{public}s, err=%{public}d", GetAnonyString(databasePath_).c_str(), errno);
-        return;
-    }
-    dbDev_ = static_cast<uint64_t>(statbuf.st_dev);
-    dbIno_ = static_cast<uint64_t>(statbuf.st_ino);
-}
-
-bool CloudDiskRdbStore::IsRdbFileValid()
-{
-    if (rdbStore_ == nullptr || databasePath_.empty()) {
-        LOGE("rdbStore_ is nullptr or databasePath_ is empty");
-        return false;
-    }
-    struct stat statbuf;
-    if (stat(databasePath_.c_str(), &statbuf) != 0) {
-        LOGE("stat failed, path=%{public}s, err=%{public}d", GetAnonyString(databasePath_).c_str(), errno);
-        return false;
-    }
-    return (dbDev_ == static_cast<uint64_t>(statbuf.st_dev) && dbIno_ == static_cast<uint64_t>(statbuf.st_ino));
 }
 
 string CloudDiskRdbStore::SelectDbDir(int32_t userId, const string& bundleName, const string& filemanager)

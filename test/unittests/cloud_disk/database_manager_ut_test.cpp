@@ -19,7 +19,6 @@
 #include "database_manager.h"
 #include "database_manager_mock.h"
 #include "dfs_error.h"
-#include "rdb_store.h"
 
 namespace OHOS::FileManagement::CloudDisk::Test {
 using namespace testing;
@@ -213,70 +212,5 @@ HWTEST_F(DatabaseManagerUtTest, IsBundleCloudSyncEnabledTest007, TestSize.Level1
         GTEST_LOG_(INFO) << "IsBundleCloudSyncEnabledTest007 failed";
     }
     GTEST_LOG_(INFO) << "IsBundleCloudSyncEnabledTest007 end";
-}
-
-/**
- * @tc.name: GetRdbStoreValidReuseTest001
- * @tc.desc: Verify GetRdbStore reuses the cached store when IsRdbFileValid returns true
- * @tc.type: FUNC
- */
-HWTEST_F(DatabaseManagerUtTest, GetRdbStoreValidReuseTest001, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "GetRdbStoreValidReuseTest001 start";
-    try {
-        string key = to_string(100) + "com.test.utvalidreuse";
-        auto store = make_shared<CloudDiskRdbStore>("com.test.utvalidreuse", 100);
-        store->rdbStore_.reset(reinterpret_cast<RdbStore *>(1), [](RdbStore *) {});
-        databaseManager_->rdbMap_[key] = store;
-        auto result = databaseManager_->GetRdbStore("com.test.utvalidreuse", 100);
-        EXPECT_EQ(result, store);
-    } catch (...) {
-        EXPECT_TRUE(false);
-        GTEST_LOG_(INFO) << "GetRdbStoreValidReuseTest001 failed";
-    }
-    GTEST_LOG_(INFO) << "GetRdbStoreValidReuseTest001 end";
-}
-
-/**
- * @tc.name: GetRdbStoreInvalidRecreateTest001
- * @tc.desc: Verify GetRdbStore erases and recreates when the cached store is invalid
- * @tc.type: FUNC
- */
-HWTEST_F(DatabaseManagerUtTest, GetRdbStoreInvalidRecreateTest001, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "GetRdbStoreInvalidRecreateTest001 start";
-    try {
-        string key = to_string(100) + "com.test.utinvalidrecreate";
-        auto store = make_shared<CloudDiskRdbStore>("com.test.utinvalidrecreate", 100);
-        // rdbStore_ is nullptr -> IsRdbFileValid() returns false -> entry erased and recreated
-        databaseManager_->rdbMap_[key] = store;
-        auto result = databaseManager_->GetRdbStore("com.test.utinvalidrecreate", 100);
-        EXPECT_NE(result, store);
-        EXPECT_NE(result, nullptr);
-    } catch (...) {
-        EXPECT_TRUE(false);
-        GTEST_LOG_(INFO) << "GetRdbStoreInvalidRecreateTest001 failed";
-    }
-    GTEST_LOG_(INFO) << "GetRdbStoreInvalidRecreateTest001 end";
-}
-
-/**
- * @tc.name: GetRdbStoreNullEntryTest001
- * @tc.desc: Verify GetRdbStore erases a null entry and creates a new store
- * @tc.type: FUNC
- */
-HWTEST_F(DatabaseManagerUtTest, GetRdbStoreNullEntryTest001, TestSize.Level1)
-{
-    GTEST_LOG_(INFO) << "GetRdbStoreNullEntryTest001 start";
-    try {
-        string key = to_string(100) + "com.test.utnullentry";
-        databaseManager_->rdbMap_[key] = nullptr;
-        auto result = databaseManager_->GetRdbStore("com.test.utnullentry", 100);
-        EXPECT_NE(result, nullptr);
-    } catch (...) {
-        EXPECT_TRUE(false);
-        GTEST_LOG_(INFO) << "GetRdbStoreNullEntryTest001 failed";
-    }
-    GTEST_LOG_(INFO) << "GetRdbStoreNullEntryTest001 end";
 }
 } // namespace OHOS::FileManagement::CloudDisk::Test
