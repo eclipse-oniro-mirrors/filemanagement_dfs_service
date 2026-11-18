@@ -95,10 +95,11 @@ HWTEST_F(PluginLoaderTest, LoadDecompressPlugin_001, TestSize.Level1)
 
 /**
  * @tc.name: LoadDecompressPlugin_002
- * @tc.desc: LoadDecompressPlugin uses std::call_once for thread-safe one-time
- *           initialization.  After the once_flag has fired, subsequent calls
- *           on any instance are no-ops and never invoke dlopen again.  A local
- *           instance with a sentinel handle verifies the no-repeat contract.
+ * @tc.desc: When decompressPluginHandle_ is already non-null the guard short-
+ *           circuits and dlopen is never called again (no-repeat load).  Uses
+ *           a local instance (private=public) with a sentinel handle so the
+ *           guard is exercised deterministically regardless of whether the
+ *           real so is installed.
  * @tc.type: FUNC
  * @tc.require: I5NJ2K
  */
@@ -115,10 +116,11 @@ HWTEST_F(PluginLoaderTest, LoadDecompressPlugin_002, TestSize.Level1)
 
 /**
  * @tc.name: LoadDecompressPlugin_003
- * @tc.desc: The destructor no longer dlcloses decompressPluginHandle_ (opened
- *           with RTLD_NODELETE, resident for process lifetime).  A local
- *           instance with null handles is allowed to destruct; reaching the
- *           assertion proves the cloudKit null guard prevents a crash.
+ * @tc.desc: The destructor must not dlclose decompressPluginHandle_.  A local
+ *           instance is given a sentinel (non-null, invalid) decompress handle
+ *           and a null cloud kit handle, then allowed to destruct.  Reaching
+ *           the assertion proves the sentinel was never passed to dlclose
+ *           (which would crash on an invalid pointer).
  * @tc.type: FUNC
  * @tc.require: I5NJ2K
  */
@@ -127,7 +129,7 @@ HWTEST_F(PluginLoaderTest, LoadDecompressPlugin_003, TestSize.Level1)
     GTEST_LOG_(INFO) << "LoadDecompressPlugin_003 Start";
     {
         PluginLoader loader;
-        loader.decompressPluginHandle_ = nullptr;
+        loader.decompressPluginHandle_ = reinterpret_cast<void *>(0x1);
         loader.cloudKitPulginHandle_ = nullptr;
     }
     EXPECT_TRUE(true);
