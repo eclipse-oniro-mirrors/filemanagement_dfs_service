@@ -38,6 +38,7 @@ const DENTRY_START: usize = 1 + 8;
 const NAMES_START: usize = DENTRY_START + SLOTS_PER_PAGE * DENTRY_SIZE;
 const VALID: u8 = 1;
 const INVALID: u8 = 2;
+const DENTRY_DELETED: u8 = 4;
 
 pub(super) type RecordId = [u8; 16];
 
@@ -128,7 +129,8 @@ impl CloudDiskServiceMetaFile {
         if slots == 0 || slots > SLOTS_PER_PAGE {
             return Err(io::Error::from_raw_os_error(libc::ENAMETOOLONG));
         }
-        let (mut page, position, inserted) = match self.find(name, hash)? {
+        let existing = self.find(hash, |page| page.find_by_name(name, hash))?;
+        let (mut page, position, inserted) = match existing {
             Some((page, position)) => (page, position, false),
             None => {
                 let (page, position) = self.reserve(hash, slots)?;
@@ -164,10 +166,14 @@ impl CloudDiskServiceMetaFile {
         })
     }
 
-    pub(super) fn invalidate(&self, name: &[u8], hash: u32) -> io::Result<Dentry> {
+    pub(super) fn invalidate(&self, name: &[u8], hash: u32, deleted: bool) -> io::Result<Dentry> {
         let (mut page, position) = self.lookup(name, hash)?;
         // Keep the slot occupied so older history records can still reference it.
-        page.entry_mut(position.slot)[0] = INVALID;
+        page.entry_mut(position.slot)[0] = if deleted {
+            INVALID | DENTRY_DELETED
+        } else {
+            INVALID
+        };
         self.write_page(&page, position.group)?;
         Ok(Dentry {
             position,
@@ -260,17 +266,12 @@ impl CloudDiskServiceMetaFile {
     }
 
     fn lookup_name_by_record_id(&self, id: &RecordId, hash: u32) -> io::Result<String> {
-        let groups = self.group_count()?;
-        for level in 0..LEVELS {
-            let first = bucket_start(level, hash);
-            if first >= groups {
-                break;
-            }
-            for group in first..(first + PAGES_PER_BUCKET).min(groups) {
-                let page = self.read_page(group)?;
-                if let Some(slot) = page.find_by_record_id(id) {
-                    return page.name(slot);
-                }
+        // Search all buckets for each flag: the same ID may also have earlier move records.
+        for flag in [VALID, DENTRY_DELETED, INVALID] {
+            if let Some((page, position)) =
+                self.find(hash, |page| page.find_by_record_id(id, hash, flag))?
+            {
+                return page.name(position.slot);
             }
         }
         Err(io::Error::from_raw_os_error(libc::ENOENT))
@@ -315,11 +316,15 @@ impl CloudDiskServiceMetaFile {
     }
 
     fn lookup(&self, name: &[u8], hash: u32) -> io::Result<(Page, DentryPosition)> {
-        self.find(name, hash)?
+        self.find(hash, |page| page.find_by_name(name, hash))?
             .ok_or_else(|| io::Error::from_raw_os_error(libc::ENOENT))
     }
 
-    fn find(&self, name: &[u8], hash: u32) -> io::Result<Option<(Page, DentryPosition)>> {
+    fn find(
+        &self,
+        hash: u32,
+        find_slot: impl Fn(&Page) -> Option<usize>,
+    ) -> io::Result<Option<(Page, DentryPosition)>> {
         let groups = self.group_count()?;
         for level in 0..LEVELS {
             let first = bucket_start(level, hash);
@@ -328,7 +333,7 @@ impl CloudDiskServiceMetaFile {
             }
             for group in first..(first + PAGES_PER_BUCKET).min(groups) {
                 let page = self.read_page(group)?;
-                if let Some(slot) = page.find(name, hash) {
+                if let Some(slot) = find_slot(&page) {
                     return Ok(Some((page, DentryPosition { group, slot })));
                 }
             }
@@ -384,7 +389,7 @@ impl Page {
             .map_err(|_| io::Error::from_raw_os_error(libc::EILSEQ))
     }
 
-    fn find_by_record_id(&self, id: &RecordId) -> Option<usize> {
+    fn find_by_record_id(&self, id: &RecordId, hash: u32, flag: u8) -> Option<usize> {
         let mut slot = 0;
         while slot < SLOTS_PER_PAGE {
             if !self.occupied(slot) {
@@ -392,16 +397,20 @@ impl Page {
                 continue;
             }
             let entry = self.entry(slot);
-            if entry[0] & VALID != 0 && entry[1..17] == *id {
+            let len = usize::from(u16::from_le_bytes([entry[23], entry[24]]));
+            if len != 0
+                && entry[0] & flag != 0
+                && entry[17..21] == hash.to_le_bytes()
+                && entry[1..17] == *id
+            {
                 return Some(slot);
             }
-            let len = usize::from(u16::from_le_bytes([entry[23], entry[24]]));
             slot += slots_for(len).max(1);
         }
         None
     }
 
-    fn find(&self, name: &[u8], hash: u32) -> Option<usize> {
+    fn find_by_name(&self, name: &[u8], hash: u32) -> Option<usize> {
         let mut slot = 0;
         while slot < SLOTS_PER_PAGE {
             if !self.occupied(slot) {

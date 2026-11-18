@@ -17,9 +17,13 @@
 
 mod callback_manager;
 pub(crate) mod file;
+mod hydration;
+mod hydration_temp;
+pub(crate) use hydration_temp::clean_orphans as clean_orphan_hydration_files;
 mod progress_manager;
+pub(crate) mod system_accessor;
 mod task_manager;
 
 pub(crate) use callback_manager::PlaceholderCallbackManager;
-pub(crate) use progress_manager::PlaceholderProgressManager;
+pub(crate) use progress_manager::{HydrateProgressOwner, PlaceholderProgressManager};
 pub(crate) use task_manager::{PlaceholderTaskCancelReason, PlaceholderTaskManager};

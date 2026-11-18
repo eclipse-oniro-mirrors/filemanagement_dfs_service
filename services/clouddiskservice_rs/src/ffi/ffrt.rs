@@ -34,6 +34,14 @@ pub(crate) fn spawn(task: impl FnOnce() + Send + 'static) -> Task {
     Task { finished: receiver }
 }
 
+pub(crate) fn submit_progress_task(task: impl FnOnce() + Send + 'static) {
+    bridge::submit_progress_task(Box::new(TaskClosure {
+        inner: Some(Box::new(task)),
+    }));
+}
+
+pub(crate) use bridge::drain_progress_tasks;
+
 pub(crate) fn submit_task_with_handle(
     task: impl FnOnce() + Send + 'static,
 ) -> cxx::UniquePtr<FfrtTaskHandle> {
@@ -115,6 +123,11 @@ mod bridge {
 
         #[rust_name = "submit_task"]
         fn SubmitTask(task: Box<TaskClosure>);
+
+        #[rust_name = "submit_progress_task"]
+        fn SubmitProgressTask(task: Box<TaskClosure>);
+        #[rust_name = "drain_progress_tasks"]
+        fn DrainProgressTasks();
 
         #[rust_name = "submit_task_with_handle"]
         fn SubmitTaskWithHandle(task: Box<TaskClosure>) -> UniquePtr<FfrtTaskHandle>;

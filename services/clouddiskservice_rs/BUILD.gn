@@ -12,14 +12,26 @@
 # limitations under the License.
 
 import("//build/ohos.gni")
+import("//foundation/filemanagement/dfs_service/distributedfile.gni")
+
+config("clouddiskservice_rs_size") {
+  rustflags = [
+    "-Copt-level=z",
+    "-Ccodegen-units=1",
+    "-Zshare-generics=no",
+  ]
+}
 
 rust_cxx("clouddiskservice_ffi_cxx_gen") {
   sources = [
     "src/ffi/account.rs",
+    "src/ffi/callback_remote.rs",
     "src/ffi/ffrt.rs",
-    "src/ffi/sync_folder_manager.rs",
     "src/ffi/utils.rs",
   ]
+  if (dfs_service_feature_enable_cloud_disk) {
+    sources += [ "src/ffi/sync_folder_manager.rs" ]
+  }
 }
 
 ohos_static_library("clouddiskservice_ffi") {
@@ -35,32 +47,41 @@ ohos_static_library("clouddiskservice_ffi") {
 
   sources = [
     "cxx/src/account_status_listener.cpp",
+    "cxx/src/callback_remote.cpp",
     "cxx/src/ffrt_bridge.cpp",
-    "cxx/src/sync_folder_manager.cpp",
     "cxx/src/utils.cpp",
   ]
   sources += get_target_outputs(":clouddiskservice_ffi_cxx_gen")
   include_dirs = [
+    clouddiskservice_kit_inner,
     "cxx/include",
     "${target_gen_dir}/src/ffi",
   ]
   deps = [ ":clouddiskservice_ffi_cxx_gen" ]
   external_deps = [
     "access_token:libaccesstoken_sdk",
+    "access_token:libtokenid_sdk",
     "c_utils:utils",
     "ffrt:libffrt",
     "ipc:ipc_single",
     "os_account:os_account_innerkits",
     "rust_cxx:cxx_cppdeps",
-    "user_file_service:cloud_disk_manager_kit",
   ]
+
+  if (dfs_service_feature_enable_cloud_disk) {
+    sources += [ "cxx/src/sync_folder_manager.cpp" ]
+    external_deps += [ "user_file_service:cloud_disk_manager_kit" ]
+  }
+
   subsystem_name = "filemanagement"
   part_name = "dfs_service"
 }
 
 # Independent server framework: no dependency on either C++ service sources
 # or the reference clouddiskservice_rust implementation.
-ohos_rust_shared_library("clouddiskservice_sa_rs") {
+# SAFWK loads the SA through its .init_array entry; no Rust crate links its API.
+ohos_rust_shared_ffi("clouddiskservice_sa_rs") {
+  configs = [ ":clouddiskservice_rs_size" ]
   sanitize = {
     integer_overflow = true
     ubsan = true
@@ -78,14 +99,16 @@ ohos_rust_shared_library("clouddiskservice_sa_rs") {
     "src/common/parcel.rs",
     "src/common/types.rs",
     "src/ffi/account.rs",
+    "src/ffi/callback_remote.rs",
     "src/ffi/ffrt.rs",
     "src/ffi/mod.rs",
-    "src/ffi/sync_folder_manager.rs",
     "src/ffi/utils.rs",
     "src/framework/ability.rs",
     "src/framework/callback_proxy.rs",
+    "src/framework/callback_table_proxy.rs",
     "src/framework/interface.rs",
     "src/framework/mod.rs",
+    "src/framework/progress_callback_proxy.rs",
     "src/framework/stub.rs",
     "src/lib.rs",
     "src/logging.rs",
@@ -93,8 +116,11 @@ ohos_rust_shared_library("clouddiskservice_sa_rs") {
     "src/monitor/mod.rs",
     "src/placeholder/callback_manager.rs",
     "src/placeholder/file.rs",
+    "src/placeholder/hydration.rs",
+    "src/placeholder/hydration_temp.rs",
     "src/placeholder/mod.rs",
     "src/placeholder/progress_manager.rs",
+    "src/placeholder/system_accessor.rs",
     "src/placeholder/task_manager.rs",
     "src/service.rs",
     "src/sync_folder_manager/cleanup.rs",
@@ -118,6 +144,7 @@ ohos_rust_shared_library("clouddiskservice_sa_rs") {
   deps = [ ":clouddiskservice_ffi" ]
   external_deps = [
     "access_token:libaccesstoken_sdk",
+    "access_token:libtokenid_sdk",
     "e2fsprogs:libext2_uuid",
     "ffrt:libffrt",
     "hilog:hilog_rust",
@@ -127,8 +154,14 @@ ohos_rust_shared_library("clouddiskservice_sa_rs") {
     "rust_libc:lib",
     "safwk:system_ability_fwk_rust",
     "samgr:samgr_rust",
-    "user_file_service:cloud_disk_manager_kit",
   ]
+
+  if (dfs_service_feature_enable_cloud_disk) {
+    features = [ "cloud_disk" ]
+    sources += [ "src/ffi/sync_folder_manager.rs" ]
+    external_deps += [ "user_file_service:cloud_disk_manager_kit" ]
+  }
+
   subsystem_name = "filemanagement"
   part_name = "dfs_service"
 }

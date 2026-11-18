@@ -42,6 +42,8 @@ private:
 std::unique_ptr<FfrtTimer> StartTimer(uint64_t intervalMs, rust::Fn<void()> callback);
 
 void SubmitTask(rust::Box<TaskClosure> task);
+void SubmitProgressTask(rust::Box<TaskClosure> task);
+void DrainProgressTasks();
 std::unique_ptr<ffrt::task_handle> SubmitTaskWithHandle(rust::Box<TaskClosure> task);
 void SubmitTaskAfter(rust::Box<TaskClosure> task, const ffrt::task_handle &dependency);
 std::unique_ptr<ffrt::task_handle> CloneTaskHandle(const ffrt::task_handle &handle);

@@ -15,10 +15,8 @@
 
 //! Rust server framework for CloudDiskService (SA 5207).
 //!
-//! Existing C++ clients keep their IDL-generated proxy. This crate implements
-//! the same wire protocol and dispatches to the business entry points in
-//! `service`. Sync-folder registration and unregistration are implemented; other
-//! points still provide synthetic IPC verification replies.
+//! The IPC framework receives requests from the C++ IDL-generated proxy and
+//! dispatches sync-folder, placeholder and hydration operations to `service`.
 
 #[macro_use]
 mod logging;

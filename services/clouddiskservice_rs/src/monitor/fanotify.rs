@@ -28,7 +28,6 @@ const INFO_HEADER_LEN: usize = 4;
 const HANDLE_OFFSET: usize = INFO_HEADER_LEN + 8; // fsid follows the info header
 const HANDLE_HEADER_LEN: usize = 8;
 const MAX_HANDLE_SIZE: usize = 128;
-const POLL_TIMEOUT_MS: i32 = 200;
 
 extern "C" {
     fn open_by_handle_at(mount_fd: i32, handle: *mut FileHandle, flags: i32) -> i32;
@@ -44,10 +43,11 @@ struct FileHandle {
 pub(super) struct Fanotify {
     events: File,
     mount: File,
+    stop_reader: OwnedFd,
 }
 
 impl Fanotify {
-    pub(super) fn new() -> io::Result<Self> {
+    pub(super) fn new() -> io::Result<(Self, OwnedFd)> {
         let mount = File::open(MOUNT_PATH)?;
         let init_flags = libc::FAN_CLASS_NOTIF
             | libc::FAN_REPORT_DFID_NAME
@@ -79,24 +79,47 @@ impl Fanotify {
         if result == -1 {
             return Err(io::Error::last_os_error());
         }
-        Ok(Self { events, mount })
+        let mut pipe = [-1; 2];
+        // SAFETY: pipe contains two writable descriptor slots; both become owned on success.
+        if unsafe { libc::pipe2(pipe.as_mut_ptr(), libc::O_CLOEXEC | libc::O_NONBLOCK) } < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let stop_reader = owned_fd(pipe[0])?;
+        let stop_writer = owned_fd(pipe[1])?;
+        Ok((
+            Self {
+                events,
+                mount,
+                stop_reader,
+            },
+            stop_writer,
+        ))
     }
 
     pub(super) fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        let mut fd = libc::pollfd {
-            fd: self.events.as_raw_fd(),
-            events: libc::POLLIN,
-            revents: 0,
-        };
-        // SAFETY: The pollfd is writable and its fd is owned by self for this call.
-        let result = unsafe { libc::poll(&mut fd, 1, POLL_TIMEOUT_MS) };
+        let mut fds = [
+            libc::pollfd {
+                fd: self.events.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: self.stop_reader.as_raw_fd(),
+                // POLLHUP is reported even without requesting readable data.
+                events: 0,
+                revents: 0,
+            },
+        ];
+        // SAFETY: fds is writable and both descriptors stay open throughout poll.
+        let result = unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, -1) };
         if result < 0 {
             return Err(io::Error::last_os_error());
         }
-        if result == 0 {
+        if fds[1].revents & libc::POLLHUP != 0 {
             return Ok(0);
         }
-        if fd.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
+        if (fds[0].revents | fds[1].revents) & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0
+        {
             return Err(io::Error::from_raw_os_error(libc::EIO));
         }
         self.events.read(buffer)

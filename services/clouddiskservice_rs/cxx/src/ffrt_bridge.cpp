@@ -52,6 +52,27 @@ std::unique_ptr<FfrtTimer> StartTimer(uint64_t intervalMs, rust::Fn<void()> call
     return timer;
 }
 
+namespace {
+ffrt::queue &GetProgressQueue()
+{
+    static ffrt::queue queue("clouddisk_progress");
+    return queue;
+}
+} // namespace
+
+void SubmitProgressTask(rust::Box<TaskClosure> task)
+{
+    auto closure = std::make_shared<rust::Box<TaskClosure>>(std::move(task));
+    GetProgressQueue().submit([closure] { (*closure)->run(); });
+}
+
+void DrainProgressTasks()
+{
+    auto &queue = GetProgressQueue();
+    auto barrier = queue.submit_h([] {});
+    queue.wait(barrier);
+}
+
 void SubmitTask(rust::Box<TaskClosure> task)
 {
     // ffrt::submit takes std::function, which requires a copyable callable.

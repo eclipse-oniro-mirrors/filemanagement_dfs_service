@@ -20,21 +20,24 @@ mod fanotify;
 use std::collections::HashSet;
 use std::fs;
 use std::io;
+use std::os::fd::OwnedFd;
 use std::os::unix::{ffi::OsStrExt, fs::MetadataExt};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use self::fanotify::Fanotify;
 use crate::common::error_codes::E_OK;
-use crate::ffi::{self, ffrt};
+use crate::ffi::ffrt;
+use crate::service::CloudDiskService;
 use crate::sync_folder_manager::CloudDiskSyncFolder;
-use crate::sync_folder_service::{
-    CloudDiskServiceCallbackManager, CloudDiskServiceLogFile, LogFileMgr,
-};
+use crate::sync_folder_service::{CloudDiskServiceLogFile, LogFileMgr};
+
+const BLOCKED_PREFIXES: [&[u8]; 4] = [b"/.Trash", b"/.Recent", b"/.thumbs", b"/HO_DATA_EXT_MISC"];
 
 struct Worker {
     running: Arc<AtomicBool>,
+    stop_writer: OwnedFd,
     task: ffrt::Task,
 }
 
@@ -51,19 +54,26 @@ impl DiskMonitor {
     }
 
     pub(crate) fn start_monitor(&self, user_id: i32) -> bool {
-        let mut worker = self.worker.lock().unwrap_or_else(|err| err.into_inner());
-        if worker
-            .as_ref()
-            .is_some_and(|worker| worker.running.load(Ordering::Acquire))
-        {
-            info!("[StartMonitor] monitor is already running");
-            return false;
-        }
-        if let Some(old) = worker.take() {
-            old.task.wait();
-        }
-        let events = match Fanotify::new() {
-            Ok(events) => events,
+        let mut worker = loop {
+            let mut worker = self.worker.lock().unwrap_or_else(|err| err.into_inner());
+            if CloudDiskSyncFolder::get_instance().get_sync_folder_size() == 0 {
+                return false;
+            }
+            if worker
+                .as_ref()
+                .is_some_and(|w| w.running.load(Ordering::Acquire))
+            {
+                info!("[StartMonitor] monitor is already running");
+                return false;
+            }
+            let Some(old) = worker.take() else {
+                break worker;
+            };
+            drop(worker);
+            Self::stop_worker(Some(old));
+        };
+        let (events, stop_writer) = match Fanotify::new() {
+            Ok(monitor) => monitor,
             Err(err) => {
                 error!("[StartMonitor] fanotify setup failed, user_id={}, error={}", @public(user_id), @public(err));
                 return false;
@@ -76,7 +86,11 @@ impl DiskMonitor {
             task_running.store(false, Ordering::Release);
             info!("[DiskMonitor] worker exited, user_id={}", @public(user_id));
         });
-        *worker = Some(Worker { running, task });
+        *worker = Some(Worker {
+            running,
+            stop_writer,
+            task,
+        });
         info!("[StartMonitor] started, user_id={}", @public(user_id));
         true
     }
@@ -87,9 +101,41 @@ impl DiskMonitor {
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .take();
+        Self::stop_worker(worker);
+    }
+
+    pub(crate) fn stop_if_idle(&self) -> bool {
+        let mut worker = self.worker.lock().unwrap_or_else(|err| err.into_inner());
+        let count = CloudDiskSyncFolder::get_instance().get_sync_folder_size();
+        info!("[UnloadSa] sync_folder_count={}", @public(count));
+        if count != 0 {
+            return false;
+        }
+        let old = worker.take();
+        drop(worker);
+        Self::stop_worker(old);
+        true
+    }
+
+    fn unload_if_idle_from_worker(&self, running: &AtomicBool) {
+        let worker = self.worker.lock().unwrap_or_else(|err| err.into_inner());
+        if worker
+            .as_ref()
+            .is_some_and(|w| std::ptr::eq(w.running.as_ref(), running))
+            && CloudDiskSyncFolder::get_instance().get_sync_folder_size() == 0
+        {
+            // Signal our own exit. Queue the unload before OnStop can take this worker
+            // and perform its final cancellation. Other callers can then safely join us.
+            running.store(false, Ordering::Release);
+            CloudDiskService::get_instance().delay_unload_sa();
+        }
+    }
+
+    fn stop_worker(worker: Option<Worker>) {
         if let Some(worker) = worker {
             worker.running.store(false, Ordering::Release);
-            // The worker owns both descriptors; it drops them before signalling completion.
+            // Closing the only writer wakes poll even if the collector has not entered it yet.
+            drop(worker.stop_writer);
             worker.task.wait();
             info!("[StopMonitor] stopped");
         }
@@ -99,8 +145,10 @@ impl DiskMonitor {
 fn collect_events(mut events: Fanotify, user_id: i32, running: &AtomicBool) {
     let mut buffer = [0; 4096];
     let mut changes = Changes::default();
+    let docs = format!("/data/service/el2/{user_id}/hmdfs/account/files/Docs");
     while running.load(Ordering::Acquire) {
         let len = match events.read(&mut buffer) {
+            Ok(0) => break,
             Ok(len) => len,
             Err(err)
                 if matches!(
@@ -119,7 +167,7 @@ fn collect_events(mut events: Fanotify, user_id: i32, running: &AtomicBool) {
             if !running.load(Ordering::Acquire) {
                 break;
             }
-            let tracked = match_folder(user_id, path);
+            let tracked = match_folder(user_id, docs.as_bytes(), path);
             if let Some(item) = &tracked {
                 info!("[DiskMonitorEvent] user_id={}, index={}, mask={}, path={}",
                     @public(user_id), @public(item.index), @public(mask), @private(item.path.display()));
@@ -137,13 +185,11 @@ struct TrackedPath {
     file: Arc<CloudDiskServiceLogFile>,
 }
 
-fn match_folder(user_id: i32, path: PathBuf) -> Option<TrackedPath> {
-    let docs = format!("/data/service/el2/{user_id}/hmdfs/account/files/Docs");
-    let bytes = path.as_os_str().as_bytes();
-    if !bytes.starts_with(docs.as_bytes())
-        || ["/.Trash", "/.Recent", "/.thumbs", "/HO_DATA_EXT_MISC"]
-            .iter()
-            .any(|blocked| bytes.starts_with(format!("{docs}{blocked}").as_bytes()))
+fn match_folder(user_id: i32, docs: &[u8], path: PathBuf) -> Option<TrackedPath> {
+    let suffix = path.as_os_str().as_bytes().strip_prefix(docs)?;
+    if BLOCKED_PREFIXES
+        .iter()
+        .any(|prefix| suffix.starts_with(prefix))
     {
         return None;
     }
@@ -179,34 +225,26 @@ impl TrackedPath {
             self.file.record_delete(&self.path);
             return;
         }
-        let docs = PathBuf::from(format!(
-            "/data/service/el2/{}/hmdfs/account/files/Docs",
-            self.user_id
-        ));
-        let Ok(relative) = self.path.strip_prefix(&docs) else {
+        let Some(path) = self.path.to_str() else {
             return;
         };
-        let sandbox = Path::new("/storage/Users/currentUser").join(relative);
-        let Some(sandbox) = sandbox.to_str() else {
+        let logs = LogFileMgr::get_instance();
+        let Some(guard) = logs.begin_invalid_root(&self.file) else {
             return;
         };
         self.file.notify_sync_folder_invalid();
-        let folder = CloudDiskSyncFolder::get_instance().get_sync_folder_value_by_index(self.index);
-        let ret = ffi::sync_folder_manager::unregister_for_sa(sandbox);
+        // Fanotify already knows the owning user. This task has no IPC caller identity.
+        let service = CloudDiskService::get_instance();
+        let ret = service.unregister_for_sa(path, self.user_id);
         if ret != E_OK {
             error!("[DiskMonitor] unregister invalid root failed, index={}, ret={}", @public(self.index), @public(ret));
             return;
         }
-        CloudDiskSyncFolder::get_instance().delete_sync_folder(self.index);
-        if let Some(folder) = folder {
-            CloudDiskServiceCallbackManager::get_instance()
-                .unregister_sync_folder_map(&folder.bundle_name, self.index);
+        let ret = guard.retire_cache();
+        if ret != E_OK {
+            error!("[DiskMonitor] retire invalid root cache failed, index={}, ret={}", @public(self.index), @public(ret));
         }
-        LogFileMgr::get_instance().unregister_sync_folder(self.user_id, self.index);
-        if CloudDiskSyncFolder::get_instance().get_sync_folder_size() == 0 {
-            // Exit this worker directly; waiting on its own task would deadlock.
-            running.store(false, Ordering::Release);
-        }
+        DiskMonitor::get_instance().unload_if_idle_from_worker(running);
         info!("[DiskMonitor] invalid root removed, index={}", @public(self.index));
     }
 

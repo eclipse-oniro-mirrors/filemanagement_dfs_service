@@ -22,13 +22,13 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::Mutex;
 
-const SYNC_STATE: &CStr = xattr_name(b"user.clouddisk.filesyncstate\0");
-const PLACEHOLDER_COUNT: &CStr = xattr_name(b"user.clouddisk.phcount\0");
+pub(crate) const SYNC_STATE: &CStr = xattr_name(b"user.clouddisk.filesyncstate\0");
+pub(crate) const PLACEHOLDER_COUNT: &CStr = xattr_name(b"user.clouddisk.phcount\0");
 const STATE_SHIFT: u8 = 5;
 const SYNC_STATE_MASK: u8 = 0x1f;
 pub(crate) const NONE: u8 = 0;
 pub(crate) const UNHYDRATED: u8 = 1;
-const PARTIALLY_HYDRATED: u8 = 2;
+pub(crate) const PARTIALLY_HYDRATED: u8 = 2;
 pub(crate) const FULLY_HYDRATED: u8 = 3;
 
 // Corresponds to C++ GetPlaceholderStateMutex: both parts of the shared state
@@ -82,10 +82,14 @@ pub(crate) fn set_new_placeholder_state(fd: BorrowedFd<'_>) -> io::Result<()> {
 }
 
 pub(crate) fn placeholder_state(fd: BorrowedFd<'_>) -> io::Result<u8> {
+    read_placeholder_state(fd, true)
+}
+
+pub(crate) fn read_placeholder_state(fd: BorrowedFd<'_>, missing_as_zero: bool) -> io::Result<u8> {
     let _guard = FILE_SYNC_STATE_MUTEX
         .lock()
         .unwrap_or_else(|err| err.into_inner());
-    Ok(read_fd_state(fd)? >> STATE_SHIFT)
+    Ok(read_fd_state(fd, missing_as_zero)? >> STATE_SHIFT)
 }
 
 pub(crate) fn set_placeholder_state(fd: BorrowedFd<'_>, state: u8) -> io::Result<u8> {
@@ -95,19 +99,19 @@ pub(crate) fn set_placeholder_state(fd: BorrowedFd<'_>, state: u8) -> io::Result
     let _guard = FILE_SYNC_STATE_MUTEX
         .lock()
         .unwrap_or_else(|err| err.into_inner());
-    let old = read_fd_state(fd)?;
+    let old = read_fd_state(fd, true)?;
     let new = (state << STATE_SHIFT) | (old & SYNC_STATE_MASK);
     set_fd_xattr(fd, SYNC_STATE, &[new])?;
     Ok(old >> STATE_SHIFT)
 }
 
 // Callers hold FILE_SYNC_STATE_MUTEX across placeholder-state reads and writes.
-fn read_fd_state(fd: BorrowedFd<'_>) -> io::Result<u8> {
+fn read_fd_state(fd: BorrowedFd<'_>, missing_as_zero: bool) -> io::Result<u8> {
     let mut state = [0];
     match get_fd_xattr(fd, SYNC_STATE, &mut state) {
         Ok(1) => Ok(state[0]),
         Ok(_) => Err(io::Error::from_raw_os_error(libc::EINVAL)),
-        Err(err) if err.raw_os_error() == Some(libc::ENODATA) => Ok(0),
+        Err(err) if missing_as_zero && err.raw_os_error() == Some(libc::ENODATA) => Ok(0),
         Err(err) => Err(err),
     }
 }

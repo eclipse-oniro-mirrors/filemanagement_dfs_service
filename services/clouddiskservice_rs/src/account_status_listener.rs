@@ -120,7 +120,7 @@ impl AccountStatusCallback {
                 @public(switched), @public(user_id), @public(current_user_id));
             let unload = if switched {
                 *current = Some(user_id);
-                Self::handle_user_switched(user_id)
+                Self::handle_user_switched(current_user_id, user_id)
             } else {
                 user_id == current_user_id
             };
@@ -136,7 +136,7 @@ impl AccountStatusCallback {
         }
     }
 
-    fn handle_user_switched(user_id: i32) -> bool {
+    fn handle_user_switched(previous_user_id: i32, user_id: i32) -> bool {
         // Clear the registry first so the monitor cannot reopen an old user's cache.
         CloudDiskSyncFolder::get_instance().clear_map();
         CloudDiskServiceSyncFolder::cloud_disk_service_clear_all();
@@ -145,6 +145,10 @@ impl AccountStatusCallback {
         PlaceholderTaskManager::get_instance()
             .cancel_all_tasks(PlaceholderTaskCancelReason::UserSwitch);
         PlaceholderTaskManager::get_instance().clear_cancellation_records();
+        if previous_user_id != user_id {
+            crate::placeholder::clean_orphan_hydration_files(previous_user_id);
+        }
+        crate::placeholder::clean_orphan_hydration_files(user_id);
         PlaceholderProgressManager::get_instance().drain();
         PlaceholderProgressManager::get_instance().clear();
         CloudDiskServiceCallbackManager::get_instance().clear_map();

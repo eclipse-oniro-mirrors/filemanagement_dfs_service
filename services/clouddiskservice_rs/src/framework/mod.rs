@@ -17,9 +17,13 @@
 
 mod ability;
 mod callback_proxy;
+mod callback_table_proxy;
 mod interface;
+mod progress_callback_proxy;
 mod stub;
 
 pub(crate) use ability::{register_cloud_disk_service, AbilityHandler, CLOUD_DISK_SERVICE_SA_ID};
 pub(crate) use callback_proxy::CloudDiskServiceCallbackProxy;
+pub(crate) use callback_table_proxy::{CallbackRequest, CANCEL_FETCH_DATA, FETCH_DATA};
 pub(crate) use interface::ICloudDiskService;
+pub(crate) use progress_callback_proxy::send_progress;
