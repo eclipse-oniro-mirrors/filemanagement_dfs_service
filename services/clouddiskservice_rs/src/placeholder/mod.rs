@@ -13,9 +13,10 @@
  * limitations under the License.
  */
 
-//! Placeholder module skeleton; business logic will be implemented separately.
+//! Placeholder file operations and lifecycle managers.
 
 mod callback_manager;
+pub(crate) mod file;
 mod progress_manager;
 mod task_manager;
 

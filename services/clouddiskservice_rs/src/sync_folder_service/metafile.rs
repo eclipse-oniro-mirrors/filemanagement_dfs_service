@@ -33,6 +33,7 @@ const PAGES_PER_BUCKET: u64 = 2;
 const SLOTS_PER_PAGE: usize = 60;
 const BYTES_PER_NAME_SLOT: usize = 16;
 const DENTRY_SIZE: usize = 52;
+const DENTRY_PLACEHOLDER_OFFSET: usize = 49;
 const DENTRY_START: usize = 1 + 8;
 const NAMES_START: usize = DENTRY_START + SLOTS_PER_PAGE * DENTRY_SIZE;
 const VALID: u8 = 1;
@@ -152,7 +153,7 @@ impl CloudDiskServiceMetaFile {
         entry[1..17].copy_from_slice(&id);
         entry[17..21].copy_from_slice(&hash.to_le_bytes());
         entry[23..25].copy_from_slice(&(name.len() as u16).to_le_bytes());
-        entry[49] = if placeholder <= 3 { placeholder } else { 0 };
+        entry[DENTRY_PLACEHOLDER_OFFSET] = if placeholder <= 3 { placeholder } else { 0 };
         update_metadata(entry, metadata);
         self.write_page(&page, position.group)?;
         Ok(Dentry {
@@ -186,6 +187,13 @@ impl CloudDiskServiceMetaFile {
             old_placeholder: page.placeholder(position.slot),
             inserted: false,
         })
+    }
+
+    pub(super) fn set_placeholder_state(&self, name: &[u8], state: u8) -> io::Result<()> {
+        let hash = sync_folder_manager::dentry_hash(name);
+        let (mut page, position) = self.lookup(name, hash)?;
+        page.entry_mut(position.slot)[DENTRY_PLACEHOLDER_OFFSET] = state;
+        self.write_page(&page, position.group)
     }
 
     pub(super) fn lookup_by_offset(&self, position: DentryPosition) -> io::Result<MetaBase> {
@@ -463,7 +471,7 @@ impl Page {
     }
 
     fn placeholder(&self, slot: usize) -> u8 {
-        let state = self.entry(slot)[49];
+        let state = self.entry(slot)[DENTRY_PLACEHOLDER_OFFSET];
         if state <= 3 {
             state
         } else {

@@ -92,6 +92,7 @@ ohos_rust_shared_library("clouddiskservice_sa_rs") {
     "src/monitor/fanotify.rs",
     "src/monitor/mod.rs",
     "src/placeholder/callback_manager.rs",
+    "src/placeholder/file.rs",
     "src/placeholder/mod.rs",
     "src/placeholder/progress_manager.rs",
     "src/placeholder/task_manager.rs",
