@@ -271,9 +271,9 @@ string FileSizeUtils::Decode(const string &uri)
             std::string inputStr(uri.substr(index + 1, encodeLen));
             char *endPtr = nullptr;
             long decodeVal = strtol(inputStr.c_str(), &endPtr, DECODE_FORMAT_NUM);
-            if(endPtr == nullptr || *endPtr != '\0' || decodeVal < 0 || decodeVal > UCHAR_MAX){
+            if (endPtr == nullptr || *endPtr != '\0' || decodeVal < 0 || decodeVal > UCHAR_MAX) {
                 LOGW("Decode strtol failed, keep original char");
-                outPutStr +=uri[index];
+                outPutStr += uri[index];
                 index++;
                 continue;
             }
