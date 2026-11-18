@@ -442,6 +442,54 @@ HWTEST_F(DaemonStubTest, DaemonStubHandlePrepareSessionTest002, TestSize.Level0)
 }
 
 /**
+ * @tc.name: DaemonStubHandlePrepareSessionTest_CopyPathInvalid_001
+ * @tc.desc: Verify HandlePrepareSession rejects malicious info.copyPath via IsPathValid
+ * @tc.type: FUNC
+ * @tc.require: I7M6L1
+ */
+HWTEST_F(DaemonStubTest, DaemonStubHandlePrepareSessionTest_CopyPathInvalid_001, TestSize.Level0)
+{
+    GTEST_LOG_(INFO) << "DaemonStubHandlePrepareSessionTest_CopyPathInvalid_001 Start";
+    MessageParcel data;
+    MessageParcel reply;
+    g_checkUriPermissionTrue = true;
+    sptr<IRemoteObject> listenerPtr = sptr(new MockDaemonStub());
+
+    // srcUri/dstUri pass IsPathValid; srcDeviceId normal; listener valid;
+    // info.copyPath contains "../" → must be rejected by new IsPathValid check.
+    EXPECT_CALL(*messageParcelMock_, ReadString(_))
+        .WillOnce(DoAll(SetArgReferee<0>("/data/test/src"), Return(true)))
+        .WillOnce(DoAll(SetArgReferee<0>("/data/test/dst"), Return(true)))
+        .WillOnce(DoAll(SetArgReferee<0>("device123"), Return(true)))
+        .WillOnce(DoAll(SetArgReferee<0>("../malicious/copyPath"), Return(true)));
+    EXPECT_CALL(*messageParcelMock_, ReadRemoteObject()).WillOnce(Return(listenerPtr));
+    auto ret = daemonStub_->HandlePrepareSession(data, reply);
+    EXPECT_EQ(ret, E_PERMISSION_DENIED);
+
+    // Double-encoded "../": %252e%252e%252f → first Decode → %2e%2e%2f →
+    // IsPathValid loops → ../ → IsFilePathValid rejects. Verifies multi-decode defense.
+    EXPECT_CALL(*messageParcelMock_, ReadString(_))
+        .WillOnce(DoAll(SetArgReferee<0>("/data/test/src"), Return(true)))
+        .WillOnce(DoAll(SetArgReferee<0>("/data/test/dst"), Return(true)))
+        .WillOnce(DoAll(SetArgReferee<0>("device123"), Return(true)))
+        .WillOnce(DoAll(SetArgReferee<0>("%252e%252e%252fmalicious"), Return(true)));
+    EXPECT_CALL(*messageParcelMock_, ReadRemoteObject()).WillOnce(Return(listenerPtr));
+    ret = daemonStub_->HandlePrepareSession(data, reply);
+    EXPECT_EQ(ret, E_PERMISSION_DENIED);
+
+    // Trailing "/.." form — also rejected by IsFilePathValid tail check.
+    EXPECT_CALL(*messageParcelMock_, ReadString(_))
+        .WillOnce(DoAll(SetArgReferee<0>("/data/test/src"), Return(true)))
+        .WillOnce(DoAll(SetArgReferee<0>("/data/test/dst"), Return(true)))
+        .WillOnce(DoAll(SetArgReferee<0>("device123"), Return(true)))
+        .WillOnce(DoAll(SetArgReferee<0>("/data/test/.."), Return(true)));
+    EXPECT_CALL(*messageParcelMock_, ReadRemoteObject()).WillOnce(Return(listenerPtr));
+    ret = daemonStub_->HandlePrepareSession(data, reply);
+    EXPECT_EQ(ret, E_PERMISSION_DENIED);
+    GTEST_LOG_(INFO) << "DaemonStubHandlePrepareSessionTest_CopyPathInvalid_001 End";
+}
+
+/**
  * @tc.name: DaemonStubHandleCancelCopyTaskTest001
  * @tc.desc: Verify the HandleCancelCopyTask function
  * @tc.type: FUNC

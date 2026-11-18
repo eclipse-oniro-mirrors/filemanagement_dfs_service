@@ -138,6 +138,59 @@ HWTEST_F(DevslDispatcherTest, DevslDispatcherTest_GetDeviceDevsl_0100, TestSize.
     EXPECT_EQ(DevslDispatcher::GetDeviceDevsl("test"), FileManagement::E_OK);
     GTEST_LOG_(INFO) << "DevslDsispatcherTest_GetDeviceDevsl_0100 end";
 }
+
+/**
+ * @tc.name: DevslDispatcherTest_RemoveDeviceDevsl_0100
+ * @tc.desc: Verify RemoveDeviceDevsl erases cached entry and is safe for non-existent keys
+ * @tc.type: FUNC
+ * @tc.require: SR000H0387
+ */
+HWTEST_F(DevslDispatcherTest, DevslDispatcherTest_RemoveDeviceDevsl_0100, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DevslDispatcherTest_RemoveDeviceDevsl_0100 start";
+    DevslDispatcher::devslMap_.clear();
+    g_getHighestSecLevel = 1;
+    // Populate cache via GetDeviceDevsl
+    EXPECT_EQ(DevslDispatcher::GetDeviceDevsl("netA"), 1);
+    EXPECT_EQ(DevslDispatcher::devslMap_.count("netA"), 1u);
+    // Remove existing entry
+    DevslDispatcher::RemoveDeviceDevsl("netA");
+    EXPECT_EQ(DevslDispatcher::devslMap_.count("netA"), 0u);
+    // Remove non-existent entry — must not crash
+    DevslDispatcher::RemoveDeviceDevsl("nonExistent");
+    // Remove empty string — must not crash
+    DevslDispatcher::RemoveDeviceDevsl("");
+    // Verify cache miss triggers re-query after removal
+    g_getHighestSecLevel = 2;
+    EXPECT_EQ(DevslDispatcher::GetDeviceDevsl("netA"), 2);
+    DevslDispatcher::devslMap_.clear();
+    GTEST_LOG_(INFO) << "DevslDispatcherTest_RemoveDeviceDevsl_0100 end";
+}
+
+/**
+ * @tc.name: DevslDispatcherTest_RemoveDeviceDevsl_MultiEntry_0100
+ * @tc.desc: Verify RemoveDeviceDevsl only removes the specified entry, leaving others intact
+ * @tc.type: FUNC
+ * @tc.require: SR000H0387
+ */
+HWTEST_F(DevslDispatcherTest, DevslDispatcherTest_RemoveDeviceDevsl_MultiEntry_0100, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DevslDispatcherTest_RemoveDeviceDevsl_MultiEntry_0100 start";
+    DevslDispatcher::devslMap_.clear();
+    DevslDispatcher::devslMap_.insert({"netA", 1});
+    DevslDispatcher::devslMap_.insert({"netB", 2});
+    DevslDispatcher::devslMap_.insert({"netC", 3});
+    EXPECT_EQ(DevslDispatcher::devslMap_.size(), 3u);
+
+    DevslDispatcher::RemoveDeviceDevsl("netB");
+    EXPECT_EQ(DevslDispatcher::devslMap_.count("netB"), 0u);
+    EXPECT_EQ(DevslDispatcher::devslMap_.count("netA"), 1u);
+    EXPECT_EQ(DevslDispatcher::devslMap_.count("netC"), 1u);
+    EXPECT_EQ(DevslDispatcher::devslMap_.at("netA"), 1);
+    EXPECT_EQ(DevslDispatcher::devslMap_.at("netC"), 3);
+    DevslDispatcher::devslMap_.clear();
+    GTEST_LOG_(INFO) << "DevslDispatcherTest_RemoveDeviceDevsl_MultiEntry_0100 end";
+}
 } // namespace Test
 } // namespace DistributedFile
 } // namespace Storage

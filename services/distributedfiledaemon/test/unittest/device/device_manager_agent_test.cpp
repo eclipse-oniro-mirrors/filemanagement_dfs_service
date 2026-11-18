@@ -23,6 +23,7 @@
 
 #include "device_manager_impl_mock.h"
 #include "mountpoint/mount_point.h"
+#include "network/devsl_dispatcher.h"
 #include "network/softbus/softbus_agent.h"
 #include "mock_other_method.h"
 
@@ -231,6 +232,34 @@ HWTEST_F(DeviceManagerAgentTest, DeviceManagerAgentTest_OnDeviceOffline_0300, Te
 
     EXPECT_TRUE(res == true);
     GTEST_LOG_(INFO) << "DeviceManagerAgentTest_OnDeviceOffline_0300 end";
+}
+
+/**
+ * @tc.name: DeviceManagerAgentTest_OnDeviceOffline_RemovesDevsl_0100
+ * @tc.desc: Verify OnDeviceOffline clears devsl cache for the offline device
+ * @tc.type: FUNC
+ * @tc.require: SR000H0387
+ */
+HWTEST_F(DeviceManagerAgentTest, DeviceManagerAgentTest_OnDeviceOffline_RemovesDevsl_0100, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DeviceManagerAgentTest_OnDeviceOffline_RemovesDevsl_0100 start";
+    DevslDispatcher::devslMap_.clear();
+    // Pre-populate devsl cache for the device that will go offline
+    DevslDispatcher::devslMap_.insert({deviceInfo.networkId, 1});
+    EXPECT_EQ(DevslDispatcher::devslMap_.count(deviceInfo.networkId), 1u);
+
+    bool res = true;
+    try {
+        DeviceManagerAgent::GetInstance()->OnDeviceOffline(deviceInfo);
+    } catch (const exception &e) {
+        LOGE("Error:%{public}s", e.what());
+        res = false;
+    }
+    EXPECT_TRUE(res);
+    // Offline must have triggered RemoveDeviceDevsl → cache entry should be gone
+    EXPECT_EQ(DevslDispatcher::devslMap_.count(deviceInfo.networkId), 0u);
+    DevslDispatcher::devslMap_.clear();
+    GTEST_LOG_(INFO) << "DeviceManagerAgentTest_OnDeviceOffline_RemovesDevsl_0100 end";
 }
 
 /**

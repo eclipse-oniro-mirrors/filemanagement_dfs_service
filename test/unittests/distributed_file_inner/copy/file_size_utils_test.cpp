@@ -298,4 +298,74 @@ HWTEST_F(FileSizeUtilsTest, Deleter_0001, TestSize.Level1)
     FileSizeUtils::Deleter(arg);
     GTEST_LOG_(INFO) << "Deleter_0001 End";
 }
+
+/**
+ * @tc.name: FileSizeUtils_Decode_001
+ * @tc.desc: Verify Decode percent-decoding success path
+ * @tc.type: FUNC
+ * @tc.require: I7TDJK
+ */
+HWTEST_F(FileSizeUtilsTest, FileSizeUtils_Decode_001, TestSize.Level0)
+{
+    GTEST_LOG_(INFO) << "FileSizeUtils_Decode_001 Start";
+    EXPECT_EQ(FileSizeUtils::Decode(""), "");
+    EXPECT_EQ(FileSizeUtils::Decode("plain"), "plain");
+    EXPECT_EQ(FileSizeUtils::Decode("%3F"), "?");
+    EXPECT_EQ(FileSizeUtils::Decode("%20"), " ");
+    EXPECT_EQ(FileSizeUtils::Decode("%2F"), "/");
+    EXPECT_EQ(FileSizeUtils::Decode("%ff"), "\xff");
+    EXPECT_EQ(FileSizeUtils::Decode("%FF"), "\xff");
+    EXPECT_EQ(FileSizeUtils::Decode("a%3Fb"), "a?b");
+    EXPECT_EQ(FileSizeUtils::Decode("100%25"), "100%");
+    GTEST_LOG_(INFO) << "FileSizeUtils_Decode_001 End";
+}
+
+/**
+ * @tc.name: FileSizeUtils_Decode_Malformed_001
+ * @tc.desc: Verify Decode keeps original chars when %XX is malformed (strtol fallback)
+ * @tc.type: FUNC
+ * @tc.require: I7TDJK
+ */
+HWTEST_F(FileSizeUtilsTest, FileSizeUtils_Decode_Malformed_001, TestSize.Level0)
+{
+    GTEST_LOG_(INFO) << "FileSizeUtils_Decode_Malformed_001 Start";
+    // %XX where X not hex digit → % preserved as-is, X processed as normal char
+    EXPECT_EQ(FileSizeUtils::Decode("%2G"), "%2G");
+    EXPECT_EQ(FileSizeUtils::Decode("%G2"), "%G2");
+    EXPECT_EQ(FileSizeUtils::Decode("%GG"), "%GG");
+    // Lone % without two trailing hex chars
+    EXPECT_EQ(FileSizeUtils::Decode("%"), "%");
+    EXPECT_EQ(FileSizeUtils::Decode("%2"), "%2");
+    EXPECT_EQ(FileSizeUtils::Decode("a%"), "a%");
+    // % at end of string with insufficient length
+    EXPECT_EQ(FileSizeUtils::Decode("abc%"), "abc%");
+    // Multiple malformed sequences interleaved with valid ones
+    EXPECT_EQ(FileSizeUtils::Decode("%ZZ%3F%YY"), "%ZZ?%YY");
+    GTEST_LOG_(INFO) << "FileSizeUtils_Decode_Malformed_001 End";
+}
+
+/**
+ * @tc.name: FileSizeUtils_IsPathValid_DoubleEncoded_001
+ * @tc.desc: Verify IsPathValid rejects double-encoded path traversal (../)
+ * @tc.type: FUNC
+ * @tc.require: I7TDJK
+ */
+HWTEST_F(FileSizeUtilsTest, FileSizeUtils_IsPathValid_DoubleEncoded_001, TestSize.Level0)
+{
+    GTEST_LOG_(INFO) << "FileSizeUtils_IsPathValid_DoubleEncoded_001 Start";
+    // Direct ../
+    EXPECT_FALSE(FileSizeUtils::IsPathValid("../etc/passwd"));
+    EXPECT_FALSE(FileSizeUtils::IsPathValid("/data/../etc"));
+    EXPECT_FALSE(FileSizeUtils::IsPathValid("/foo/.."));
+    // Single-encoded %2e%2e%2f → ../
+    EXPECT_FALSE(FileSizeUtils::IsPathValid("%2e%2e%2fetc"));
+    EXPECT_FALSE(FileSizeUtils::IsPathValid("/data/%2e%2e/etc"));
+    // Double-encoded %252e%252e%252f → %2e%2e%2f → ../
+    EXPECT_FALSE(FileSizeUtils::IsPathValid("%252e%252e%252fetc"));
+    EXPECT_FALSE(FileSizeUtils::IsPathValid("/data/%252e%252e/etc"));
+    // Legitimate path without traversal
+    EXPECT_TRUE(FileSizeUtils::IsPathValid("/data/test"));
+    EXPECT_TRUE(FileSizeUtils::IsPathValid("/data/%20file"));
+    GTEST_LOG_(INFO) << "FileSizeUtils_IsPathValid_DoubleEncoded_001 End";
+}
 }
