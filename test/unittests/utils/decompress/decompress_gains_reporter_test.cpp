@@ -785,7 +785,7 @@ HWTEST_F(DecompressGainsReporterTest, Report_TimedMoreThanThreshold, TestSize.Le
     EXPECT_EQ(CountGainsRecords(after), total - GAINS_REPORT_THRESHOLD);
 }
 
-HWTEST_F(DecompressGainsReporterTest, Report_ThresholdBelowSkips, TestSize.Level1)
+HWTEST_F(DecompressGainsReporterTest, Report_ThresholdBelowSkip, TestSize.Level1)
 {
     std::string content;
     for (int i = 0; i < GAINS_REPORT_THRESHOLD - 1; i++) {
@@ -1214,9 +1214,9 @@ HWTEST_F(DecompressGainsReporterTest, WriteFsCommonInfo_HiSysEventFail, TestSize
     info.errMsg = "test error";
     info.bundleName = "com.test.app";
     info.failedFileName = "test.so";
-    int32_t before =  OHOS::HiviewDFX::GetHiSysEventMockState().callCount;
+    int32_t before = OHOS::HiviewDFX::GetHiSysEventMockState().callCount;
     reporter.ReportFsCommonInfo(info);
-    int32_t after =  OHOS::HiviewDFX::GetHiSysEventMockState().callCount;
+    int32_t after = OHOS::HiviewDFX::GetHiSysEventMockState().callCount;
     EXPECT_EQ(after - before, 1);
 }
 
