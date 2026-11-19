@@ -474,7 +474,7 @@ int32_t CloudSyncManagerImpl::NotifyEventChange(
     SetDeathRecipient(CloudSyncServiceProxy->AsObject());
 
     int32_t ret = CloudSyncServiceProxy->NotifyEventChange(userId, eventId, extraData);
-    LOGI("NotifyDataChange ret %{public}d", ret);
+    LOGI("NotifyEventChange ret %{public}d", ret);
     return ret;
 }
 
