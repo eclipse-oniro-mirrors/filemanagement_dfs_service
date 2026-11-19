@@ -3237,4 +3237,42 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TempCreationFailCancelsActiva
     EXPECT_EQ(stat(tempSlot.c_str(), &slotStat), 0);
     ASSERT_EQ(rmdir(tempSlot.c_str()), 0);
 }
+
+/**
+ * @tc.name: HydrationTemp_TargetDeletedFailsCompletion_001
+ * @tc.desc: A completion whose target file disappeared cancels the task with E_FILE_NOT_EXIST.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TargetDeletedFailsCompletion_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    constexpr char deletedTarget[] = "/data/test/hydration_deleted_target.txt";
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key,
+                                        {100, "", deletedTarget, ""}),
+              E_OK);
+    int32_t taskFd = ActivateTask(manager, key);
+    ASSERT_GE(taskFd, 0);
+    auto task = manager.taskMap_.at(key);
+    task->totalSize = 4;
+    Assistant::mockPwriteApi = true;
+    Assistant::mockSendfileApi = true;
+
+    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 0)).WillOnce(Return(4));
+    EXPECT_CALL(*mock_, access(StrEq(deletedTarget), F_OK)).WillOnce(Invoke([](const char *, int) {
+        errno = ENOENT;
+        return -1;
+    }));
+    EXPECT_CALL(*mock_, Sendfile(taskFd, task->tempFd.Get(), _, _)).Times(0);
+    EXPECT_CALL(*mock_, fsetxattr(_, _, _, _, _)).Times(0);
+
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, MakeRequest(key, 0, {1, 2, 3, 4}, 4, true)),
+              E_FILE_NOT_EXIST);
+    EXPECT_EQ(manager.taskMap_.count(key), 0U);
+    EXPECT_EQ(manager.cancellationRecordMap_.count(key), 1U);
+    struct stat removedStat {};
+    EXPECT_NE(stat(task->tempPath.c_str(), &removedStat), 0);
+}
 } // namespace OHOS::FileManagement::CloudDiskService::Test
