@@ -3240,7 +3240,7 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TempCreationFailCancelsActiva
 
 /**
  * @tc.name: HydrationTemp_TargetDeletedFailsCompletion_001
- * @tc.desc: A completion whose target file disappeared cancels the task with E_FILE_NOT_EXIST.
+ * @tc.desc: A completion whose target file disappeared cancels the task with E_TRY_AGAIN.
  * @tc.type: RELI
  * @tc.require: NA
  */
@@ -3269,7 +3269,7 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TargetDeletedFailsCompletion_
     EXPECT_CALL(*mock_, fsetxattr(_, _, _, _, _)).Times(0);
 
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, MakeRequest(key, 0, {1, 2, 3, 4}, 4, true)),
-              E_FILE_NOT_EXIST);
+              E_TRY_AGAIN);
     EXPECT_EQ(manager.taskMap_.count(key), 0U);
     EXPECT_EQ(manager.cancellationRecordMap_.count(key), 1U);
     struct stat removedStat {};
