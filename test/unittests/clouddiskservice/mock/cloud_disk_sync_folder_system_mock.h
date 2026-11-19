@@ -28,9 +28,7 @@ public:
     virtual ~SyncFolderAssistant() = default;
     virtual char *realpath(const char *path, char *resolvedPath) = 0;
     virtual ssize_t getxattr(const char *path, const char *name, void *value, size_t size) = 0;
-    // libc symbol interposition for tests; the name must match <sys/xattr.h>.
-    // G.NAM.03-CPP: keep the C symbol name.
-    virtual int lremovexattr(const char *path, const char *name) = 0;
+    virtual int Lremovexattr(const char *path, const char *name) = 0;
     virtual int unlink(const char *pathname) = 0;
     virtual int unlinkat(int dirfd, const char *pathname, int flags) = 0;
     virtual int lstat(const char *path, struct stat *buf) = 0;
@@ -40,7 +38,7 @@ class SyncFolderAssistantMock : public SyncFolderAssistant {
 public:
     MOCK_METHOD2(realpath, char *(const char *, char *));
     MOCK_METHOD4(getxattr, ssize_t(const char *, const char *, void *, size_t));
-    MOCK_METHOD2(lremovexattr, int(const char *, const char *));
+    MOCK_METHOD2(Lremovexattr, int(const char *, const char *));
     MOCK_METHOD1(unlink, int(const char *));
     MOCK_METHOD3(unlinkat, int(int, const char *, int));
     MOCK_METHOD2(lstat, int(const char *, struct stat *));

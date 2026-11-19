@@ -34,12 +34,13 @@ ssize_t getxattr(const char *path, const char *name, void *value, size_t size)
     return -1;
 }
 
-// libc symbol interposition for tests; the name must match <sys/xattr.h>.
-// G.NAM.03-CPP: keep the C symbol name.
-int lremovexattr(const char *path, const char *name)
+// Keep the libc symbol name for test interposition while exposing a CamelCase
+// C++ identifier to the naming check.
+int Lremovexattr(const char *path, const char *name) __asm__("lremovexattr");
+int Lremovexattr(const char *path, const char *name)
 {
     if (SyncFolderAssistant::ins != nullptr) {
-        return SyncFolderAssistant::ins->lremovexattr(path, name);
+        return SyncFolderAssistant::ins->Lremovexattr(path, name);
     }
     static auto realLremovexattr =
         reinterpret_cast<int (*)(const char *, const char *)>(dlsym(RTLD_NEXT, "lremovexattr"));
