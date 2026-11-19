@@ -1094,8 +1094,7 @@ int32_t PlaceholderTaskManager::ExecuteFetchDataLocked(const std::shared_ptr<Pla
     // full transfer; any failed probe ends the task with the mapped errno.
     if (!task->hmdfsPath.empty() && access(task->hmdfsPath.c_str(), F_OK) != 0) {
         int32_t error = errno;
-        LOGW("Cancel hydration because target file disappeared, path:%{private}s, errno:%{public}d",
-             task->hmdfsPath.c_str(), error);
+        LOGW("Access target failed, path:%{private}s, errno:%{public}d", task->hmdfsPath.c_str(), error);
         CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
         ScheduleDispatch();
         return ConvertHydrationIoError(error);
