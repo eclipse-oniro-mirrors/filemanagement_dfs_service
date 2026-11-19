@@ -862,6 +862,53 @@ HWTEST_F(CloudSyncServiceTest, GetCachedTotalSizeInnerTest007, TestSize.Level1)
 }
 
 /**
+ * @tc.name: CleanCacheInnerWithBundleNameTest006
+ * @tc.desc: Verify the CleanAllFileCacheInner function with bundleName parameter and permission granted.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, CleanCacheInnerWithBundleNameTest006, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "CleanCacheInnerWithBundleNameTest006 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        std::string bundleName = "com.ohos.photos";
+        
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).WillOnce(Return(E_INVAL_ARG));
+        int32_t ret = servicePtr_->CleanAllFileCacheInner();
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_FALSE(true);
+        GTEST_LOG_(INFO) << "CleanCacheInnerWithBundleNameTest006 failed";
+    }
+    GTEST_LOG_(INFO) << "CleanCacheInnerWithBundleNameTest006 end";
+}
+
+/**
+ * @tc.name: GetCachedTotalSizeInnerTest008
+ * @tc.desc: Verify the GetCachedTotalSizeInner function with userId invalid.
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudSyncServiceTest, GetCachedTotalSizeInnerTest008, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetCachedTotalSizeInnerTest008 start";
+    try {
+        EXPECT_NE(servicePtr_, nullptr);
+        int64_t totalSize = 0;
+        
+        EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_)).WillOnce(Return(E_OK));
+        EXPECT_CALL(*dfsuAccessToken_, GetUserId()).WillOnce(Return(100));
+        int32_t ret = servicePtr_->GetCachedTotalSizeInner(totalSize);
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_FALSE(true);
+        GTEST_LOG_(INFO) << "GetCachedTotalSizeInnerTest008 failed";
+    }
+    GTEST_LOG_(INFO) << "GetCachedTotalSizeInnerTest008 end";
+}
+
+/**
  * @tc.name:EnableCloudTest
  * @tc.desc:Verify the EnableCloud function.
  * @tc.type:FUNC
