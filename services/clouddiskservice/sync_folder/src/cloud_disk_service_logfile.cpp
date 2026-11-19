@@ -553,6 +553,8 @@ int32_t CloudDiskServiceLogFile::ProductLogForOperate(const std::shared_ptr<Clou
             return ProduceCloseAndWriteLog(parentMetaFile, path, name, ctx);
         case OperationType::OH_CLOUD_DISK_CLOSE_MODIFY:
             return ProduceCloseModifyLog(parentMetaFile, path, name, ctx);
+        case OperationType::FILE_OPEN:
+            return ProduceOpenLog(parentMetaFile, path, name, ctx);
         case OperationType::SYNC_FOLDER_INVALID:
         case OperationType::OPERATION_MAX:
             return EINVAL;
@@ -748,6 +750,34 @@ int32_t CloudDiskServiceLogFile::ProduceCloseModifyLog(const std::shared_ptr<Clo
     auto ret = parentMetaFile->DoUpdate(mBase, ctx.recordId, ctx.bidx, ctx.bitPos);
     if (ret != 0) {
         LOGE("update failed");
+        return -1;
+    }
+    return E_OK;
+}
+
+int32_t CloudDiskServiceLogFile::ProduceOpenLog(const std::shared_ptr<CloudDiskServiceMetaFile> parentMetaFile,
+                                                const std::string &path,
+                                                const std::string &name,
+                                                struct LogGenerateCtx &ctx)
+{
+    LOGD("Begin ProduceOpenLog");
+    MetaBase mBase(name);
+    struct stat childStat;
+    if (stat((path + "/" + name).c_str(), &childStat) != 0) {
+        LOGE("stat child failed for %{public}d", errno);
+        return errno;
+    }
+    mBase.mode = childStat.st_mode;
+    mBase.atime = static_cast<uint64_t>(childStat.st_atime);
+    mBase.mtime = static_cast<uint64_t>(childStat.st_mtime);
+    mBase.size = static_cast<uint64_t>(childStat.st_size);
+    auto ret = parentMetaFile->DoUpdate(mBase, ctx.recordId, ctx.bidx, ctx.bitPos);
+    if (ret == ENOENT) {
+        LOGD("dentry not exist, skip ProduceOpenLog");
+        return E_OK;
+    }
+    if (ret != 0) {
+        LOGE("update failed, name: %{public}s, ret: %{public}d", name.c_str(), ret);
         return -1;
     }
     return E_OK;

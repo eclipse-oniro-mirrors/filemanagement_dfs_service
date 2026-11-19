@@ -27,6 +27,9 @@ using OHOS::FileManagement::CloudDiskService::ChangesResult;
 using OHOS::FileManagement::CloudDiskService::FileSyncState;
 using OHOS::FileManagement::CloudDiskService::FailedList;
 using OHOS::FileManagement::CloudDiskService::ResultList;
+using OHOS::FileManagement::CloudDiskService::PlaceholderInfo;
+using OHOS::FileManagement::CloudDiskService::PlaceholderCustomInfo;
+using OHOS::FileManagement::CloudDiskService::CallbackExecuteRequest;
 
 namespace OHOS {
 namespace FileManagement {
@@ -59,6 +62,8 @@ enum class ICloudDiskServiceIpcCode {
     COMMAND_REGISTER_PROGRESS_CALLBACK_INNER,
     COMMAND_UNREGISTER_PROGRESS_CALLBACK_INNER,
     COMMAND_GET_PLACEHOLDER_STATE_INNER,
+    COMMAND_REGISTER_SYNC_FOLDER_CHANGES_WITH_EVENTS_INNER,
+    COMMAND_GET_SYNC_FOLDER_CHANGES_WITH_EVENTS_INNER,
 };
 
 class ICloudDiskService : public IRemoteBroker {
@@ -81,6 +86,18 @@ public:
         const std::string& syncFolder,
         uint64_t count,
         uint64_t startUSN,
+        ChangesResult& funcResult) = 0;
+
+    virtual ErrCode RegisterSyncFolderChangesWithEventsInner(
+        const std::string& syncFolder,
+        const std::vector<uint64_t>& operationTypes,
+        const sptr<IRemoteObject>& remoteobject) = 0;
+
+    virtual ErrCode GetSyncFolderChangesWithEventsInner(
+        const std::string& syncFolder,
+        uint64_t count,
+        uint64_t startUSN,
+        const std::vector<uint64_t>& operationTypes,
         ChangesResult& funcResult) = 0;
 
     virtual ErrCode SetFileSyncStatesInner(

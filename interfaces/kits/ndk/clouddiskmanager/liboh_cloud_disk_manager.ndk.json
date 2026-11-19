@@ -102,5 +102,13 @@
     {
         "first_introduced": "26.0.1",
         "name": "OH_CloudDisk_GetPlaceholderState"
+    },
+    {
+        "first_introduced": "26.2.0",
+        "name": "OH_CloudDisk_RegisterSyncFolderChangesWithEvents"
+    },
+    {
+        "first_introduced": "26.2.0",
+        "name": "OH_CloudDisk_GetSyncFolderChangesWithEvents"
     }
 ]

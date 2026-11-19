@@ -15,6 +15,7 @@
 
 #include "oh_cloud_disk_manager.h"
 
+#include <algorithm>
 #include <cstring>
 #include <functional>
 #include <new>
@@ -75,6 +76,58 @@ CloudDisk_PathInfo ToPublicPathInfo(const CloudDiskPathInfo &pathInfo)
 OH_CloudDisk_DataBuf ToPublicDataBuf(const CloudDiskDataBuf &dataBuf)
 {
     return {dataBuf.data, dataBuf.dataSize};
+}
+
+std::vector<OperationType> DedupOperationTypes(const CloudDisk_OperationType *types, size_t count)
+{
+    std::vector<OperationType> out;
+    if (types == nullptr || count == 0) {
+        return out;
+    }
+    out.reserve(count);
+    for (size_t i = 0; i < count; i++) {
+        auto t = static_cast<OperationType>(types[i]);
+        if (std::find(out.begin(), out.end(), t) == out.end()) {
+            out.push_back(t);
+        }
+    }
+    return out;
+}
+
+CloudDisk_ErrorCode ConvertChangesResult(const ChangesResult &changesRes, CloudDisk_ChangesResult **changesResult)
+{
+    if (changesResult == nullptr) {
+        return CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG;
+    }
+    *changesResult = (CloudDisk_ChangesResult *)malloc(sizeof(CloudDisk_ChangesResult) +
+                                                       sizeof(CloudDisk_ChangeData) * changesRes.changesData.size());
+    if (*changesResult == nullptr) {
+        LOGE("Failed to allocate memory for changesResult");
+        return CloudDisk_ErrorCode::CLOUD_DISK_TRY_AGAIN;
+    }
+    (*changesResult)->bufferLength = 0;
+    (*changesResult)->nextUsn = changesRes.nextUsn;
+    (*changesResult)->isEof = changesRes.isEof;
+    for (auto &item : changesRes.changesData) {
+        CloudDisk_ChangeData data;
+        data.fileId.value = AllocField(item.fileId.c_str(), item.fileId.length());
+        CHECK_NULLPTR_AND_CONTINUE(data.fileId.value);
+        data.fileId.length = item.fileId.length();
+        data.parentFileId.value = AllocField(item.parentFileId.c_str(), item.parentFileId.length());
+        CHECK_NULLPTR_AND_CONTINUE(data.parentFileId.value, delete[] data.fileId.value; data.fileId.value = nullptr;);
+        data.parentFileId.length = item.parentFileId.length();
+        data.relativePathInfo.value = AllocField(item.relativePath.c_str(), item.relativePath.length());
+        CHECK_NULLPTR_AND_CONTINUE(data.relativePathInfo.value, delete[] data.fileId.value; data.fileId.value = nullptr;
+                                   delete[] data.parentFileId.value; data.parentFileId.value = nullptr;);
+        data.relativePathInfo.length = item.relativePath.length();
+        data.updateSequenceNumber = item.updateSequenceNumber;
+        data.operationType = static_cast<CloudDisk_OperationType>(item.operationType);
+        data.size = item.size;
+        data.mtime = item.mtime;
+        data.timeStamp = item.timeStamp;
+        (*changesResult)->changeDatas[(*changesResult)->bufferLength++] = data;
+    }
+    return CloudDisk_ErrorCode::CLOUD_DISK_OK;
 }
 
 #ifdef SUPPORT_CLOUD_DISK_SERVICE
@@ -283,35 +336,88 @@ CloudDisk_ErrorCode OH_CloudDisk_GetSyncFolderChanges(const CloudDisk_SyncFolder
         LOGE("Get sync folder change failed, ret: %{public}d", ret);
         return ConvertToErrorCode(ret);
     }
-    *changesResult = (CloudDisk_ChangesResult *)malloc(sizeof(CloudDisk_ChangesResult) +
-                                                       sizeof(CloudDisk_ChangeData) * changesRes.changesData.size());
-    if (*changesResult == nullptr) {
-        LOGE("Failed to allocate memory for changesResult");
-        return CloudDisk_ErrorCode::CLOUD_DISK_TRY_AGAIN;
+    return ConvertChangesResult(changesRes, changesResult);
+}
+
+CloudDisk_ErrorCode OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+    const CloudDisk_SyncFolderPath syncFolderPath,
+    const OH_CloudDisk_OperationTypeArray *operationTypes,
+    void (*callback)(const CloudDisk_SyncFolderPath syncFolderPath,
+                     const CloudDisk_ChangeData changeDatas[],
+                     size_t bufferLength))
+{
+    if (!IsValidPathInfo(syncFolderPath.value, syncFolderPath.length)) {
+        LOGE("Invalid argument, syncFolder path is invalid");
+        return CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG;
     }
-    (*changesResult)->bufferLength = 0;
-    (*changesResult)->nextUsn = changesRes.nextUsn;
-    (*changesResult)->isEof = changesRes.isEof;
-    for (auto &item : changesRes.changesData) {
-        CloudDisk_ChangeData data;
-        data.fileId.value = AllocField(item.fileId.c_str(), item.fileId.length());
-        CHECK_NULLPTR_AND_CONTINUE(data.fileId.value);
-        data.fileId.length = item.fileId.length();
-        data.parentFileId.value = AllocField(item.parentFileId.c_str(), item.parentFileId.length());
-        CHECK_NULLPTR_AND_CONTINUE(data.parentFileId.value, delete[] data.fileId.value; data.fileId.value = nullptr;);
-        data.parentFileId.length = item.parentFileId.length();
-        data.relativePathInfo.value = AllocField(item.relativePath.c_str(), item.relativePath.length());
-        CHECK_NULLPTR_AND_CONTINUE(data.relativePathInfo.value, delete[] data.fileId.value; data.fileId.value = nullptr;
-                                   delete[] data.parentFileId.value; data.parentFileId.value = nullptr;);
-        data.relativePathInfo.length = item.relativePath.length();
-        data.updateSequenceNumber = item.updateSequenceNumber;
-        data.operationType = static_cast<CloudDisk_OperationType>(item.operationType);
-        data.size = item.size;
-        data.mtime = item.mtime;
-        data.timeStamp = item.timeStamp;
-        (*changesResult)->changeDatas[(*changesResult)->bufferLength++] = data;
+    if (callback == nullptr) {
+        LOGE("Invalid argument, callback is nullptr");
+        return CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG;
+    }
+    if (operationTypes == nullptr || operationTypes->data == nullptr || operationTypes->length <= 0 ||
+        operationTypes->length > static_cast<int64_t>(OperationType::OPERATION_MAX)) {
+        LOGE("Invalid argument, operationTypes invalid");
+        return CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG;
+    }
+    size_t typeCount = static_cast<size_t>(operationTypes->length);
+    for (size_t i = 0; i < typeCount; i++) {
+        if (static_cast<uint32_t>(operationTypes->data[i]) >=
+            static_cast<uint32_t>(OperationType::OPERATION_MAX)) {
+            LOGE("Invalid argument, unknown operationType");
+            return CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG;
+        }
+    }
+    auto callbackInner = [callback](const CloudDisk_SyncFolderPath syncFolderPath,
+                                    const CloudDisk_ChangeData changeDatas[],
+                                    size_t bufferLength) { callback(syncFolderPath, changeDatas, bufferLength); };
+    shared_ptr<CloudDiskServiceCallback> callbackImpl = make_shared<CloudDiskServiceCallbackImpl>(callbackInner);
+    std::vector<OperationType> types = DedupOperationTypes(operationTypes->data, typeCount);
+    int32_t ret = CloudDiskServiceManager::GetInstance().RegisterSyncFolderChangesWithEvents(
+        string(syncFolderPath.value, syncFolderPath.length), types, callbackImpl);
+    if (ret != CloudDiskServiceErrCode::E_OK) {
+        LOGE("RegisterSyncFolderChangesWithEvents failed, ret: %{public}d", ret);
+        return ConvertToErrorCode(ret);
     }
     return CloudDisk_ErrorCode::CLOUD_DISK_OK;
+}
+
+CloudDisk_ErrorCode OH_CloudDisk_GetSyncFolderChangesWithEvents(
+    const CloudDisk_SyncFolderPath syncFolderPath,
+    uint64_t startUsn,
+    size_t count,
+    const OH_CloudDisk_OperationTypeArray *operationTypes,
+    CloudDisk_ChangesResult **changesResult)
+{
+    if (changesResult == nullptr) {
+        LOGE("Invalid argument, changesResult is nullptr");
+        return CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG;
+    }
+    if (!IsValidPathInfo(syncFolderPath.value, syncFolderPath.length)) {
+        LOGE("Invalid argument, syncFolder path is invalid");
+        return CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG;
+    }
+    if (operationTypes == nullptr || operationTypes->data == nullptr || operationTypes->length <= 0 ||
+        operationTypes->length > static_cast<int64_t>(OperationType::OPERATION_MAX)) {
+        LOGE("Invalid argument, operationTypes invalid");
+        return CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG;
+    }
+    size_t typeCount = static_cast<size_t>(operationTypes->length);
+    for (size_t i = 0; i < typeCount; i++) {
+        if (static_cast<uint32_t>(operationTypes->data[i]) >=
+            static_cast<uint32_t>(OperationType::OPERATION_MAX)) {
+            LOGE("Invalid argument, unknown operationType");
+            return CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG;
+        }
+    }
+    ChangesResult changesRes;
+    std::vector<OperationType> types = DedupOperationTypes(operationTypes->data, typeCount);
+    auto ret = CloudDiskServiceManager::GetInstance().GetSyncFolderChangesWithEvents(
+        string(syncFolderPath.value, syncFolderPath.length), count, startUsn, types, changesRes);
+    if (ret != CloudDiskServiceErrCode::E_OK) {
+        LOGE("GetSyncFolderChangesWithEvents failed, ret: %{public}d", ret);
+        return ConvertToErrorCode(ret);
+    }
+    return ConvertChangesResult(changesRes, changesResult);
 }
 
 CloudDisk_ErrorCode OH_CloudDisk_SetFileSyncStates(const CloudDisk_SyncFolderPath syncFolderPath,

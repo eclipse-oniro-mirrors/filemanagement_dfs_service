@@ -24,6 +24,7 @@
 #include <fcntl.h>
 #include <functional>
 #include <limits>
+#include <set>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
@@ -313,6 +314,22 @@ void RequestUnloadCloudDiskService()
         return;
     }
     LOGI("Unload clouddiskservice success");
+}
+
+bool BuildOperationTypeSet(const std::vector<uint64_t> &operationTypes, std::set<OperationType> &typeSet)
+{
+    if (operationTypes.empty()) {
+        LOGE("operationTypes is empty");
+        return false;
+    }
+    for (auto t : operationTypes) {
+        if (t >= static_cast<uint64_t>(OperationType::OPERATION_MAX)) {
+            LOGE("invalid operationType: %{public}llu", static_cast<unsigned long long>(t));
+            return false;
+        }
+        typeSet.insert(static_cast<OperationType>(t));
+    }
+    return true;
 }
 } // namespace
 REGISTER_SYSTEM_ABILITY_BY_ID(CloudDiskService, FILEMANAGEMENT_CLOUD_DISK_SERVICE_SA_ID, true);
@@ -685,6 +702,119 @@ int32_t CloudDiskService::GetSyncFolderChangesInner(const std::string &syncFolde
     }
     LOGI("End GetSyncFolderChangesInner, nextUsn: %{public}" PRIu64 ", isEof: %{public}d",
          changesResult.nextUsn, changesResult.isEof);
+    return E_OK;
+#else
+    return E_NOT_SUPPORTED;
+#endif
+}
+
+ErrCode CloudDiskService::RegisterSyncFolderChangesWithEventsInner(const std::string &syncFolder,
+                                                                   const std::vector<uint64_t> &operationTypes,
+                                                                   const sptr<IRemoteObject> &remoteObject)
+{
+#ifdef SUPPORT_CLOUD_DISK_SERVICE
+    LOGI("Begin RegisterSyncFolderChangesWithEventsInner");
+
+    if (remoteObject == nullptr) {
+        LOGE("remoteObject is nullptr");
+        return E_INVALID_ARG;
+    }
+
+    std::set<OperationType> typeSet;
+    if (!BuildOperationTypeSet(operationTypes, typeSet)) {
+        return E_INVALID_ARG;
+    }
+    typeSet.insert(OperationType::SYNC_FOLDER_INVALID);
+
+    int32_t userId = CloudDiskServiceAccessToken::GetUserId();
+    std::string path;
+    int32_t ret = CloudDiskSyncFolder::GetInstance().PathToPhysicalPath(syncFolder, std::to_string(userId), path);
+    if (ret != E_OK) {
+        LOGE("Get path failed, ret = %{public}d", ret);
+        return ret;
+    }
+
+    std::string bundleName = "";
+    ret = CloudDiskServiceAccessToken::GetCallerBundleName(bundleName);
+    if (ret != E_OK) {
+        LOGE("Get bundleName failed, ret:%{public}d", ret);
+        return E_TRY_AGAIN;
+    }
+
+    auto syncFolderIndex = CloudDisk::CloudFileUtils::DentryHash(path);
+    SyncFolderValue syncFolderValue;
+    if (!CloudDiskSyncFolder::GetInstance().GetSyncFolderValueByIndex(syncFolderIndex, syncFolderValue) ||
+        syncFolderValue.bundleName != bundleName) {
+        LOGE("SyncFolder is not exist");
+        return E_SYNC_FOLDER_NOT_REGISTERED;
+    }
+
+    auto callback = iface_cast<ICloudDiskServiceCallback>(remoteObject);
+    if (!CloudDiskServiceCallbackManager::GetInstance().RegisterSyncFolderMapWithEvents(
+        bundleName, syncFolderIndex, typeSet, callback)) {
+        return E_LISTENER_ALREADY_REGISTERED;
+    }
+
+    CloudDiskServiceSyncFolder::RegisterSyncFolderChanges(userId, syncFolderIndex);
+    CloudDiskServiceCallbackManager::GetInstance().AddCallback(bundleName, callback);
+
+    LOGI("End RegisterSyncFolderChangesWithEventsInner");
+    return E_OK;
+#else
+    return E_NOT_SUPPORTED;
+#endif
+}
+
+ErrCode CloudDiskService::GetSyncFolderChangesWithEventsInner(const std::string &syncFolder,
+                                                              uint64_t count,
+                                                              uint64_t startUsn,
+                                                              const std::vector<uint64_t> &operationTypes,
+                                                              ChangesResult &changesResult)
+{
+#ifdef SUPPORT_CLOUD_DISK_SERVICE
+    LOGI("Begin GetSyncFolderChangesWithEventsInner");
+
+    if (count > GET_SYNC_FOLDER_CHANGE_MAX) {
+        LOGE("Invalid argument");
+        return E_INVALID_ARG;
+    }
+
+    std::set<OperationType> typeSet;
+    if (!BuildOperationTypeSet(operationTypes, typeSet)) {
+        return E_INVALID_ARG;
+    }
+    typeSet.insert(OperationType::SYNC_FOLDER_INVALID);
+
+    int32_t userId = CloudDiskServiceAccessToken::GetUserId();
+    std::string path;
+    int32_t ret = CloudDiskSyncFolder::GetInstance().PathToPhysicalPath(syncFolder, std::to_string(userId), path);
+    if (ret != E_OK) {
+        LOGE("Get path failed, ret = %{public}d", ret);
+        return ret;
+    }
+
+    std::string bundleName = "";
+    ret = CloudDiskServiceAccessToken::GetCallerBundleName(bundleName);
+    if (ret != E_OK) {
+        LOGE("Get bundleName failed, ret:%{public}d", ret);
+        return E_TRY_AGAIN;
+    }
+
+    auto syncFolderIndex = CloudDisk::CloudFileUtils::DentryHash(path);
+    SyncFolderValue syncFolderValue;
+    if (!CloudDiskSyncFolder::GetInstance().GetSyncFolderValueByIndex(syncFolderIndex, syncFolderValue) ||
+        syncFolderValue.bundleName != bundleName) {
+        LOGE("SyncFolder is not exist");
+        return E_SYNC_FOLDER_NOT_REGISTERED;
+    }
+
+    ret = CloudDiskServiceSyncFolder::GetSyncFolderChangesWithEvents(
+        userId, syncFolderIndex, startUsn, count, typeSet, changesResult);
+    if (ret != E_OK) {
+        LOGE("GetSyncFolderChangesWithEvents failed, ret: %{public}d", ret);
+        return ret;
+    }
+    LOGI("End GetSyncFolderChangesWithEventsInner");
     return E_OK;
 #else
     return E_NOT_SUPPORTED;

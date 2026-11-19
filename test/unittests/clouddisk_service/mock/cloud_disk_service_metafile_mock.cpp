@@ -93,6 +93,11 @@ int32_t CloudDiskServiceMetaFile::DoUpdate(const MetaBase &base,
                                            uint32_t &bitPos)
 {
     if (recordId == "") {
+        if (base.name != "") {
+            recordId = "record-id";
+            bidx = 0;
+            bitPos = 0;
+        }
         return E_OK;
     } else {
         return 1;

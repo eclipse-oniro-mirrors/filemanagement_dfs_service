@@ -16,6 +16,8 @@
 #ifndef CLOUD_DISK_SERVICE_SYNCFOLDER_H
 #define CLOUD_DISK_SERVICE_SYNCFOLDER_H
 
+#include <string>
+
 #include "disk_types.h"
 
 namespace OHOS {
@@ -28,8 +30,46 @@ class CloudDiskServiceSyncFolder {
 public:
     static int32_t SetSyncFolderChanges(const struct EventInfo &eventInfos)
     {
+        postedCount_++;
+        lastPostedOperateType_ = eventInfos.operateType;
+        lastPostedPath_ = eventInfos.path;
+        lastPostedSyncFolderIndex_ = eventInfos.syncFolderIndex;
         return 0;
     }
+
+    static void ResetPostedEvents()
+    {
+        postedCount_ = 0;
+        lastPostedOperateType_ = OperationType::OPERATION_MAX;
+        lastPostedPath_ = "";
+        lastPostedSyncFolderIndex_ = 0;
+    }
+
+    static int32_t GetPostedCount()
+    {
+        return postedCount_;
+    }
+
+    static OperationType GetLastPostedOperateType()
+    {
+        return lastPostedOperateType_;
+    }
+
+    static std::string GetLastPostedPath()
+    {
+        return lastPostedPath_;
+    }
+
+    static uint32_t GetLastPostedSyncFolderIndex()
+    {
+        return lastPostedSyncFolderIndex_;
+    }
+
+private:
+    inline static int32_t postedCount_ = 0;
+    inline static OperationType lastPostedOperateType_ = OperationType::OPERATION_MAX;
+    inline static std::string lastPostedPath_ = "";
+    inline static uint32_t lastPostedSyncFolderIndex_ = 0;
 };
 } // namespace CloudDiskService
 } // namespace FileManagement

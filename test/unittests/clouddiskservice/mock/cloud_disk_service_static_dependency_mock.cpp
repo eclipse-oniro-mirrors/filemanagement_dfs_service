@@ -19,6 +19,24 @@
 #include "uuid_helper.h"
 
 namespace OHOS::FileManagement::CloudDiskService {
+namespace {
+std::set<uint32_t> g_registeredEventSyncFolderIndexes;
+int32_t g_changesWithEventsResult = 0;
+} // namespace
+
+namespace Test {
+void SetStaticDependencyChangesWithEventsResult(int32_t result)
+{
+    g_changesWithEventsResult = result;
+}
+
+void ResetStaticDependencyMock()
+{
+    g_registeredEventSyncFolderIndexes.clear();
+    g_changesWithEventsResult = 0;
+}
+} // namespace Test
+
 CloudDiskServiceCallbackManager &CloudDiskServiceCallbackManager::GetInstance()
 {
     static CloudDiskServiceCallbackManager instance;
@@ -31,6 +49,21 @@ bool CloudDiskServiceCallbackManager::RegisterSyncFolderMap(
     (void)bundleName;
     (void)syncFolderIndex;
     (void)callback;
+    return true;
+}
+
+bool CloudDiskServiceCallbackManager::RegisterSyncFolderMapWithEvents(
+    std::string &bundleName, uint32_t syncFolderIndex,
+    const std::set<OperationType> &operationTypes,
+    const sptr<ICloudDiskServiceCallback> &callback)
+{
+    (void)bundleName;
+    (void)operationTypes;
+    (void)callback;
+    if (g_registeredEventSyncFolderIndexes.find(syncFolderIndex) != g_registeredEventSyncFolderIndexes.end()) {
+        return false;
+    }
+    g_registeredEventSyncFolderIndexes.insert(syncFolderIndex);
     return true;
 }
 
@@ -105,6 +138,22 @@ int32_t CloudDiskServiceSyncFolder::GetSyncFolderChanges(const int32_t userId,
     (void)count;
     (void)changesResult;
     return E_OK;
+}
+
+int32_t CloudDiskServiceSyncFolder::GetSyncFolderChangesWithEvents(const int32_t userId,
+                                                                   const uint32_t syncFolderIndex,
+                                                                   const uint64_t start,
+                                                                   const uint64_t count,
+                                                                   const std::set<OperationType> &operationTypes,
+                                                                   struct ChangesResult &changesResult)
+{
+    (void)userId;
+    (void)syncFolderIndex;
+    (void)start;
+    (void)count;
+    (void)operationTypes;
+    (void)changesResult;
+    return g_changesWithEventsResult;
 }
 
 int32_t CloudDiskServiceSyncFolder::SetSyncFolderChanges(const struct EventInfo &eventInfos)

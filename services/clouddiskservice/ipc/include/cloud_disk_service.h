@@ -55,6 +55,14 @@ public:
                                       uint64_t count,
                                       uint64_t startUsn,
                                       ChangesResult &changesResult) override;
+    ErrCode RegisterSyncFolderChangesWithEventsInner(const std::string &syncFolder,
+                                                     const std::vector<uint64_t> &operationTypes,
+                                                     const sptr<IRemoteObject> &remoteObject) override;
+    ErrCode GetSyncFolderChangesWithEventsInner(const std::string &syncFolder,
+                                                uint64_t count,
+                                                uint64_t startUsn,
+                                                const std::vector<uint64_t> &operationTypes,
+                                                ChangesResult &changesResult) override;
     ErrCode SetFileSyncStatesInner(const std::string &syncFolder,
                                    const std::vector<FileSyncState> &fileSyncStates,
                                    std::vector<FailedList> &failedList) override;

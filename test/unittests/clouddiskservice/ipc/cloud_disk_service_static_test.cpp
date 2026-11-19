@@ -27,6 +27,7 @@
 
 #include "assistant.h"
 #include "cloud_disk_service_access_token_mock.h"
+#include "cloud_disk_service_callback_mock.h"
 #include "cloud_disk_service_utils.h"
 #include "cloud_disk_sync_folder_manager_mock.h"
 #include "message_parcel_mock.h"
@@ -56,6 +57,10 @@ using namespace testing;
 using namespace testing::ext;
 using namespace std;
 using namespace OHOS::Storage::DistributedFile;
+
+// Provided by mock/cloud_disk_service_static_dependency_mock.cpp
+void SetStaticDependencyChangesWithEventsResult(int32_t result);
+void ResetStaticDependencyMock();
 
 namespace {
 constexpr int32_t TEST_USER_ID = 100;
@@ -4613,6 +4618,228 @@ HWTEST_F(CloudDiskServiceStaticTest, ConvertErrnoToCloudDiskError_E2BIG_001, Tes
     GTEST_LOG_(INFO) << "ConvertErrnoToCloudDiskError_E2BIG_001 start";
     EXPECT_EQ(ConvertErrnoToCloudDiskError(E2BIG), E_INVALID_ARG);
     GTEST_LOG_(INFO) << "ConvertErrnoToCloudDiskError_E2BIG_001 end";
+}
+
+/**
+ * @tc.name: BuildOperationTypeSetTest001
+ * @tc.desc: Verify BuildOperationTypeSet with valid types returns true and fills set
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, BuildOperationTypeSetTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "BuildOperationTypeSetTest001 start";
+    try {
+        std::vector<uint64_t> types = {
+            static_cast<uint64_t>(OperationType::CREATE),
+            static_cast<uint64_t>(OperationType::FILE_OPEN),
+            static_cast<uint64_t>(OperationType::DELETE)};
+        std::set<OperationType> typeSet;
+        auto ret = BuildOperationTypeSet(types, typeSet);
+        EXPECT_TRUE(ret);
+        EXPECT_EQ(typeSet.size(), 3U);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "BuildOperationTypeSetTest001 failed";
+    }
+    GTEST_LOG_(INFO) << "BuildOperationTypeSetTest001 end";
+}
+
+/**
+ * @tc.name: BuildOperationTypeSetTest002
+ * @tc.desc: Verify BuildOperationTypeSet with empty vector returns false
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, BuildOperationTypeSetTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "BuildOperationTypeSetTest002 start";
+    try {
+        std::vector<uint64_t> types;
+        std::set<OperationType> typeSet;
+        auto ret = BuildOperationTypeSet(types, typeSet);
+        EXPECT_FALSE(ret);
+        EXPECT_TRUE(typeSet.empty());
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "BuildOperationTypeSetTest002 failed";
+    }
+    GTEST_LOG_(INFO) << "BuildOperationTypeSetTest002 end";
+}
+
+/**
+ * @tc.name: BuildOperationTypeSetTest003
+ * @tc.desc: Verify BuildOperationTypeSet with value >= OPERATION_MAX returns false
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, BuildOperationTypeSetTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "BuildOperationTypeSetTest003 start";
+    try {
+        std::vector<uint64_t> types = {
+            static_cast<uint64_t>(OperationType::CREATE),
+            static_cast<uint64_t>(OperationType::OPERATION_MAX)};
+        std::set<OperationType> typeSet;
+        auto ret = BuildOperationTypeSet(types, typeSet);
+        EXPECT_FALSE(ret);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "BuildOperationTypeSetTest003 failed";
+    }
+    GTEST_LOG_(INFO) << "BuildOperationTypeSetTest003 end";
+}
+
+/**
+ * @tc.name: BuildOperationTypeSetTest004
+ * @tc.desc: Verify BuildOperationTypeSet with single FILE_OPEN value returns true
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, BuildOperationTypeSetTest004, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "BuildOperationTypeSetTest004 start";
+    try {
+        std::vector<uint64_t> types = {static_cast<uint64_t>(OperationType::FILE_OPEN)};
+        std::set<OperationType> typeSet;
+        auto ret = BuildOperationTypeSet(types, typeSet);
+        EXPECT_TRUE(ret);
+        EXPECT_EQ(typeSet.size(), 1U);
+        EXPECT_NE(typeSet.find(OperationType::FILE_OPEN), typeSet.end());
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "BuildOperationTypeSetTest004 failed";
+    }
+    GTEST_LOG_(INFO) << "BuildOperationTypeSetTest004 end";
+}
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEventsInnerTest001
+ * @tc.desc: Verify RegisterSyncFolderChangesWithEventsInner succeeds for a registered bundle
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, RegisterSyncFolderChangesWithEventsInnerTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterSyncFolderChangesWithEventsInnerTest001 start";
+    ResetStaticDependencyMock();
+    RegisterPlaceholderSyncFolder();
+    CloudDiskService service;
+    std::vector<uint64_t> operationTypes = {static_cast<uint64_t>(OperationType::FILE_OPEN)};
+    sptr<IRemoteObject> remoteObj = sptr(new CloudDiskServiceCallbackMock());
+
+    EXPECT_CALL(*dfsuAccessToken_, GetUserId()).WillOnce(Return(TEST_USER_ID));
+    EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_))
+        .WillOnce(DoAll(SetArgReferee<0>(TEST_BUNDLE), Return(E_OK)));
+    auto ret = service.RegisterSyncFolderChangesWithEventsInner(TEST_SYNC_FOLDER, operationTypes, remoteObj);
+    EXPECT_EQ(ret, E_OK);
+    ResetStaticDependencyMock();
+    GTEST_LOG_(INFO) << "RegisterSyncFolderChangesWithEventsInnerTest001 end";
+}
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEventsInnerTest002
+ * @tc.desc: Verify RegisterSyncFolderChangesWithEventsInner rejects duplicate listener registration
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, RegisterSyncFolderChangesWithEventsInnerTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterSyncFolderChangesWithEventsInnerTest002 start";
+    ResetStaticDependencyMock();
+    RegisterPlaceholderSyncFolder();
+    CloudDiskService service;
+    std::vector<uint64_t> operationTypes = {static_cast<uint64_t>(OperationType::FILE_OPEN)};
+    sptr<IRemoteObject> remoteObj = sptr(new CloudDiskServiceCallbackMock());
+
+    EXPECT_CALL(*dfsuAccessToken_, GetUserId()).WillRepeatedly(Return(TEST_USER_ID));
+    EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_))
+        .WillRepeatedly(DoAll(SetArgReferee<0>(TEST_BUNDLE), Return(E_OK)));
+    auto first = service.RegisterSyncFolderChangesWithEventsInner(TEST_SYNC_FOLDER, operationTypes, remoteObj);
+    EXPECT_EQ(first, E_OK);
+    auto second = service.RegisterSyncFolderChangesWithEventsInner(TEST_SYNC_FOLDER, operationTypes, remoteObj);
+    EXPECT_EQ(second, E_LISTENER_ALREADY_REGISTERED);
+    ResetStaticDependencyMock();
+    GTEST_LOG_(INFO) << "RegisterSyncFolderChangesWithEventsInnerTest002 end";
+}
+
+/**
+ * @tc.name: RegisterSyncFolderChangesWithEventsInnerTest003
+ * @tc.desc: Verify RegisterSyncFolderChangesWithEventsInner rejects caller bundle mismatch
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, RegisterSyncFolderChangesWithEventsInnerTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "RegisterSyncFolderChangesWithEventsInnerTest003 start";
+    ResetStaticDependencyMock();
+    RegisterPlaceholderSyncFolder();
+    CloudDiskService service;
+    std::vector<uint64_t> operationTypes = {static_cast<uint64_t>(OperationType::FILE_OPEN)};
+    sptr<IRemoteObject> remoteObj = sptr(new CloudDiskServiceCallbackMock());
+
+    EXPECT_CALL(*dfsuAccessToken_, GetUserId()).WillOnce(Return(TEST_USER_ID));
+    EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_))
+        .WillOnce(DoAll(SetArgReferee<0>("com.other.bundle"), Return(E_OK)));
+    auto ret = service.RegisterSyncFolderChangesWithEventsInner(TEST_SYNC_FOLDER, operationTypes, remoteObj);
+    EXPECT_EQ(ret, E_SYNC_FOLDER_NOT_REGISTERED);
+    ResetStaticDependencyMock();
+    GTEST_LOG_(INFO) << "RegisterSyncFolderChangesWithEventsInnerTest003 end";
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEventsInnerTest001
+ * @tc.desc: Verify GetSyncFolderChangesWithEventsInner succeeds for a registered bundle
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, GetSyncFolderChangesWithEventsInnerTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetSyncFolderChangesWithEventsInnerTest001 start";
+    ResetStaticDependencyMock();
+    RegisterPlaceholderSyncFolder();
+    CloudDiskService service;
+    uint64_t count = 10;
+    uint64_t startUsn = 0;
+    std::vector<uint64_t> operationTypes = {static_cast<uint64_t>(OperationType::FILE_OPEN)};
+    ChangesResult changesResult;
+
+    EXPECT_CALL(*dfsuAccessToken_, GetUserId()).WillOnce(Return(TEST_USER_ID));
+    EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_))
+        .WillOnce(DoAll(SetArgReferee<0>(TEST_BUNDLE), Return(E_OK)));
+    auto ret = service.GetSyncFolderChangesWithEventsInner(
+        TEST_SYNC_FOLDER, count, startUsn, operationTypes, changesResult);
+    EXPECT_EQ(ret, E_OK);
+    ResetStaticDependencyMock();
+    GTEST_LOG_(INFO) << "GetSyncFolderChangesWithEventsInnerTest001 end";
+}
+
+/**
+ * @tc.name: GetSyncFolderChangesWithEventsInnerTest002
+ * @tc.desc: Verify GetSyncFolderChangesWithEventsInner propagates syncfolder failure
+ * @tc.type: FUNC
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, GetSyncFolderChangesWithEventsInnerTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetSyncFolderChangesWithEventsInnerTest002 start";
+    ResetStaticDependencyMock();
+    SetStaticDependencyChangesWithEventsResult(E_INVALID_CHANGE_SEQUENCE);
+    RegisterPlaceholderSyncFolder();
+    CloudDiskService service;
+    uint64_t count = 10;
+    uint64_t startUsn = 0;
+    std::vector<uint64_t> operationTypes = {static_cast<uint64_t>(OperationType::FILE_OPEN)};
+    ChangesResult changesResult;
+
+    EXPECT_CALL(*dfsuAccessToken_, GetUserId()).WillOnce(Return(TEST_USER_ID));
+    EXPECT_CALL(*dfsuAccessToken_, GetCallerBundleName(_))
+        .WillOnce(DoAll(SetArgReferee<0>(TEST_BUNDLE), Return(E_OK)));
+    auto ret = service.GetSyncFolderChangesWithEventsInner(
+        TEST_SYNC_FOLDER, count, startUsn, operationTypes, changesResult);
+    EXPECT_EQ(ret, E_INVALID_CHANGE_SEQUENCE);
+    ResetStaticDependencyMock();
+    GTEST_LOG_(INFO) << "GetSyncFolderChangesWithEventsInnerTest002 end";
 }
 
 } // namespace OHOS::FileManagement::CloudDiskService::Test

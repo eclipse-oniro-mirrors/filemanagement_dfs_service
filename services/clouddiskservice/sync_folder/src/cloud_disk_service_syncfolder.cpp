@@ -23,6 +23,7 @@
 
 #include "cloud_disk_service_logfile.h"
 #include "cloud_disk_service_metafile.h"
+#include "dfs_error.h"
 
 namespace OHOS::FileManagement::CloudDiskService {
 
@@ -51,7 +52,40 @@ int32_t CloudDiskServiceSyncFolder::GetSyncFolderChanges(const int32_t userId, c
                                                          const uint64_t start, const uint64_t count,
                                                          struct ChangesResult &changesResult)
 {
-    return LogFileMgr::GetInstance().PraseRequest(userId, syncFolderIndex, start, count, changesResult);
+    int32_t ret = LogFileMgr::GetInstance().PraseRequest(userId, syncFolderIndex, start, count, changesResult);
+    if (ret != E_OK) {
+        return ret;
+    }
+    std::vector<ChangeData> filtered;
+    filtered.reserve(changesResult.changesData.size());
+    for (const auto &cd : changesResult.changesData) {
+        if (cd.operationType != OperationType::FILE_OPEN) {
+            filtered.push_back(cd);
+        }
+    }
+    changesResult.changesData = std::move(filtered);
+    return E_OK;
+}
+
+int32_t CloudDiskServiceSyncFolder::GetSyncFolderChangesWithEvents(const int32_t userId,
+                                                                   const uint32_t syncFolderIndex,
+                                                                   const uint64_t start, const uint64_t count,
+                                                                   const std::set<OperationType> &operationTypes,
+                                                                   struct ChangesResult &changesResult)
+{
+    int32_t ret = LogFileMgr::GetInstance().PraseRequest(userId, syncFolderIndex, start, count, changesResult);
+    if (ret != E_OK) {
+        return ret;
+    }
+    std::vector<ChangeData> filtered;
+    filtered.reserve(changesResult.changesData.size());
+    for (const auto &cd : changesResult.changesData) {
+        if (operationTypes.find(cd.operationType) != operationTypes.end()) {
+            filtered.push_back(cd);
+        }
+    }
+    changesResult.changesData = std::move(filtered);
+    return E_OK;
 }
 
 int32_t CloudDiskServiceSyncFolder::SetSyncFolderChanges(const struct EventInfo &eventInfo)

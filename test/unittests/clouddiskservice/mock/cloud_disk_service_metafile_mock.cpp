@@ -36,6 +36,8 @@ int32_t renameOldResult = E_OK;
 bool renameNewResultOverridden = false;
 int32_t renameNewResult = E_OK;
 uint8_t lastRenameNewPlaceholderState = 0;
+bool updateResultOverridden = false;
+int32_t updateResult = E_OK;
 } // namespace
 
 void ResetPlaceholderMetaFileMock()
@@ -56,6 +58,8 @@ void ResetPlaceholderMetaFileMock()
     renameNewResultOverridden = false;
     renameNewResult = E_OK;
     lastRenameNewPlaceholderState = 0;
+    updateResultOverridden = false;
+    updateResult = E_OK;
 }
 
 void SetPlaceholderMetaFileLookupResult(int32_t result, uint8_t state)
@@ -111,6 +115,12 @@ void SetMetaFileRenameNewResult(int32_t result)
 {
     renameNewResultOverridden = true;
     renameNewResult = result;
+}
+
+void SetMetaFileUpdateResult(int32_t result)
+{
+    updateResultOverridden = true;
+    updateResult = result;
 }
 
 uint8_t GetLastMetaFileRenameNewPlaceholderState()
@@ -201,7 +211,15 @@ int32_t CloudDiskServiceMetaFile::DoUpdate(const MetaBase &base,
                                            unsigned long &bidx,
                                            uint32_t &bitPos)
 {
+    if (updateResultOverridden) {
+        return updateResult;
+    }
     if (recordId == "") {
+        if (base.name != "") {
+            recordId = "record-id";
+            bidx = 0;
+            bitPos = 0;
+        }
         return E_OK;
     } else {
         return 1;
