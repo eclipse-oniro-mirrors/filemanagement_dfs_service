@@ -3239,12 +3239,12 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TempCreationFailCancelsActiva
 }
 
 /**
- * @tc.name: HydrationTemp_TargetDeletedFailsCompletion_001
- * @tc.desc: A completion whose target file disappeared cancels the task with E_TRY_AGAIN.
+ * @tc.name: HydrationTemp_TargetDeletedFailsExecute_001
+ * @tc.desc: An Execute whose target file disappeared cancels the task with E_TRY_AGAIN.
  * @tc.type: RELI
  * @tc.require: NA
  */
-HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TargetDeletedFailsCompletion_001, TestSize.Level2)
+HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TargetDeletedFailsExecute_001, TestSize.Level2)
 {
     auto &manager = PlaceholderTaskManager::GetInstance();
     constexpr char deletedTarget[] = "/data/test/hydration_deleted_target.txt";
@@ -3260,7 +3260,8 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TargetDeletedFailsCompletion_
     Assistant::mockPwriteApi = true;
     Assistant::mockSendfileApi = true;
 
-    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 0)).WillOnce(Return(4));
+    // The probe runs before the chunk lands in the temp file.
+    EXPECT_CALL(*mock_, Pwrite(_, _, _, _)).Times(0);
     EXPECT_CALL(*mock_, access(StrEq(deletedTarget), F_OK)).WillOnce(Invoke([](const char *, int) {
         errno = ENOENT;
         return -1;
@@ -3277,12 +3278,12 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TargetDeletedFailsCompletion_
 }
 
 /**
- * @tc.name: HydrationTemp_TargetAccessDeniedFailsCompletion_001
- * @tc.desc: Any failing access at completion cancels the task; EACCES maps to E_ACCES.
+ * @tc.name: HydrationTemp_TargetAccessDeniedFailsExecute_001
+ * @tc.desc: Any failing access on an Execute cancels the task; EACCES maps to E_ACCES.
  * @tc.type: RELI
  * @tc.require: NA
  */
-HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TargetAccessDeniedFailsCompletion_001, TestSize.Level2)
+HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TargetAccessDeniedFailsExecute_001, TestSize.Level2)
 {
     auto &manager = PlaceholderTaskManager::GetInstance();
     constexpr char unreachableTarget[] = "/data/test/hydration_unreachable_target.txt";
@@ -3298,7 +3299,7 @@ HWTEST_F(PlaceholderTaskManagerTest, HydrationTemp_TargetAccessDeniedFailsComple
     Assistant::mockPwriteApi = true;
     Assistant::mockSendfileApi = true;
 
-    EXPECT_CALL(*mock_, Pwrite(task->tempFd.Get(), _, 4, 0)).WillOnce(Return(4));
+    EXPECT_CALL(*mock_, Pwrite(_, _, _, _)).Times(0);
     EXPECT_CALL(*mock_, access(StrEq(unreachableTarget), F_OK)).WillOnce(Invoke([](const char *, int) {
         errno = EACCES;
         return -1;

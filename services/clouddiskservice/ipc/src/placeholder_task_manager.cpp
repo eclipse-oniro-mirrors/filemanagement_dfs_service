@@ -1088,6 +1088,18 @@ int32_t PlaceholderTaskManager::ExecuteFetchDataLocked(const std::shared_ptr<Pla
         ScheduleDispatch();
         return E_TRY_AGAIN;
     }
+    // The task fd pins a deleted inode invisibly: hydrating it would write a ghost
+    // file and double-decrement the ancestor count. Probe the target on every chunk
+    // so the provider learns about a deleted file immediately instead of after the
+    // full transfer; any failed probe ends the task with the mapped errno.
+    if (!task->hmdfsPath.empty() && access(task->hmdfsPath.c_str(), F_OK) != 0) {
+        int32_t error = errno;
+        LOGW("Cancel hydration because target file disappeared, path:%{private}s, errno:%{public}d",
+             task->hmdfsPath.c_str(), error);
+        CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
+        ScheduleDispatch();
+        return ConvertHydrationIoError(error);
+    }
     if (task->tempFd < 0) {
         LOGE("Invalid Execute task temp fd");
         CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
@@ -1125,17 +1137,6 @@ int32_t PlaceholderTaskManager::CommitFetchDataLocked(const std::shared_ptr<Plac
 {
     if (!request.isComplete) {
         return E_OK;
-    }
-    // The task fd pins a deleted inode invisibly: copying back would hydrate a ghost
-    // file, flip its state and double-decrement the ancestor count. Verify the target
-    // is still reachable before touching it; any failed probe ends the task with the
-    // mapped errno instead of gambling on a stale fd.
-    if (!task->hmdfsPath.empty() && access(task->hmdfsPath.c_str(), F_OK) != 0) {
-        int32_t error = errno;
-        LOGW("Cancel completed hydration because target file disappeared, path:%{private}s, errno:%{public}d",
-             task->hmdfsPath.c_str(), error);
-        CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
-        return ConvertHydrationIoError(error);
     }
     // Final delivery: this is the first moment the target file is written. All received
     // bytes are copied back from the service-private temp file in one shot; the copy
