@@ -231,7 +231,7 @@ public:
     /**
      * @brief 获取上传传输列表
      *
-     * @param downloadCallback 回调函数
+     * @param uploadList 回调函数
      * @return int32_t 获取上传列表执行结果
      */
     virtual int32_t GetUploadList(const std::vector<std::string> &uriVec,
