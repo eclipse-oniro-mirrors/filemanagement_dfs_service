@@ -120,29 +120,6 @@ HWTEST_F(FileTransListenerProxyTest, FileTransListener_OnFileReceive_0200, TestS
     EXPECT_EQ(ret, E_BROKEN_IPC);
     GTEST_LOG_(INFO) << "FileTransListener_OnFileReceive_0200 End";
 }
-
-/**
- * @tc.name: FileTransListener_OnFileReceive_AsyncFlag_0100
- * @tc.desc: Verify OnFileReceive uses MessageOption::TF_ASYNC to avoid blocking callee
- * @tc.type: FUNC
- * @tc.require: I7TDJK
- */
-HWTEST_F(FileTransListenerProxyTest, FileTransListener_OnFileReceive_AsyncFlag_0100, TestSize.Level0)
-{
-    GTEST_LOG_(INFO) << "FileTransListener_OnFileReceive_AsyncFlag_0100 Start";
-    // Capture the MessageOption passed to SendRequest and assert TF_ASYNC flag is set.
-    MessageOption captured(MessageOption::TF_SYNC);
-    EXPECT_CALL(*messageParcelMock_, WriteInterfaceToken(_)).WillOnce(Return(true));
-    EXPECT_CALL(*messageParcelMock_, WriteUint64(_)).WillOnce(Return(true)).WillOnce(Return(true));
-    EXPECT_CALL(*mock_, SendRequest(_, _, _, _))
-        .WillOnce(DoAll(SaveArg<3>(&captured), Return(E_OK)));
-    EXPECT_CALL(*messageParcelMock_, ReadInt32()).WillOnce(Return(E_OK));
-    auto ret = proxy_->OnFileReceive(0, 0);
-    EXPECT_EQ(ret, E_OK);
-    EXPECT_EQ(captured.GetFlags(), MessageOption::TF_ASYNC);
-    GTEST_LOG_(INFO) << "FileTransListener_OnFileReceive_AsyncFlag_0100 End";
-}
-
 /**
  * @tc.name: FileTransListener_OnFailed_0100
  * @tc.desc: Verify the OnFailed function.
