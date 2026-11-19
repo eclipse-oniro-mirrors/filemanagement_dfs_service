@@ -801,4 +801,213 @@ HWTEST_F(DataSyncerRdbStoreTest,
     }
     GTEST_LOG_(INFO) << "UpdateTotalDownloadSizeTest_004 End";
 }
+
+/**
+ * @tc.name: UpdateTotalDownloadSizeTest_005
+ * @tc.desc: Verify the VersionAddDataSyncerErrorType function
+ * @tc.type: FUNC
+ * @tc.require: issuesICE88S
+ */
+HWTEST_F(DataSyncerRdbStoreTest,
+    UpdateTotalDownloadSizeTest_005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "UpdateTotalDownloadSizeTest_005 Start";
+    try {
+        MockDataSyncerRdbStore mockDataSyncerRdbStore;
+        std::string bundleName = "com.ohos.test006";
+        int32_t userId = 100;
+        auto rdb = make_shared<CloudDisk::RdbStoreMock>();
+        mockDataSyncerRdbStore.rdb_ = nullptr;
+
+        EXPECT_CALL(mockDataSyncerRdbStore, RdbInit())
+            .WillRepeatedly(DoAll(Invoke([&mockDataSyncerRdbStore, &rdb]() {
+                mockDataSyncerRdbStore.rdb_ = rdb;
+            }), Return(E_OK)));
+
+        auto ret = mockDataSyncerRdbStore.UpdateTotalDownloadSize(userId, bundleName, 0);
+        EXPECT_EQ(ret, E_RDB);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "UpdateTotalDownloadSizeTest_005 ERROR";
+    }
+    GTEST_LOG_(INFO) << "UpdateTotalDownloadSizeTest_005 End";
+}
+
+/**
+ * @tc.name: GetTotalDownloadSizeTest001
+ * @tc.desc: Verify the GetTotalDownloadSize function
+ * @tc.type: FUNC
+ * @tc.require: issuesICE88S
+ */
+HWTEST_F(DataSyncerRdbStoreTest, GetTotalDownloadSizeTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetTotalDownloadSizeTest001 Start";
+    try {
+        int32_t userId = 1;
+        string bundleName = "test.bundle.name";
+        int64_t size;
+        vector<string> columns;
+        auto resultSet = make_shared<CloudDisk::AbsSharedResultSetMock>();
+
+        EXPECT_CALL(*resultSet, GoToNextRow()).WillOnce(Return(E_INVAL_ARG));
+
+        auto rdb = make_shared<CloudDisk::RdbStoreMock>();
+        DataSyncerRdbStore dataSyncerRdbStore;
+        dataSyncerRdbStore.rdb_ = rdb;
+
+        EXPECT_CALL(*rdb, QueryByStep(_, columns, true)).WillOnce(Return(resultSet));
+
+        auto ret = dataSyncerRdbStore.GetTotalDownloadSize(userId, bundleName, size);
+        
+        EXPECT_EQ(ret, E_INVAL_ARG);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "GetTotalDownloadSizeTest001 ERROR";
+    }
+    GTEST_LOG_(INFO) << "GetTotalDownloadSizeTest001 End";
+}
+
+/**
+ * @tc.name: GetTotalDownloadSizeTest002
+ * @tc.desc: Verify the GetTotalDownloadSize function
+ * @tc.type: FUNC
+ * @tc.require: issuesICE88S
+ */
+HWTEST_F(DataSyncerRdbStoreTest, GetTotalDownloadSizeTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetTotalDownloadSizeTest002 Start";
+    try {
+        int32_t userId = 1;
+        string bundleName = "test.bundle.name";
+        int64_t size;
+        vector<string> columns;
+        auto resultSet = make_shared<CloudDisk::AbsSharedResultSetMock>();
+
+        EXPECT_CALL(*resultSet, GoToNextRow()).WillOnce(Return(E_OK));
+        EXPECT_CALL(*resultSet, GetColumnIndex(_, _)).WillOnce(Return(E_RDB));
+
+        auto rdb = make_shared<CloudDisk::RdbStoreMock>();
+        DataSyncerRdbStore dataSyncerRdbStore;
+        dataSyncerRdbStore.rdb_ = rdb;
+
+        EXPECT_CALL(*rdb, QueryByStep(_, columns, true)).WillOnce(Return(resultSet));
+
+        auto ret = dataSyncerRdbStore.GetTotalDownloadSize(userId, bundleName, size);
+        
+        EXPECT_EQ(ret, E_RDB);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "GetTotalDownloadSizeTest002 ERROR";
+    }
+    GTEST_LOG_(INFO) << "GetTotalDownloadSizeTest002 End";
+}
+
+/**
+ * @tc.name: GetTotalDownloadSizeTest003
+ * @tc.desc: Verify the GetTotalDownloadSize function
+ * @tc.type: FUNC
+ * @tc.require: issuesICE88S
+ */
+HWTEST_F(DataSyncerRdbStoreTest, GetTotalDownloadSizeTest003, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "GetTotalDownloadSizeTest003 Start";
+    try {
+        int32_t userId = 1;
+        string bundleName = "test.bundle.name";
+        int64_t size;
+        vector<string> columns;
+        auto resultSet = make_shared<CloudDisk::AbsSharedResultSetMock>();
+
+        EXPECT_CALL(*resultSet, GoToNextRow()).WillOnce(Return(E_OK));
+        EXPECT_CALL(*resultSet, GetColumnIndex(_, _)).WillOnce(Return(E_OK));
+
+        auto rdb = make_shared<CloudDisk::RdbStoreMock>();
+        DataSyncerRdbStore dataSyncerRdbStore;
+        dataSyncerRdbStore.rdb_ = rdb;
+
+        EXPECT_CALL(*rdb, QueryByStep(_, columns, true)).WillOnce(Return(resultSet));
+
+        auto ret = dataSyncerRdbStore.GetTotalDownloadSize(userId, bundleName, size);
+        
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "GetTotalDownloadSizeTest003 ERROR";
+    }
+    GTEST_LOG_(INFO) << "GetTotalDownloadSizeTest003 End";
+}
+
+/**
+ * @tc.name: UpdateDownloadSizeTest001
+ * @tc.desc: Verify the UpdateDownloadSize function
+ * @tc.type: FUNC
+ * @tc.require: issuesICE88S
+ */
+HWTEST_F(DataSyncerRdbStoreTest, UpdateDownloadSizeTest001, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "UpdateDownloadSizeTest001 Start";
+    try {
+        int32_t userId = 100;
+        string bundleName = "test.bundle.name";
+        vector<string> columns;
+        auto resultSet = make_shared<CloudDisk::AbsSharedResultSetMock>();
+        vector<string> whereArgs = {"100", bundleName};
+
+        EXPECT_CALL(*resultSet, GoToNextRow()).WillOnce(Return(E_OK));
+        EXPECT_CALL(*resultSet, GetColumnIndex(_, _)).WillOnce(Return(E_OK));
+
+        auto rdb = make_shared<CloudDisk::RdbStoreMock>();
+        DataSyncerRdbStore dataSyncerRdbStore;
+        dataSyncerRdbStore.rdb_ = rdb;
+
+        EXPECT_CALL(*rdb, QueryByStep(_, columns, true)).WillOnce(Return(resultSet));
+        EXPECT_CALL(*rdb, Update(_, _, _, _, whereArgs))
+            .WillOnce(DoAll(SetArgReferee<0>(0), Return(E_OK)));
+
+        auto ret = dataSyncerRdbStore.UpdateDownloadSize(userId, bundleName, 0);
+        
+        EXPECT_EQ(ret, E_RDB);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "UpdateDownloadSizeTest001 ERROR";
+    }
+    GTEST_LOG_(INFO) << "UpdateDownloadSizeTest001 End";
+}
+
+/**
+ * @tc.name: UpdateDownloadSizeTest002
+ * @tc.desc: Verify the UpdateDownloadSize function
+ * @tc.type: FUNC
+ * @tc.require: issuesICE88S
+ */
+HWTEST_F(DataSyncerRdbStoreTest, UpdateDownloadSizeTest002, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "UpdateDownloadSizeTest002 Start";
+    try {
+        int32_t userId = 100;
+        string bundleName = "test.bundle.name";
+        vector<string> columns;
+        auto resultSet = make_shared<CloudDisk::AbsSharedResultSetMock>();
+        vector<string> whereArgs = {"100", bundleName};
+
+        EXPECT_CALL(*resultSet, GoToNextRow()).WillOnce(Return(E_OK));
+        EXPECT_CALL(*resultSet, GetColumnIndex(_, _)).WillOnce(Return(E_OK));
+
+        auto rdb = make_shared<CloudDisk::RdbStoreMock>();
+        DataSyncerRdbStore dataSyncerRdbStore;
+        dataSyncerRdbStore.rdb_ = rdb;
+
+        EXPECT_CALL(*rdb, QueryByStep(_, columns, true)).WillOnce(Return(resultSet));
+        EXPECT_CALL(*rdb, Update(_, _, _, _, whereArgs))
+            .WillOnce(DoAll(SetArgReferee<0>(1), Return(E_OK)));
+
+        auto ret = dataSyncerRdbStore.UpdateDownloadSize(userId, bundleName, 0);
+        
+        EXPECT_EQ(ret, E_OK);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "UpdateDownloadSizeTest002 ERROR";
+    }
+    GTEST_LOG_(INFO) << "UpdateDownloadSizeTest002 End";
+}
 }
