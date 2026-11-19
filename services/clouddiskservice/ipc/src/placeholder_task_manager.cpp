@@ -1128,15 +1128,14 @@ int32_t PlaceholderTaskManager::CommitFetchDataLocked(const std::shared_ptr<Plac
     }
     // The task fd pins a deleted inode invisibly: copying back would hydrate a ghost
     // file, flip its state and double-decrement the ancestor count. Verify the target
-    // still exists before touching it; a missing file ends the task with an error.
+    // is still reachable before touching it; any failed probe ends the task with the
+    // mapped errno instead of gambling on a stale fd.
     if (!task->hmdfsPath.empty() && access(task->hmdfsPath.c_str(), F_OK) != 0) {
         int32_t error = errno;
-        if (error == ENOENT) {
-            LOGW("Cancel completed hydration because target file disappeared, path:%{private}s",
-                 task->hmdfsPath.c_str());
-            CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
-            return ConvertHydrationIoError(error);
-        }
+        LOGW("Cancel completed hydration because target file disappeared, path:%{private}s, errno:%{public}d",
+             task->hmdfsPath.c_str(), error);
+        CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
+        return ConvertHydrationIoError(error);
     }
     // Final delivery: this is the first moment the target file is written. All received
     // bytes are copied back from the service-private temp file in one shot; the copy
