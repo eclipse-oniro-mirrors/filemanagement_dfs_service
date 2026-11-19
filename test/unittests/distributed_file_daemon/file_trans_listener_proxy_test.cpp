@@ -120,7 +120,6 @@ HWTEST_F(FileTransListenerProxyTest, FileTransListener_OnFileReceive_0200, TestS
     EXPECT_EQ(ret, E_BROKEN_IPC);
     GTEST_LOG_(INFO) << "FileTransListener_OnFileReceive_0200 End";
 }
-
 /**
  * @tc.name: FileTransListener_OnFailed_0100
  * @tc.desc: Verify the OnFailed function.

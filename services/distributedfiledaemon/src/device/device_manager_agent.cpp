@@ -199,6 +199,7 @@ int32_t DeviceManagerAgent::GetNetworkType(const string &cid)
 void DeviceManagerAgent::OnDeviceOffline(const DistributedHardware::DmDeviceInfo &deviceInfo)
 {
     LOGI("OnDeviceOffline  begin networkId %{public}s", Utils::GetAnonyString(deviceInfo.networkId).c_str());
+    DevslDispatcher::RemoveDeviceDevsl(deviceInfo.networkId);
     RadarParaInfo radarInfo = {"OnDeviceOffline", ReportLevel::DEFAULT, DfxBizStage::DEFAULT, DEFAULT_PKGNAME,
         deviceInfo.networkId, FileManagement::ERR_OK,
         "Device Offline, networkid:" + Utils::GetAnonyString(deviceInfo.networkId)};

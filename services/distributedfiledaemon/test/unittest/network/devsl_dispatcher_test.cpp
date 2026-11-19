@@ -138,6 +138,37 @@ HWTEST_F(DevslDispatcherTest, DevslDispatcherTest_GetDeviceDevsl_0100, TestSize.
     EXPECT_EQ(DevslDispatcher::GetDeviceDevsl("test"), FileManagement::E_OK);
     GTEST_LOG_(INFO) << "DevslDsispatcherTest_GetDeviceDevsl_0100 end";
 }
+
+/**
+ * @tc.name: DevslDispatcherTest_RemoveDeviceDevsl_0100
+ * @tc.desc: Verify RemoveDeviceDevsl erases cached entry and is safe for non-existent keys
+ * @tc.type: FUNC
+ * @tc.require: SR000H0387
+ */
+HWTEST_F(DevslDispatcherTest, DevslDispatcherTest_RemoveDeviceDevsl_0100, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DevslDispatcherTest_RemoveDeviceDevsl_0100 start";
+    DevslDispatcher::devslMap_.clear();
+    // Populate cache directly via insert (DATASL mock doesn't write *levelInfo,
+    // so GetDeviceDevsl cannot reliably populate cache with a specific value).
+    DevslDispatcher::devslMap_.insert({"netA", 1});
+    EXPECT_EQ(DevslDispatcher::devslMap_.count("netA"), 1u);
+    EXPECT_EQ(DevslDispatcher::devslMap_.at("netA"), 1);
+    // Remove existing entry
+    DevslDispatcher::RemoveDeviceDevsl("netA");
+    EXPECT_EQ(DevslDispatcher::devslMap_.count("netA"), 0u);
+    // Remove non-existent entry — must not crash
+    DevslDispatcher::RemoveDeviceDevsl("nonExistent");
+    // Remove empty string — must not crash
+    DevslDispatcher::RemoveDeviceDevsl("");
+    // Verify cache miss triggers DATASL re-query after removal:
+    // DATASL returns non-zero (g_getHighestSecLevel = 1) → GetDeviceDevsl returns -1.
+    // If cache had not been cleared, this would return the cached value 1 instead.
+    g_getHighestSecLevel = 1;
+    EXPECT_EQ(DevslDispatcher::GetDeviceDevsl("netA"), -1);
+    DevslDispatcher::devslMap_.clear();
+    GTEST_LOG_(INFO) << "DevslDispatcherTest_RemoveDeviceDevsl_0100 end";
+}
 } // namespace Test
 } // namespace DistributedFile
 } // namespace Storage

@@ -149,6 +149,12 @@ int32_t DevslDispatcher::GetDeviceDevsl(const std::string &networkId)
     devslMap_[networkId] = static_cast<int32_t>(levelInfo);
     return devslMap_[networkId];
 }
+
+void DevslDispatcher::RemoveDeviceDevsl(const std::string &networkId)
+{
+    std::lock_guard<std::mutex> lock(mutex);
+    devslMap_.erase(networkId);
+}
 } // namespace DistributedFile
 } // namespace Storage
 } // namespace OHOS

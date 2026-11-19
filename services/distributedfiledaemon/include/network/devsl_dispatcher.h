@@ -42,6 +42,7 @@ public:
     static void Stop();
     static bool CompareDevslWithLocal(const std::string &peerNetworkId, const std::vector<std::string> &paths);
     static int32_t GetDeviceDevsl(const std::string &networkId);
+    static void RemoveDeviceDevsl(const std::string &networkId);
     
 private:
     static DEVSLQueryParams MakeDevslQueryParams(const std::string &cid);
