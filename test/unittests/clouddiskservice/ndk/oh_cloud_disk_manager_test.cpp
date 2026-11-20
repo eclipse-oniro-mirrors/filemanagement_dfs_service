@@ -1240,7 +1240,7 @@ HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_001, TestSi
     CloudDisk_OperationType input[] = {
         CloudDisk_OperationType::CREATE, CloudDisk_OperationType::CREATE,
         CloudDisk_OperationType::DELETE, CloudDisk_OperationType::DELETE,
-        CloudDisk_OperationType::FILE_OPEN};
+        CloudDisk_OperationType::OH_CLOUD_DISK_FILE_OPEN};
     OH_CloudDisk_OperationTypeArray typeArray = {.data = input, .length = sizeof(input) / sizeof(input[0])};
     std::vector<OperationType> captured;
     EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
@@ -1422,7 +1422,7 @@ HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_003, TestSize.Le
 HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_004, TestSize.Level1)
 {
     CloudDisk_SyncFolderPath invalidPath = {.value = nullptr, .length = 0};
-    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::OH_CLOUD_DISK_FILE_OPEN};
     OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
     EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(), RegisterSyncFolderChangesWithEvents(_, _, _)).Times(0);
     EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
@@ -1457,7 +1457,7 @@ HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_005, TestSi
 HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_006, TestSize.Level1)
 {
     CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
-    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::OH_CLOUD_DISK_FILE_OPEN};
     OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
     EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
                 RegisterSyncFolderChangesWithEvents(testSyncFolderPath, _, _))
@@ -1477,7 +1477,7 @@ HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_006, TestSi
 HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_007, TestSize.Level1)
 {
     CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
-    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::OH_CLOUD_DISK_FILE_OPEN};
     OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
     std::vector<OperationType> captured;
     EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
@@ -1504,7 +1504,7 @@ HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_008, TestSi
         CloudDisk_OperationType::CREATE, CloudDisk_OperationType::DELETE,
         CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_TO,
         CloudDisk_OperationType::CLOSE_WRITE, CloudDisk_OperationType::SYNC_FOLDER_INVALID,
-        CloudDisk_OperationType::OH_CLOUD_DISK_CLOSE_MODIFY, CloudDisk_OperationType::FILE_OPEN};
+        CloudDisk_OperationType::OH_CLOUD_DISK_CLOSE_MODIFY, CloudDisk_OperationType::OH_CLOUD_DISK_FILE_OPEN};
     OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = sizeof(types) / sizeof(types[0])};
     std::vector<OperationType> captured;
     EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
@@ -1526,7 +1526,7 @@ HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_008, TestSi
 HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_004, TestSize.Level1)
 {
     CloudDisk_SyncFolderPath invalidPath = {.value = nullptr, .length = 0};
-    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::OH_CLOUD_DISK_FILE_OPEN};
     OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
     CloudDisk_ChangesResult *changesResult = nullptr;
     EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(), GetSyncFolderChangesWithEvents(_, _, _, _, _)).Times(0);
@@ -1561,7 +1561,7 @@ HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_005, TestSize.Le
 HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_006, TestSize.Level1)
 {
     CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
-    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::OH_CLOUD_DISK_FILE_OPEN};
     OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
     CloudDisk_ChangesResult *changesResult = nullptr;
     EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
@@ -1582,7 +1582,7 @@ HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_006, TestSize.Le
 HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_007, TestSize.Level1)
 {
     CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
-    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::OH_CLOUD_DISK_FILE_OPEN};
     OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
     std::vector<OperationType> captured;
     EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
@@ -1613,7 +1613,7 @@ HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_009, TestSi
         CloudDisk_OperationType::CREATE, CloudDisk_OperationType::DELETE,
         CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_TO,
         CloudDisk_OperationType::CLOSE_WRITE, CloudDisk_OperationType::SYNC_FOLDER_INVALID,
-        CloudDisk_OperationType::OH_CLOUD_DISK_CLOSE_MODIFY, CloudDisk_OperationType::FILE_OPEN,
+        CloudDisk_OperationType::OH_CLOUD_DISK_CLOSE_MODIFY, CloudDisk_OperationType::OH_CLOUD_DISK_FILE_OPEN,
         CloudDisk_OperationType::CREATE};
     OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 9};
     EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(), RegisterSyncFolderChangesWithEvents(_, _, _)).Times(0);
@@ -1636,7 +1636,7 @@ HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_008, TestSize.Le
         CloudDisk_OperationType::CREATE, CloudDisk_OperationType::DELETE,
         CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_TO,
         CloudDisk_OperationType::CLOSE_WRITE, CloudDisk_OperationType::SYNC_FOLDER_INVALID,
-        CloudDisk_OperationType::OH_CLOUD_DISK_CLOSE_MODIFY, CloudDisk_OperationType::FILE_OPEN,
+        CloudDisk_OperationType::OH_CLOUD_DISK_CLOSE_MODIFY, CloudDisk_OperationType::OH_CLOUD_DISK_FILE_OPEN,
         CloudDisk_OperationType::CREATE};
     OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 9};
     CloudDisk_ChangesResult *changesResult = nullptr;
@@ -1655,7 +1655,7 @@ HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_008, TestSize.Le
 HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_009, TestSize.Level1)
 {
     CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
-    CloudDisk_OperationType types[] = {CloudDisk_OperationType::FILE_OPEN};
+    CloudDisk_OperationType types[] = {CloudDisk_OperationType::OH_CLOUD_DISK_FILE_OPEN};
     OH_CloudDisk_OperationTypeArray typeArray = {.data = types, .length = 1};
     EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
                 GetSyncFolderChangesWithEvents(testSyncFolderPath, _, _, _, _))
@@ -1682,7 +1682,7 @@ HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_009, TestSize.Le
     EXPECT_EQ(changesResult->nextUsn, 42U);
     EXPECT_TRUE(changesResult->isEof);
     EXPECT_EQ(changesResult->bufferLength, 1U);
-    EXPECT_EQ(changesResult->changeDatas[0].operationType, CloudDisk_OperationType::FILE_OPEN);
+    EXPECT_EQ(changesResult->changeDatas[0].operationType, CloudDisk_OperationType::OH_CLOUD_DISK_FILE_OPEN);
     EXPECT_EQ(changesResult->changeDatas[0].size, 1024U);
     EXPECT_EQ(changesResult->changeDatas[0].mtime, 1700000000U);
     if (changesResult != nullptr) {
