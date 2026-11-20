@@ -1102,7 +1102,6 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_002, TestSize.Level1)
               E_OK);
     int32_t taskFd = ActivateTask(manager, reqKey, UniqueFd(dup(backingFd.Get())));
     ASSERT_GE(taskFd, 0);
-    manager.taskMap_.at(reqKey)->totalSize = 6;
 
     uint8_t stateByte = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 1);
     ExpectStateTransitions(taskFd, stateByte);
@@ -1351,7 +1350,6 @@ HWTEST_F(PlaceholderTaskManagerTest, Execute_013, TestSize.Level2)
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, MakeRequest(key, 0, {1}, 1, false)),
               E_INVALID_ARG);
     task->cachedSize = 0;
-    task->totalSize = 0;
     task->outputFd.Reset(-1);
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, MakeRequest(key)), E_TRY_AGAIN);
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX, MakeRequest(key)), E_CANCELLED);
