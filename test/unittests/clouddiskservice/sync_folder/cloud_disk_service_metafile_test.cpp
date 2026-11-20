@@ -82,6 +82,7 @@ void CloudDiskServiceMetafileTest::TearDown(void)
     Assistant::ins = nullptr;
     insMock = nullptr;
 }
+
 auto MakeFileContentReader(const std::map<off_t, std::vector<char>> &fileContent)
 {
     return [&fileContent](int fd, off_t offset, size_t size, void *data) -> int64_t {
@@ -104,7 +105,6 @@ auto MakeFileContentWriter(std::map<off_t, std::vector<char>> &fileContent)
         return DENTRYGROUP_SIZE;
     };
 }
-
 
 /**
  * @tc.name: DecodeDentryHeaderTest001
@@ -798,7 +798,7 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest006, TestSize.Level1)
         string originalRecordId = "original_id_456";
         ret = mFile.DoRenameNew(renameBase, originalRecordId, bidx, bitPos, overwrittenState);
         EXPECT_EQ(ret, E_OK);
-
+ 
         MetaBase lookupBase;
         lookupBase.name = "test_name";
         ret = mFile.DoLookupByName(lookupBase);
@@ -812,6 +812,52 @@ HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest006, TestSize.Level1)
         GTEST_LOG_(INFO) << "DoRenameNewTest006 ERROR";
     }
     GTEST_LOG_(INFO) << "DoRenameNewTest006 End";
+}
+
+/**
+* * @tc.name: DoRenameNewTest007
+* * @tc.desc: Verify DoRenameNew returns EIO when updating an existing dentry fails to write
+* * @tc.type: FUNC
+* * @tc.require: NA
+*/
+HWTEST_F(CloudDiskServiceMetafileTest, DoRenameNewTest007, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "DoRenameNewTest007 Start";
+    try {
+        std::map<off_t, std::vector<char>> fileContent;
+        auto readFileImpl = MakeFileContentReader(fileContent);
+        auto writeFileImpl = MakeFileContentWriter(fileContent);
+        CloudDiskServiceMetaFile mFile(100, 1, 123);
+        mFile.fd_.Reset(1);
+        MetaBase createBase;
+        createBase.name = "test_name";
+        createBase.recordId = "record_123";
+        createBase.atime = 1;
+        createBase.mtime = 1;
+        createBase.size = 1024;
+        createBase.mode = 0666;
+        unsigned long bidx;
+        uint32_t bitPos;
+        uint8_t overwrittenState = PLACEHOLDER_STATE_NONE;
+        (void)overwrittenState;
+        EXPECT_CALL(*insMock, ReadFile(_, _, _, _)).WillRepeatedly(testing::Invoke(readFileImpl));
+        EXPECT_CALL(*insMock, WriteFile(_, _, _, _)).WillRepeatedly(testing::Invoke(writeFileImpl));
+        auto ret = mFile.DoCreate(createBase, bidx, bitPos);
+        EXPECT_EQ(ret, E_OK);
+
+        MetaBase renameBase;
+        renameBase.name = "test_name";
+        renameBase.size = 1024;
+        renameBase.mode = 0666;
+        string originalRecordId = "original_id_456";
+        EXPECT_CALL(*insMock, WriteFile(_, _, _, _)).WillOnce(Return(1));
+        ret = mFile.DoRenameNew(renameBase, originalRecordId, bidx, bitPos, overwrittenState);
+        EXPECT_EQ(ret, EIO);
+    } catch (...) {
+        EXPECT_TRUE(false);
+        GTEST_LOG_(INFO) << "DoRenameNewTest007 ERROR";
+    }
+    GTEST_LOG_(INFO) << "DoRenameNewTest007 End";
 }
 
 /**

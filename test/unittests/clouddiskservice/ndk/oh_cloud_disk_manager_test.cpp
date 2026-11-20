@@ -420,13 +420,16 @@ HWTEST_F(OhCloudDiskManagerTest, ConvertPlaceholderToFile_InvalidPath_001, TestS
 #else
         EXPECT_EQ(ret, CloudDisk_ErrorCode::CLOUD_DISK_NOT_SUPPORTED);
 #endif
+
         syncFolderPath.value = const_cast<char *>("/storage/Users/currentUser/testdir");
         syncFolderPath.length = 0;
         ret = OH_CloudDisk_ConvertPlaceholderToFile(syncFolderPath, pathInfo);
 #ifdef SUPPORT_CLOUD_DISK_SERVICE
         EXPECT_EQ(ret, CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+        GTEST_LOG_(INFO) << "support cloud disk";
 #else
         EXPECT_EQ(ret, CloudDisk_ErrorCode::CLOUD_DISK_NOT_SUPPORTED);
+        GTEST_LOG_(INFO) << "not support disk";
 #endif
     } catch (...) {
         EXPECT_TRUE(false);
