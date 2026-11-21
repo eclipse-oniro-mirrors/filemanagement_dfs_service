@@ -1472,7 +1472,7 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest_HardLink_001, 
 
 /**
  * @tc.name: RemovePlaceholderFilesBatchTest_XattrFailure_001
- * @tc.desc: Keep a fully hydrated file and report xattr removal failures.
+ * @tc.desc: Keep a fully hydrated file and report file and directory xattr removal failures.
  * @tc.type: FUNC
  * @tc.require: NA
  */
@@ -1483,7 +1483,7 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest_XattrFailure_0
         ResetCleanupDir("/data/test_tdd_placeholder");
         std::system("touch /data/test_tdd_placeholder/fully_file.txt");
         ExpectCleanupState(PLACEHOLDER_STATE_FULLY_HYDRATED);
-        EXPECT_CALL(*insMock, fremovexattr(_, _)).Times(2).WillRepeatedly(Invoke([](int, const char *) {
+        EXPECT_CALL(*insMock, fremovexattr(_, _)).Times(4).WillRepeatedly(Invoke([](int, const char *) {
             errno = EACCES;
             return -1;
         }));
@@ -1492,7 +1492,7 @@ HWTEST_F(CloudDiskSyncFolderTest, RemovePlaceholderFilesBatchTest_XattrFailure_0
             "/data/test_tdd_placeholder");
         EXPECT_EQ(stats.kept, 1U);
         EXPECT_EQ(stats.removed, 0U);
-        EXPECT_EQ(stats.failed, 2U);
+        EXPECT_EQ(stats.failed, 4U);
         EXPECT_EQ(stats.firstError, EACCES);
         EXPECT_TRUE(CleanupPathExists("/data/test_tdd_placeholder/fully_file.txt"));
         std::system("rm -rf /data/test_tdd_placeholder");

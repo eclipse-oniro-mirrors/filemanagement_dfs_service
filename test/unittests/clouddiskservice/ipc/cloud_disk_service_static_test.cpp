@@ -2252,11 +2252,12 @@ HWTEST_F(CloudDiskServiceStaticTest, CreatePlaceholderBranchTest008, TestSize.Le
 
     EXPECT_CALL(*insMock_, Open(_, _, _)).WillOnce(Return(10));
     EXPECT_CALL(*insMock_, OpenAt(10, _, _, _)).WillOnce(Return(11));
+    EXPECT_CALL(*insMock_, fsetxattr(11, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+        .WillOnce(Return(0));
     EXPECT_CALL(*insMock_, ftruncate(11, _)).WillOnce(Invoke([](int, off_t) {
         errno = ENOSPC;
         return -1;
     }));
-    EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _)).Times(0);
     EXPECT_CALL(*insMock_, futimens(_, _)).Times(0);
     EXPECT_CALL(*insMock_, UnlinkAt(10, StrEq("placeholder.txt"), 0)).WillOnce(Return(0));
     EXPECT_EQ(CreatePlaceholderFileAt(path, info), E_NO_SPACE_LEFT);
@@ -2280,7 +2281,7 @@ HWTEST_F(CloudDiskServiceStaticTest, CreatePlaceholderAttributeTest001, TestSize
 
     EXPECT_CALL(*insMock_, Open(_, _, _)).WillOnce(Return(10));
     EXPECT_CALL(*insMock_, OpenAt(10, _, _, _)).WillOnce(Return(11));
-    EXPECT_CALL(*insMock_, ftruncate(11, _)).WillOnce(Return(0));
+    EXPECT_CALL(*insMock_, ftruncate(11, _)).Times(0);
     EXPECT_CALL(*insMock_, fsetxattr(11, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
         .WillOnce(Invoke([](int, const char *, const void *, size_t, int) {
             errno = EOPNOTSUPP;

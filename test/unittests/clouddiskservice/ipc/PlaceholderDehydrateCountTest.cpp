@@ -345,37 +345,58 @@ HWTEST_F(PlaceholderDehydrateCountTest, DehydratePartiallyHydratedCount_001, Tes
 }
 
 /**
- * @tc.name: DehydrateSyncInProgressRejected_001
- * @tc.desc: Dehydration is rejected while the file still has unsynced local changes in flight.
+ * @tc.name: DehydrateSyncInProgressAllowed_001
+ * @tc.desc: Dehydration proceeds while the file still has a sync in flight and keeps the sync bits.
  * @tc.type: RELI
  * @tc.require: NA
  */
-HWTEST_F(PlaceholderDehydrateCountTest, DehydrateSyncInProgressRejected_001, TestSize.Level2)
+HWTEST_F(PlaceholderDehydrateCountTest, DehydrateSyncInProgressAllowed_001, TestSize.Level2)
 {
     PlaceholderStatePathContext context = {TEST_HOLE_PATH, "/root", 100, TEST_SYNC_FOLDER_INDEX, TEST_BUNDLE_NAME,
                                             TEST_SYNC_FOLDER};
     Assistant::mockFdApi = true;
+    auto callback = sptr(new DehydrateAllowStub());
+    ASSERT_EQ(PlaceholderCallbackManager::GetInstance().RegisterCallbackTable(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                                                              callback),
+              E_OK);
     ResetPlaceholderMetaFileMock();
     constexpr int32_t fileFd = 95;
     constexpr off_t logicalSize = 4096;
     struct stat fileStat = {};
     fileStat.st_mode = S_IFREG;
     fileStat.st_size = logicalSize;
+    struct stat dirStat = {};
+    dirStat.st_mode = S_IFDIR;
 
     EXPECT_CALL(*mock_, MockStat(StrEq(TEST_HOLE_PATH), _))
         .WillOnce(DoAll(SetArgPointee<1>(fileStat), Return(0)));
     EXPECT_CALL(*mock_, Open(StrEq(TEST_HOLE_PATH), _, _)).WillOnce(Return(fileFd));
     EXPECT_CALL(*mock_, fgetxattr(fileFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
-        .WillOnce(Invoke([](int, const char *, void *value, size_t size) {
+        .Times(2)
+        .WillRepeatedly(Invoke([](int, const char *, void *value, size_t size) {
             *static_cast<uint8_t *>(value) =
                 MakeFileSyncState(PLACEHOLDER_STATE_FULLY_HYDRATED, static_cast<uint8_t>(SyncState::SYNCING));
             return static_cast<ssize_t>(size);
         }));
-    EXPECT_CALL(*mock_, ftruncate(_, _)).Times(0);
-    EXPECT_CALL(*mock_, fsetxattr(_, _, _, _, _)).Times(0);
+    EXPECT_CALL(*mock_, fstat(fileFd, _)).WillOnce(DoAll(SetArgPointee<1>(fileStat), Return(0)));
+    EXPECT_CALL(*mock_, Fsync(fileFd)).Times(2).WillRepeatedly(Return(0));
+    {
+        InSequence sequence;
+        EXPECT_CALL(*mock_, fsetxattr(fileFd, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+            .WillOnce(Invoke([](int, const char *, const void *value, size_t, int) {
+                EXPECT_EQ(*static_cast<const uint8_t *>(value),
+                          MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, static_cast<uint8_t>(SyncState::SYNCING)));
+                return 0;
+            }));
+        EXPECT_CALL(*mock_, ftruncate(fileFd, 0)).WillOnce(Return(0));
+        EXPECT_CALL(*mock_, ftruncate(fileFd, logicalSize)).WillOnce(Return(0));
+        EXPECT_CALL(*mock_, futimens(fileFd, _)).WillOnce(Return(0));
+    }
+    ExpectRootCountRefresh(mock_);
+    EXPECT_CALL(*mock_, MockStat(StrEq("/root"), _)).WillOnce(DoAll(SetArgPointee<1>(dirStat), Return(0)));
 
-    EXPECT_EQ(DehydratePlaceholderFile(context, "file.txt"), E_TRY_AGAIN);
-    EXPECT_EQ(GetLastPlaceholderMetaFileUpdateState(), PLACEHOLDER_STATE_NONE);
+    EXPECT_EQ(DehydratePlaceholderFile(context, "file.txt"), E_OK);
+    EXPECT_EQ(GetLastPlaceholderMetaFileUpdateState(), PLACEHOLDER_STATE_UNHYDRATED);
 }
 
 /**

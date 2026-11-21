@@ -209,11 +209,6 @@ static int32_t SetPlaceholderFileAttributes(int32_t fileFd,
         LOGE("Placeholder logical size exceeds off_t, size=%{public}" PRIu64, info.logicalSize);
         return EFBIG;
     }
-    if (ftruncate(fileFd, static_cast<off_t>(info.logicalSize)) < 0) {
-        int32_t err = errno;
-        LOGE("CreatePlaceholderFile branch=set_size_failed errno=%{public}d", err);
-        return err;
-    }
     int32_t err = E_OK;
     if (oldPlaceholderState == nullptr) {
         err = SetNewFilePlaceholderState(fileFd, PLACEHOLDER_STATE_UNHYDRATED);
@@ -222,6 +217,11 @@ static int32_t SetPlaceholderFileAttributes(int32_t fileFd,
     }
     if (err != E_OK) {
         LOGE("CreatePlaceholderFile branch=set_xattr_failed errno=%{public}d", err);
+        return err;
+    }
+    if (ftruncate(fileFd, static_cast<off_t>(info.logicalSize)) < 0) {
+        err = errno;
+        LOGE("CreatePlaceholderFile branch=set_size_failed errno=%{public}d", err);
         return err;
     }
     if (!customInfo.data.empty() &&
@@ -1569,19 +1569,6 @@ static void RestoreDehydrationTimestamps(int fd, const struct stat &fileStat)
     }
 }
 
-static bool IsSyncStateBlockingDehydrate(uint8_t syncState)
-{
-    switch (static_cast<SyncState>(syncState)) {
-        case SyncState::SYNCING:
-        case SyncState::SYNC_FAILED:
-        case SyncState::SYNC_CANCELED:
-        case SyncState::SYNC_CONFLICTED:
-            return true;
-        default:
-            return false;
-    }
-}
-
 static void RefreshDehydratedPlaceholderMetadata(const PlaceholderStatePathContext &context, uint8_t oldState)
 {
     if (context.mntSyncFolder.empty()) {
@@ -1681,25 +1668,16 @@ static int32_t DehydratePlaceholderFile(const PlaceholderStatePathContext &conte
         return ConvertTargetErrnoToCloudDiskError(error);
     }
 
-    uint8_t stateByte = 0;
-    ret = GetFileSyncStateByte(fd, stateByte, true);
+    uint8_t state = PLACEHOLDER_STATE_NONE;
+    ret = GetFilePlaceholderState(fd, state);
     if (ret != E_OK) {
         LOGE("Get placeholder state before dehydration failed, errno:%{public}d", ret);
         return ConvertPlaceholderStateErrnoToCloudDiskError(ret);
     }
-    uint8_t state = GetPlaceholderStateFromFileSyncState(stateByte);
-    uint8_t syncState = GetSyncStateFromFileSyncState(stateByte);
     ret = CheckDehydrateState(state);
     if (ret != E_OK || state == PLACEHOLDER_STATE_UNHYDRATED) {
         LOGE("Dehydrate rejected by placeholder state, state:%{public}u, ret:%{public}d", state, ret);
         return ret;
-    }
-    if (IsSyncStateBlockingDehydrate(syncState)) {
-        // Dropping the local copy while an upload/failure/conflict is pending would delete the
-        // only copy of unsynced content; the provider has to settle the sync state first.
-        LOGW("Dehydrate rejected by sync state, syncState:%{public}u, path:%{private}s", syncState,
-             context.hmdfsPath.c_str());
-        return E_TRY_AGAIN;
     }
 
     LOGI("Request dehydration authorization, bundleName:%{private}s", context.bundleName.c_str());

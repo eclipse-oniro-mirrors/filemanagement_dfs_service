@@ -167,7 +167,7 @@ int32_t OpenParentNoFollow(const std::string &path, UniqueFd &parentFd, std::str
     }
     std::string parent = slash == 0 ? "/" : normalized.substr(0, slash);
 
-    UniqueFd current(open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+    UniqueFd current(open("/", O_PATH | O_DIRECTORY | O_CLOEXEC));
     if (current < 0) {
         int32_t error = errno;
         LOGE("Open cleanup anchor failed, errno:%{public}d", error);
@@ -181,9 +181,16 @@ int32_t OpenParentNoFollow(const std::string &path, UniqueFd &parentFd, std::str
             LOGE("Cleanup path has invalid component");
             return EINVAL;
         }
-        UniqueFd next(openat(current.Get(), component.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+        UniqueFd next(openat(current.Get(), component.c_str(), O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
         if (next < 0) {
             int32_t error = errno;
+            if (error == ENOTDIR) {
+                struct stat componentStat {};
+                if (fstatat(current.Get(), component.c_str(), &componentStat, AT_SYMLINK_NOFOLLOW) == 0 &&
+                    S_ISLNK(componentStat.st_mode)) {
+                    error = ELOOP;
+                }
+            }
             LOGE("Open cleanup path component failed, errno:%{public}d", error);
             return error;
         }
@@ -417,23 +424,9 @@ void CleanPlaceholderDirectory(int dirFd, const std::string &path, PlaceholderCl
         RecordCleanupFailure(stats, error);
         return;
     }
-    uint32_t failedBefore = stats.failed;
-    uint32_t inconsistentBefore = stats.inconsistent;
-    uint32_t hardLinksBefore = stats.hardLinks;
     CleanupDirectoryEntries(dir, dirFd, path, stats);
-
-    bool subtreeClean = stats.failed == failedBefore && stats.inconsistent == inconsistentBefore &&
-                        stats.hardLinks == hardLinksBefore;
-    if (subtreeClean) {
-        (void)RemoveNodeXattr(dirFd, CLOUD_DISK_PLACEHOLDER_COUNT_XATTR, path, stats);
-        (void)RemoveNodeXattr(dirFd, CLOUD_DISK_FILE_SYNC_STATE_XATTR, path, stats);
-    } else {
-        // Directory xattrs describe the whole subtree; only drop them when every child was
-        // handled successfully and consistently, so a retry can still walk the incomplete
-        // placeholders and the count cannot silently diverge.
-        LOGW("keep directory xattrs because child cleanup was incomplete, path:%{public}s",
-             GetAnonyStringStrictly(path).c_str());
-    }
+    (void)RemoveNodeXattr(dirFd, CLOUD_DISK_PLACEHOLDER_COUNT_XATTR, path, stats);
+    (void)RemoveNodeXattr(dirFd, CLOUD_DISK_FILE_SYNC_STATE_XATTR, path, stats);
     if (closedir(dir) != 0) {
         LOGW("close directory failed, path:%{public}s, errno:%{public}d", GetAnonyStringStrictly(path).c_str(),
              errno);
