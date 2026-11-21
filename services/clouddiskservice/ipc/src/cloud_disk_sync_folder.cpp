@@ -144,6 +144,24 @@ struct CleanupEntry {
 
 void CleanPlaceholderDirectory(int dirFd, const std::string &path, PlaceholderCleanupStats &stats);
 
+static int32_t OpenCleanupPathComponent(int dirFd, const std::string &component, UniqueFd &fd)
+{
+    fd = UniqueFd(openat(dirFd, component.c_str(), O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+    if (fd >= 0) {
+        return E_OK;
+    }
+    int32_t error = errno;
+    if (error != ENOTDIR) {
+        return error;
+    }
+    struct stat componentStat {};
+    if (fstatat(dirFd, component.c_str(), &componentStat, AT_SYMLINK_NOFOLLOW) == 0 &&
+        S_ISLNK(componentStat.st_mode)) {
+        return ELOOP;
+    }
+    return error;
+}
+
 // Walk from "/" one component at a time so no component of the cleanup root can be a symlink.
 // The final component is returned as a name so callers can decide its type without opening it.
 int32_t OpenParentNoFollow(const std::string &path, UniqueFd &parentFd, std::string &leaf)
@@ -152,10 +170,8 @@ int32_t OpenParentNoFollow(const std::string &path, UniqueFd &parentFd, std::str
         LOGE("Cleanup path is not absolute");
         return EINVAL;
     }
-    std::string normalized = path;
-    while (normalized.size() > 1 && normalized.back() == '/') {
-        normalized.pop_back();
-    }
+    size_t lastNonSlash = path.find_last_not_of('/');
+    std::string normalized = lastNonSlash == std::string::npos ? "/" : path.substr(0, lastNonSlash + 1);
     size_t slash = normalized.find_last_of('/');
     if (slash == std::string::npos) {
         return EINVAL;
@@ -181,16 +197,9 @@ int32_t OpenParentNoFollow(const std::string &path, UniqueFd &parentFd, std::str
             LOGE("Cleanup path has invalid component");
             return EINVAL;
         }
-        UniqueFd next(openat(current.Get(), component.c_str(), O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
-        if (next < 0) {
-            int32_t error = errno;
-            if (error == ENOTDIR) {
-                struct stat componentStat {};
-                if (fstatat(current.Get(), component.c_str(), &componentStat, AT_SYMLINK_NOFOLLOW) == 0 &&
-                    S_ISLNK(componentStat.st_mode)) {
-                    error = ELOOP;
-                }
-            }
+        UniqueFd next;
+        int32_t error = OpenCleanupPathComponent(current.Get(), component, next);
+        if (error != E_OK) {
             LOGE("Open cleanup path component failed, errno:%{public}d", error);
             return error;
         }
