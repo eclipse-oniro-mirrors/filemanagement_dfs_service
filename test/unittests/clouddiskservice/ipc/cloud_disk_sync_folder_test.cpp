@@ -113,7 +113,8 @@ static void ExpectCleanupState(uint8_t state)
 {
     EXPECT_CALL(*CloudDiskSyncFolderTest::insMock,
                 fgetxattr(_, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t)))
-        .WillOnce(SetByteXattr(MakeFileSyncState(state, 0)));
+        .WillOnce(SetByteXattr(MakeFileSyncState(state, 0)))
+        .RetiresOnSaturation();
 }
 
 static void ResetCleanupDir(const std::string &path)
@@ -509,7 +510,10 @@ HWTEST_F(CloudDiskSyncFolderTest, PathToPhysicalPathTest001, TestSize.Level1)
         string path = "/storage/Users/currentUser/testfile.txt";
         string userId = "100";
         string realpath;
-        EXPECT_CALL(*syncFolderMock, realpath(_, _)).WillOnce(Return(nullptr));
+        EXPECT_CALL(*syncFolderMock, realpath(_, _)).WillOnce(Invoke([](const char *, char *) {
+            errno = EACCES;
+            return static_cast<char *>(nullptr);
+        }));
         int32_t ret = syncFolder.PathToPhysicalPath(path, userId, realpath);
         EXPECT_EQ(ret, E_INVALID_ARG);
     } catch (...) {
@@ -641,7 +645,10 @@ HWTEST_F(CloudDiskSyncFolderTest, PathToMntPathBySandboxPathTest003, TestSize.Le
         string path = "/storage/Users/currentUser/testfile.txt";
         string userId = "100";
         string realpath;
-        EXPECT_CALL(*syncFolderMock, realpath(_, _)).WillOnce(Return(nullptr));
+        EXPECT_CALL(*syncFolderMock, realpath(_, _)).WillOnce(Invoke([](const char *, char *) {
+            errno = EACCES;
+            return static_cast<char *>(nullptr);
+        }));
         int32_t ret = syncFolder.PathToMntPathBySandboxPath(path, userId, realpath);
         EXPECT_EQ(ret, E_INVALID_ARG);
     } catch (...) {
