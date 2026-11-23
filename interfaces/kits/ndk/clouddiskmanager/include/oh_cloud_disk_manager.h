@@ -129,12 +129,12 @@ typedef enum CloudDisk_OperationType {
     /**
      * Open a file.
      */
-    FILE_OPEN = 7
+    OH_CLOUD_DISK_FILE_OPEN = 7
 } CloudDisk_OperationType;
 
 /**
  * @brief Represents an array of {@link CloudDisk_OperationType} values.
- * @since 26.2.0
+ * @since 26.1.0
  */
 typedef struct OH_CloudDisk_OperationTypeArray {
     /**
@@ -638,7 +638,7 @@ CloudDisk_ErrorCode OH_CloudDisk_GetSyncFolderChanges(const CloudDisk_SyncFolder
  * @param callback Indicates the callback function to register.
  * @return Returns {@link CLOUD_DISK_OK} if the callback function is registered successfully;
  * <br> returns an error code defined in {@link cloud_disk_error_code.h} otherwise.
- * @since 26.2.0
+ * @since 26.1.0
  */
 CloudDisk_ErrorCode OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
     const CloudDisk_SyncFolderPath syncFolderPath,
@@ -657,12 +657,12 @@ CloudDisk_ErrorCode OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
  * @param changesResult Indicates the result of querying file changes. For details, see {@link CloudDisk_ChangesResult}.
  * @return Returns {@link CLOUD_DISK_OK} if the function executes successfully;
  * <br> returns an error code defined in {@link cloud_disk_error_code.h} otherwise.
- * @since 26.2.0
+ * @since 26.1.0
  */
 CloudDisk_ErrorCode OH_CloudDisk_GetSyncFolderChangesWithEvents(
     const CloudDisk_SyncFolderPath syncFolderPath,
-    uint64_t startUsn,
-    size_t count,
+    int64_t startUsn,
+    int64_t count,
     const OH_CloudDisk_OperationTypeArray *operationTypes,
     CloudDisk_ChangesResult **changesResult);
 

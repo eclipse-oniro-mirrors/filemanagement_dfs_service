@@ -383,8 +383,8 @@ CloudDisk_ErrorCode OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
 
 CloudDisk_ErrorCode OH_CloudDisk_GetSyncFolderChangesWithEvents(
     const CloudDisk_SyncFolderPath syncFolderPath,
-    uint64_t startUsn,
-    size_t count,
+    int64_t startUsn,
+    int64_t count,
     const OH_CloudDisk_OperationTypeArray *operationTypes,
     CloudDisk_ChangesResult **changesResult)
 {
@@ -394,6 +394,10 @@ CloudDisk_ErrorCode OH_CloudDisk_GetSyncFolderChangesWithEvents(
     }
     if (!IsValidPathInfo(syncFolderPath.value, syncFolderPath.length)) {
         LOGE("Invalid argument, syncFolder path is invalid");
+        return CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG;
+    }
+    if (startUsn < 0 || count <= 0) {
+        LOGE("Invalid argument, startUsn or count is invalid");
         return CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG;
     }
     if (operationTypes == nullptr || operationTypes->data == nullptr || operationTypes->length <= 0 ||
