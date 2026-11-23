@@ -1088,6 +1088,17 @@ int32_t PlaceholderTaskManager::ExecuteFetchDataLocked(const std::shared_ptr<Pla
         ScheduleDispatch();
         return E_TRY_AGAIN;
     }
+    // The task fd pins a deleted inode invisibly: hydrating it would write a ghost
+    // file and double-decrement the ancestor count. Probe the target on every chunk
+    // so the provider learns about a deleted file immediately instead of after the
+    // full transfer; any failed probe ends the task with the mapped errno.
+    if (!task->hmdfsPath.empty() && access(task->hmdfsPath.c_str(), F_OK) != 0) {
+        int32_t error = errno;
+        LOGW("Access target failed, path:%{private}s, errno:%{public}d", task->hmdfsPath.c_str(), error);
+        CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
+        ScheduleDispatch();
+        return ConvertHydrationIoError(error);
+    }
     if (task->tempFd < 0) {
         LOGE("Invalid Execute task temp fd");
         CancelTaskRecordLocked(task, PlaceholderTaskCancelReason::INTERNAL_ERROR);
