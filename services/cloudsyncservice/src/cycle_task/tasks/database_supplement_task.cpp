@@ -51,6 +51,7 @@ using namespace CloudDisk;
 namespace {
 constexpr const char *ACL_XATTR_ACCESS = "system.posix_acl_access";
 constexpr const char *ACL_XATTR_DEFAULT = "system.posix_acl_default";
+constexpr const char *RECYCLE_SIZE_CACHE_FILE_NAME = "RecycleSizeCache";
 } // namespace
 
 class SupplementDbCallBack : public RdbOpenCallback {
@@ -421,6 +422,10 @@ void DatabaseSupplementTask::ChownMigratedAppDirectory(int32_t userId, const str
         }
         
         string path = it->path().string();
+        if (it->path().filename() == RECYCLE_SIZE_CACHE_FILE_NAME) {
+            LOGI("skip recycle size cache file, path=%{private}s", path.c_str());
+            continue;
+        }
         struct stat st{};
         if (stat(path.c_str(), &st) != 0) {
             LOGW("stat failed, errno=%{public}d", errno);
