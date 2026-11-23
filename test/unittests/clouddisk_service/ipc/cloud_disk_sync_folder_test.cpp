@@ -507,7 +507,10 @@ HWTEST_F(CloudDiskSyncFolderTest, PathToPhysicalPathTest001, TestSize.Level1)
         string testPath = "/storage/Users/currentUser/testfile.txt";
         string testUserId = "100";
         string realPath;
-        EXPECT_CALL(*syncFolderAssistantMock, realpath(_, _)).WillOnce(Return(nullptr));
+        EXPECT_CALL(*syncFolderAssistantMock, realpath(_, _)).WillOnce(Invoke([](const char *, char *) {
+            errno = ENOENT;
+            return static_cast<char *>(nullptr);
+        }));
         int32_t convertResult = syncFolderInstance.PathToPhysicalPath(testPath, testUserId, realPath);
         EXPECT_EQ(convertResult, E_SYNC_FOLDER_PATH_NOT_EXIST);
     } catch (...) {
@@ -638,7 +641,10 @@ HWTEST_F(CloudDiskSyncFolderTest, PathToMntPathBySandboxPathTest003, TestSize.Le
         string testPath = "/storage/Users/currentUser/testfile.txt";
         string testUserId = "100";
         string realPath;
-        EXPECT_CALL(*syncFolderAssistantMock, realpath(_, _)).WillOnce(Return(nullptr));
+        EXPECT_CALL(*syncFolderAssistantMock, realpath(_, _)).WillOnce(Invoke([](const char *, char *) {
+            errno = ENOENT;
+            return static_cast<char *>(nullptr);
+        }));
         int32_t convertResult = syncFolderInstance.PathToMntPathBySandboxPath(testPath, testUserId, realPath);
         EXPECT_EQ(convertResult, E_SYNC_FOLDER_PATH_NOT_EXIST);
     } catch (...) {
