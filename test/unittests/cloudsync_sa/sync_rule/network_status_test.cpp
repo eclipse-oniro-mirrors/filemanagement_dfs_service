@@ -57,7 +57,7 @@ public:
     MOCK_METHOD1(RemoveCandidateConfig, Wifi::ErrCode(int));
     MOCK_METHOD1(RemoveCandidateConfig, Wifi::ErrCode(const Wifi::WifiDeviceConfig &));
     MOCK_METHOD3(AddDeviceConfig, Wifi::ErrCode(const Wifi::WifiDeviceConfig &, int &, bool));
-    MOCK_METHOD1(SetWifiRestrictedList, Wifi::ErrCode(const std::vector<Wifi::WifiRestrictedInfo> &, int));
+    MOCK_METHOD2(SetWifiRestrictedList, Wifi::ErrCode(const std::vector<Wifi::WifiRestrictedInfo> &, int));
     MOCK_METHOD1(SetWifiTxPower, Wifi::ErrCode(int));
     MOCK_METHOD2(UpdateDeviceConfig, Wifi::ErrCode(const Wifi::WifiDeviceConfig &, int &));
     MOCK_METHOD1(RemoveDevice, Wifi::ErrCode(int));
