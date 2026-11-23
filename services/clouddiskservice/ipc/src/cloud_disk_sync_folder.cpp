@@ -541,8 +541,9 @@ int32_t CloudDiskSyncFolder::ReplacePathPrefix(const string &oldPrefix,
 
     char realPathBuffer[PATH_MAX + 1]{'\0'};
     if (realpath(newPath.c_str(), realPathBuffer) == nullptr) {
-        LOGE("Realpath error: %{public}d, path=%{public}s", errno, GetAnonyStringStrictly(newPath).c_str());
-        return (errno == ENOENT) ? E_SYNC_FOLDER_PATH_NOT_EXIST : E_INVALID_ARG;
+        int32_t error = errno;
+        LOGE("Realpath error: %{public}d, path=%{public}s", error, GetAnonyStringStrictly(newPath).c_str());
+        return (error == ENOENT) ? E_SYNC_FOLDER_PATH_NOT_EXIST : E_INVALID_ARG;
     }
 
     string newRealPath = string(realPathBuffer);
