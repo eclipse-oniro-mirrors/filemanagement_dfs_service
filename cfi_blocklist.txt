@@ -38,3 +38,10 @@ src:*daemon_stub.cpp
 src:*dfsu_access_token_helper.cpp
 src:*third_party/googletest/googlemock/include/gmock/*
 src:*third_party/googletest/googletest/include/gtest/*
+src:*services/distributedfiledaemon/test/unittest/ipc/daemon_stub_test.cpp
+src:*services/distributedfiledaemon/test/unittest/ipc/daemon_test.cpp
+src:*services/distributedfiledaemon/test/unittest/mountpoint/mount_manager_test.cpp
+src:*services/distributedfiledaemon/test/unittest/multiuser/os_account_observer_test.cpp
+src:*services/distributedfiledaemon/test/unittest/dfx/radar_report_test.cpp
+src:*services/distributedfiledaemon/test/unittest/network/softbus/softbus_asset_send_listener_test.cpp
+src:*services/distributedfiledaemon/test/unittest/network/softbus/softbus_session_pool_test.cpp
