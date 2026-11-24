@@ -1289,6 +1289,10 @@ HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_002, TestSi
     EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
         syncFolderPath, &badArray,
         OnChangeDataCallback), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    OH_CloudDisk_OperationTypeArray overLenArray = {.data = valid, .length = 9};
+    EXPECT_EQ(OH_CloudDisk_RegisterSyncFolderChangesWithEvents(
+        syncFolderPath, &overLenArray,
+        OnChangeDataCallback), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
     Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
 }
 
@@ -1301,14 +1305,13 @@ HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_002, TestSi
 HWTEST_F(OhCloudDiskManagerTest, RegisterSyncFolderChangesWithEvents_003, TestSize.Level1)
 {
     CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
-    CloudDisk_OperationType nineCreate[] = {
+    CloudDisk_OperationType eightCreate[] = {
         CloudDisk_OperationType::CREATE, CloudDisk_OperationType::CREATE,
         CloudDisk_OperationType::CREATE, CloudDisk_OperationType::CREATE,
         CloudDisk_OperationType::CREATE, CloudDisk_OperationType::CREATE,
-        CloudDisk_OperationType::CREATE, CloudDisk_OperationType::CREATE,
-        CloudDisk_OperationType::CREATE};
+        CloudDisk_OperationType::CREATE, CloudDisk_OperationType::CREATE};
     OH_CloudDisk_OperationTypeArray typeArray = {
-        .data = nineCreate, .length = sizeof(nineCreate) / sizeof(nineCreate[0])};
+        .data = eightCreate, .length = sizeof(eightCreate) / sizeof(eightCreate[0])};
     std::vector<OperationType> captured;
     EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
                 RegisterSyncFolderChangesWithEvents(testSyncFolderPath, _, _))
@@ -1380,6 +1383,9 @@ HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_002, TestSize.Le
         syncFolderPath, 0, 10, &negLenArray, &changesResult), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
     EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
         syncFolderPath, 0, 10, &badArray, &changesResult), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
+    OH_CloudDisk_OperationTypeArray overLenArray = {.data = valid, .length = 9};
+    EXPECT_EQ(OH_CloudDisk_GetSyncFolderChangesWithEvents(
+        syncFolderPath, 0, 10, &overLenArray, &changesResult), CloudDisk_ErrorCode::CLOUD_DISK_INVALID_ARG);
     Mock::VerifyAndClearExpectations(&CloudDiskServiceManagerMock::GetInstance());
 }
 
@@ -1392,14 +1398,13 @@ HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_002, TestSize.Le
 HWTEST_F(OhCloudDiskManagerTest, GetSyncFolderChangesWithEvents_003, TestSize.Level1)
 {
     CloudDisk_SyncFolderPath syncFolderPath = CreateValidSyncFolderPath();
-    CloudDisk_OperationType nineMove[] = {
+    CloudDisk_OperationType eightMove[] = {
         CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_FROM,
         CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_FROM,
         CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_FROM,
-        CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_FROM,
-        CloudDisk_OperationType::MOVE_FROM};
+        CloudDisk_OperationType::MOVE_FROM, CloudDisk_OperationType::MOVE_FROM};
     OH_CloudDisk_OperationTypeArray typeArray = {
-        .data = nineMove, .length = sizeof(nineMove) / sizeof(nineMove[0])};
+        .data = eightMove, .length = sizeof(eightMove) / sizeof(eightMove[0])};
     std::vector<OperationType> captured;
     EXPECT_CALL(CloudDiskServiceManagerMock::GetInstance(),
                 GetSyncFolderChangesWithEvents(testSyncFolderPath, _, _, _, _))
