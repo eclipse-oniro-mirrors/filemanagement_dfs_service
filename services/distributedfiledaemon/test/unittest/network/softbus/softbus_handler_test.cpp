@@ -161,8 +161,12 @@ void SoftbusHandlerTest::SetUp(void)
 void SoftbusHandlerTest::TearDown(void)
 {
     GTEST_LOG_(INFO) << "TearDown";
-    SoftBusHandler::GetInstance().clientSessNameMap_.clear();
-    SoftBusHandler::GetInstance().serverIdMap_.clear();
+    std::lock_guard<std::mutex> lock1(SoftBusHandler::clientSessNameMapMutex_);
+    SoftBusHandler::clientSessNameMap_.clear();
+    std::lock_guard<std::mutex> lock2(SoftBusHandler::serverIdMapMutex_);
+    SoftBusHandler::serverIdMap_.clear();
+    std::lock_guard<std::mutex> lock3(SoftBusHandler::networkIdMapMutex_);
+    SoftBusHandler::networkIdMap_.clear();
     ::testing::Mock::VerifyAndClearExpectations(deviceManagerImplMock_.get());
     ::testing::Mock::VerifyAndClearExpectations(socketMock_.get());
     ::testing::Mock::VerifyAndClearExpectations(otherMethodMock_.get());
