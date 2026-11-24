@@ -332,19 +332,11 @@ HWTEST_F(CloudSyncCoreTest, DoGetCoreFileSyncStateTest1, TestSize.Level1)
     string filePath = "file://com.ohos.camera/test/test.txt";
     EXPECT_CALL(*sys, getxattr(_, _, _, _)).WillOnce(Return(-1));
     auto ret = CloudSyncCore::DoGetCoreFileSyncState(filePath);
-#if CLOUD_ADAPTER_ENABLED
-    EXPECT_TRUE(ret.IsSuccess());
-#else
     EXPECT_FALSE(ret.IsSuccess());
-#endif
 
     EXPECT_CALL(*sys, getxattr(_, _, _, _)).WillOnce(Return(0)).WillOnce(Return(-1));
     ret = CloudSyncCore::DoGetCoreFileSyncState(filePath);
-#if CLOUD_ADAPTER_ENABLED
-    EXPECT_TRUE(ret.IsSuccess());
-#else
     EXPECT_FALSE(ret.IsSuccess());
-#endif
 
     EXPECT_CALL(*sys, getxattr(_, _, _, _)).WillOnce(Return(0)).WillOnce(DoAll(
         Invoke([](const char *path, const char *name, void *value, size_t size) {
