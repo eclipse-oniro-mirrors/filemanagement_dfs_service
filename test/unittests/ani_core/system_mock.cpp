@@ -42,13 +42,13 @@ int setxattr(const char *path, const char *name, const void *value, size_t size,
     return System::ins->setxattr(path, name, value, size, flags);
 }
 
-int getxattr(const char *path, const char *name, void *value, size_t size)
+ssize_t getxattr(const char *path, const char *name, void *value, size_t size)
 {
     if (SystemMock::IsMockable()) {
         return System::ins->getxattr(path, name, value, size);
     }
-    static int (*realGetxattr)() = []() {
-        auto func = (int (*)())dlsym(RTLD_NEXT, "getxattr");
+    static ssize_t (*realGetxattr)() = []() {
+        auto func = (ssize_t (*)())dlsym(RTLD_NEXT, "getxattr");
         if (!func) {
             GTEST_LOG_(ERROR) << "Failed to resolve getxattr: " << dlerror();
         }
@@ -60,7 +60,7 @@ int getxattr(const char *path, const char *name, void *value, size_t size)
     return realGetxattr();
 }
 
-int fgetxattr(int filedes, const char *name, void *value, size_t size)
+ssize_t fgetxattr(int filedes, const char *name, void *value, size_t size)
 {
     return System::ins->fgetxattr(filedes, name, value, size);
 }
