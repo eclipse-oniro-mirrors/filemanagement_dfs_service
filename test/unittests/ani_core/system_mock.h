@@ -16,6 +16,7 @@
 #define OHOS_FILEMGMT_CLOUD_SYNC_SYSTEM_MOCK_H
 
 #include <sys/file.h>
+#include <sys/types.h>
 #include <vector>
 #include <gmock/gmock.h>
 
@@ -29,8 +30,8 @@ public:
 public:
     virtual ~System() = default;
     virtual int setxattr(const char *path, const char *name, const void *value, size_t size, int flags) = 0;
-    virtual int getxattr(const char *path, const char *name, void *value, size_t size) = 0;
-    virtual int fgetxattr(int filedes, const char *name, void *value, size_t size) = 0;
+    virtual ssize_t getxattr(const char *path, const char *name, void *value, size_t size) = 0;
+    virtual ssize_t fgetxattr(int filedes, const char *name, void *value, size_t size) = 0;
     virtual int flock(int fd, int operation) = 0;
 };
 
@@ -40,8 +41,8 @@ public:
     static void DisableMock();
     static bool IsMockable();
     MOCK_METHOD5(setxattr, int(const char *path, const char *name, const void *value, size_t size, int flags));
-    MOCK_METHOD4(getxattr, int(const char *path, const char *name, void *value, size_t size));
-    MOCK_METHOD4(fgetxattr, int(int filedes, const char *name, void *value, size_t size));
+    MOCK_METHOD4(getxattr, ssize_t(const char *path, const char *name, void *value, size_t size));
+    MOCK_METHOD4(fgetxattr, ssize_t(int filedes, const char *name, void *value, size_t size));
     MOCK_METHOD2(flock, int(int fd, int operation));
 };
 } // namespace OHOS::FileManagement::CloudSync
