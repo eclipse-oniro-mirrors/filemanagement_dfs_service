@@ -15,6 +15,7 @@
 
 #include "cloud_disk_sync_folder_system_mock.h"
 
+#include <cerrno>
 #include <dlfcn.h>
 
 using namespace OHOS::FileManagement::CloudDiskService;
@@ -31,6 +32,22 @@ ssize_t getxattr(const char *path, const char *name, void *value, size_t size)
         return SyncFolderAssistant::ins->getxattr(path, name, value, size);
     }
     return -1;
+}
+
+// libc symbol interposition for tests; the name must match <sys/xattr.h>.
+// G.NAM.03-CPP: keep the C symbol name.
+int lremovexattr(const char *path, const char *name)
+{
+    if (SyncFolderAssistant::ins != nullptr) {
+        return SyncFolderAssistant::ins->lremovexattr(path, name);
+    }
+    static auto realLremovexattr =
+        reinterpret_cast<int (*)(const char *, const char *)>(dlsym(RTLD_NEXT, "lremovexattr"));
+    if (realLremovexattr == nullptr) {
+        errno = ENOSYS;
+        return -1;
+    }
+    return realLremovexattr(path, name);
 }
 
 int unlink(const char *pathname)

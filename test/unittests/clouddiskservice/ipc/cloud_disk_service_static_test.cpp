@@ -256,6 +256,9 @@ void CloudDiskServiceStaticTest::SetUp()
 {
     Assistant::mockErrno = 0;
     Assistant::mockFdApi = true;
+    // Dehydration now treats an fsync failure as fatal; the fake fds used by these tests must
+    // be answered by the mock instead of the real filesystem.
+    Assistant::mockFsyncApi = true;
     messageParcelMock_ = make_shared<MessageParcelMock>();
     DfsMessageParcel::messageParcel = messageParcelMock_;
     CloudDiskSyncFolder::GetInstance().ClearMap();
@@ -272,6 +275,7 @@ void CloudDiskServiceStaticTest::TearDown()
     DfsMessageParcel::messageParcel = nullptr;
     messageParcelMock_ = nullptr;
     Assistant::mockFdApi = false;
+    Assistant::mockFsyncApi = false;
     Assistant::mockErrno = 0;
     CloudDiskSyncFolder::GetInstance().ClearMap();
     PlaceholderCallbackManager::GetInstance().ClearBySyncFolder(PLACEHOLDER_TEST_BUNDLE_NAME, 1);
@@ -2253,11 +2257,12 @@ HWTEST_F(CloudDiskServiceStaticTest, CreatePlaceholderBranchTest008, TestSize.Le
 
     EXPECT_CALL(*insMock_, Open(_, _, _)).WillOnce(Return(10));
     EXPECT_CALL(*insMock_, OpenAt(10, _, _, _)).WillOnce(Return(11));
+    EXPECT_CALL(*insMock_, fsetxattr(11, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
+        .WillOnce(Return(0));
     EXPECT_CALL(*insMock_, ftruncate(11, _)).WillOnce(Invoke([](int, off_t) {
         errno = ENOSPC;
         return -1;
     }));
-    EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _)).Times(0);
     EXPECT_CALL(*insMock_, futimens(_, _)).Times(0);
     EXPECT_CALL(*insMock_, UnlinkAt(10, StrEq("placeholder.txt"), 0)).WillOnce(Return(0));
     EXPECT_EQ(CreatePlaceholderFileAt(path, info), E_NO_SPACE_LEFT);
@@ -2281,7 +2286,7 @@ HWTEST_F(CloudDiskServiceStaticTest, CreatePlaceholderAttributeTest001, TestSize
 
     EXPECT_CALL(*insMock_, Open(_, _, _)).WillOnce(Return(10));
     EXPECT_CALL(*insMock_, OpenAt(10, _, _, _)).WillOnce(Return(11));
-    EXPECT_CALL(*insMock_, ftruncate(11, _)).WillOnce(Return(0));
+    EXPECT_CALL(*insMock_, ftruncate(11, _)).Times(0);
     EXPECT_CALL(*insMock_, fsetxattr(11, StrEq(CLOUD_DISK_FILE_SYNC_STATE_XATTR), _, sizeof(uint8_t), 0))
         .WillOnce(Invoke([](int, const char *, const void *, size_t, int) {
             errno = EOPNOTSUPP;
@@ -3189,7 +3194,7 @@ HWTEST_F(CloudDiskServiceStaticTest, DehydratePartiallyHydratedTest001, TestSize
               E_OK);
     constexpr int32_t fileFd = 95;
     constexpr off_t logicalSize = 4096;
-    constexpr uint8_t syncState = static_cast<uint8_t>(SyncState::SYNCING);
+    constexpr uint8_t syncState = static_cast<uint8_t>(SyncState::IDLE);
     struct stat fileStat = {};
     fileStat.st_mode = S_IFREG;
     fileStat.st_size = logicalSize;
@@ -3264,7 +3269,7 @@ HWTEST_F(CloudDiskServiceStaticTest, DehydrateSuccessTest001, TestSize.Level1)
               E_OK);
     constexpr int32_t fileFd = 94;
     constexpr off_t logicalSize = 4096;
-    constexpr uint8_t syncState = static_cast<uint8_t>(SyncState::SYNCING);
+    constexpr uint8_t syncState = static_cast<uint8_t>(SyncState::IDLE);
     struct stat fileStat = {};
     fileStat.st_mode = S_IFREG;
     fileStat.st_size = logicalSize;
@@ -3318,20 +3323,26 @@ HWTEST_F(CloudDiskServiceStaticTest, DehydrateExtendRetryTest001, TestSize.Level
         .WillOnce(DoAll(SetArgPointee<1>(fileStat), Return(0)));
     EXPECT_CALL(*insMock_, Open(StrEq(PLACEHOLDER_TEST_PATH), _, _)).WillOnce(Return(fileFd));
     EXPECT_CALL(*insMock_, fgetxattr(fileFd, StrEq(PLACEHOLDER_TEST_XATTR), _, PLACEHOLDER_XATTR_VALUE_SIZE))
-        .WillOnce(Invoke([](int, const char *, void *value, size_t size) {
+        .Times(2)
+        .WillRepeatedly(Invoke([](int, const char *, void *value, size_t size) {
             static_cast<uint8_t *>(value)[0] = MakeFileSyncState(PLACEHOLDER_STATE_FULLY_HYDRATED, 0);
             return static_cast<ssize_t>(size);
         }));
     EXPECT_CALL(*insMock_, fstat(fileFd, _)).WillOnce(DoAll(SetArgPointee<1>(fileStat), Return(0)));
-    EXPECT_CALL(*insMock_, ftruncate(fileFd, 0)).WillOnce(Return(0));
-    EXPECT_CALL(*insMock_, ftruncate(fileFd, logicalSize))
-        .Times(DEHYDRATE_EXTEND_MAX_ATTEMPTS)
-        .WillRepeatedly(Invoke([](int, off_t) {
-            errno = EIO;
-            return -1;
-        }));
-    EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _)).Times(0);
+    {
+        InSequence sequence;
+        EXPECT_CALL(*insMock_, fsetxattr(fileFd, StrEq(PLACEHOLDER_TEST_XATTR), _, PLACEHOLDER_XATTR_VALUE_SIZE, 0))
+            .WillOnce(Return(0));
+        EXPECT_CALL(*insMock_, ftruncate(fileFd, 0)).WillOnce(Return(0));
+        EXPECT_CALL(*insMock_, ftruncate(fileFd, logicalSize))
+            .Times(DEHYDRATE_EXTEND_MAX_ATTEMPTS)
+            .WillRepeatedly(Invoke([](int, off_t) {
+                errno = EIO;
+                return -1;
+            }));
+    }
 
+    // The state is lowered before the failed re-extension, which is the safe direction.
     EXPECT_EQ(DehydratePlaceholderFile(context, "file.txt"), E_TRY_AGAIN);
 }
 
@@ -4218,40 +4229,120 @@ HWTEST_F(CloudDiskServiceStaticTest, DispatchDehydrateAuthorizationBranches_001,
 }
 
 /**
- * @tc.name: DehydrateOpenFileErrorBranches_001
- * @tc.desc: Map metadata, initial truncate and placeholder-state write failures.
+ * @tc.name: DehydrateOpenFileFstatFail_001
+ * @tc.desc: Map a failing fstat before any state or content change.
  * @tc.type: RELI
  * @tc.require: NA
  */
-HWTEST_F(CloudDiskServiceStaticTest, DehydrateOpenFileErrorBranches_001, TestSize.Level2)
+HWTEST_F(CloudDiskServiceStaticTest, DehydrateOpenFileFstatFail_001, TestSize.Level2)
 {
     constexpr int32_t fileFd = 96;
+    PlaceholderStatePathContext context {};
     EXPECT_CALL(*insMock_, fstat(fileFd, _)).WillOnce(Invoke([](int, struct stat *) {
         errno = EACCES;
         return -1;
     }));
-    EXPECT_EQ(DehydrateOpenFile(fileFd), E_ACCES);
+    EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _)).Times(0);
+    EXPECT_CALL(*insMock_, ftruncate(_, _)).Times(0);
+    EXPECT_EQ(DehydrateOpenFile(fileFd, context), E_ACCES);
+}
 
-    Mock::VerifyAndClearExpectations(insMock_.get());
+/**
+ * @tc.name: DehydrateOpenFileStateFail_001
+ * @tc.desc: Map an invalid state byte and a failing placeholder state write.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, DehydrateOpenFileStateFail_001, TestSize.Level2)
+{
+    constexpr int32_t fileFd = 96;
+    constexpr uint8_t oldState = PLACEHOLDER_STATE_FULLY_HYDRATED;
+    PlaceholderStatePathContext context {};
     struct stat fileStat = {};
     fileStat.st_size = 4096;
+
+    // An unreadable state byte is rejected before fsetxattr or truncate.
     EXPECT_CALL(*insMock_, fstat(fileFd, _)).WillOnce(DoAll(SetArgPointee<1>(fileStat), Return(0)));
+    EXPECT_CALL(*insMock_, fgetxattr(fileFd, StrEq(PLACEHOLDER_TEST_XATTR), _, PLACEHOLDER_XATTR_VALUE_SIZE))
+        .WillOnce(Return(0));
+    EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _)).Times(0);
+    EXPECT_CALL(*insMock_, ftruncate(_, _)).Times(0);
+    EXPECT_EQ(DehydrateOpenFile(fileFd, context), E_INVALID_PLACEHOLDER_STATE);
+
+    // A failing state write is mapped from the xattr errno and skips truncate.
+    Mock::VerifyAndClearExpectations(insMock_.get());
+    EXPECT_CALL(*insMock_, fstat(fileFd, _)).WillOnce(DoAll(SetArgPointee<1>(fileStat), Return(0)));
+    EXPECT_CALL(*insMock_, fgetxattr(fileFd, StrEq(PLACEHOLDER_TEST_XATTR), _, PLACEHOLDER_XATTR_VALUE_SIZE))
+        .WillOnce(Invoke([oldState](int, const char *, void *value, size_t size) {
+            *static_cast<uint8_t *>(value) = MakeFileSyncState(oldState, 0);
+            return static_cast<ssize_t>(size);
+        }));
+    EXPECT_CALL(*insMock_, fsetxattr(fileFd, StrEq(PLACEHOLDER_TEST_XATTR), _, PLACEHOLDER_XATTR_VALUE_SIZE, 0))
+        .WillOnce(Invoke([](int, const char *, const void *, size_t, int) {
+            errno = ENOSPC;
+            return -1;
+        }));
+    EXPECT_CALL(*insMock_, ftruncate(_, _)).Times(0);
+    EXPECT_EQ(DehydrateOpenFile(fileFd, context), E_NO_SPACE_LEFT);
+}
+
+/**
+ * @tc.name: DehydrateOpenFileTruncateFail_001
+ * @tc.desc: A failing initial truncate happens after the state is lowered and is mapped to the IO error.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, DehydrateOpenFileTruncateFail_001, TestSize.Level2)
+{
+    constexpr int32_t fileFd = 96;
+    constexpr uint8_t oldState = PLACEHOLDER_STATE_FULLY_HYDRATED;
+    PlaceholderStatePathContext context {};
+    struct stat fileStat = {};
+    fileStat.st_size = 4096;
+
+    EXPECT_CALL(*insMock_, fstat(fileFd, _)).WillOnce(DoAll(SetArgPointee<1>(fileStat), Return(0)));
+    EXPECT_CALL(*insMock_, fgetxattr(fileFd, StrEq(PLACEHOLDER_TEST_XATTR), _, PLACEHOLDER_XATTR_VALUE_SIZE))
+        .WillOnce(Invoke([oldState](int, const char *, void *value, size_t size) {
+            *static_cast<uint8_t *>(value) = MakeFileSyncState(oldState, 0);
+            return static_cast<ssize_t>(size);
+        }));
+    EXPECT_CALL(*insMock_, fsetxattr(fileFd, StrEq(PLACEHOLDER_TEST_XATTR), _, PLACEHOLDER_XATTR_VALUE_SIZE, 0))
+        .WillOnce(Return(0));
     EXPECT_CALL(*insMock_, ftruncate(fileFd, 0)).WillOnce(Invoke([](int, off_t) {
         errno = ENOSPC;
         return -1;
     }));
-    EXPECT_EQ(DehydrateOpenFile(fileFd), E_NO_SPACE_LEFT);
+    EXPECT_EQ(DehydrateOpenFile(fileFd, context), E_NO_SPACE_LEFT);
+}
 
-    Mock::VerifyAndClearExpectations(insMock_.get());
+/**
+ * @tc.name: DehydrateOpenFileFsyncFail_001
+ * @tc.desc: A failing fsync after the state change aborts before truncation.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(CloudDiskServiceStaticTest, DehydrateOpenFileFsyncFail_001, TestSize.Level2)
+{
+    constexpr int32_t fileFd = 96;
+    constexpr uint8_t oldState = PLACEHOLDER_STATE_FULLY_HYDRATED;
+    PlaceholderStatePathContext context {};
+    struct stat fileStat = {};
+    fileStat.st_size = 4096;
+
     EXPECT_CALL(*insMock_, fstat(fileFd, _)).WillOnce(DoAll(SetArgPointee<1>(fileStat), Return(0)));
-    {
-        InSequence sequence;
-        EXPECT_CALL(*insMock_, ftruncate(fileFd, 0)).WillOnce(Return(0));
-        EXPECT_CALL(*insMock_, ftruncate(fileFd, fileStat.st_size)).WillOnce(Return(0));
-    }
     EXPECT_CALL(*insMock_, fgetxattr(fileFd, StrEq(PLACEHOLDER_TEST_XATTR), _, PLACEHOLDER_XATTR_VALUE_SIZE))
+        .WillOnce(Invoke([oldState](int, const char *, void *value, size_t size) {
+            *static_cast<uint8_t *>(value) = MakeFileSyncState(oldState, 0);
+            return static_cast<ssize_t>(size);
+        }));
+    EXPECT_CALL(*insMock_, fsetxattr(fileFd, StrEq(PLACEHOLDER_TEST_XATTR), _, PLACEHOLDER_XATTR_VALUE_SIZE, 0))
         .WillOnce(Return(0));
-    EXPECT_EQ(DehydrateOpenFile(fileFd), E_INVALID_PLACEHOLDER_STATE);
+    EXPECT_CALL(*insMock_, Fsync(fileFd)).WillOnce(Invoke([](int) {
+        errno = EIO;
+        return -1;
+    }));
+    EXPECT_CALL(*insMock_, ftruncate(_, _)).Times(0);
+    EXPECT_EQ(DehydrateOpenFile(fileFd, context), E_TRY_AGAIN);
 }
 
 /**
@@ -4432,16 +4523,33 @@ HWTEST_F(CloudDiskServiceStaticTest, ConvertPlaceholderToEmptyFileSuccess_001, T
     EXPECT_CALL(*insMock_, MockStat(StrEq(PLACEHOLDER_TEST_PATH), _))
         .WillOnce(DoAll(SetArgPointee<1>(fileStat), Return(0)));
     EXPECT_CALL(*insMock_, Open(StrEq(PLACEHOLDER_TEST_PATH), _, _)).WillOnce(Return(fileFd));
+    int32_t truncateCount = 0;
+    int32_t stateWriteCount = 0;
     EXPECT_CALL(*insMock_, fgetxattr(fileFd, StrEq(PLACEHOLDER_TEST_XATTR), _, sizeof(uint8_t)))
-        .Times(2)
+        .Times(3)
         .WillRepeatedly(Invoke([storedState](int, const char *, void *value, size_t size) {
             *static_cast<uint8_t *>(value) = storedState;
             return static_cast<ssize_t>(size);
         }));
-    EXPECT_CALL(*insMock_, ftruncate(fileFd, 0)).WillOnce(Return(0));
+    EXPECT_CALL(*insMock_, ftruncate(fileFd, 0)).WillOnce(Invoke([&truncateCount](int, off_t) {
+        ++truncateCount;
+        return 0;
+    }));
     EXPECT_CALL(*insMock_, fsetxattr(fileFd, StrEq(PLACEHOLDER_TEST_XATTR), _, sizeof(uint8_t), 0))
-        .WillOnce(Invoke([](int, const char *, const void *value, size_t, int) {
-            EXPECT_EQ(*static_cast<const uint8_t *>(value), MakeFileSyncState(PLACEHOLDER_STATE_NONE, syncState));
+        .Times(2)
+        .WillRepeatedly(Invoke([&truncateCount, &stateWriteCount, syncState](int, const char *, const void *value,
+                                                                             size_t, int) {
+            // State 1 first, state 0 only after the truncation has happened.
+            if (stateWriteCount == 0) {
+                EXPECT_EQ(*static_cast<const uint8_t *>(value),
+                          MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, syncState));
+                EXPECT_EQ(truncateCount, 0);
+            } else {
+                EXPECT_EQ(*static_cast<const uint8_t *>(value),
+                          MakeFileSyncState(PLACEHOLDER_STATE_NONE, syncState));
+                EXPECT_EQ(truncateCount, 1);
+            }
+            ++stateWriteCount;
             return 0;
         }));
 
@@ -4502,7 +4610,9 @@ HWTEST_F(CloudDiskServiceStaticTest, ConvertPlaceholderToEmptyFileMutationFailur
 
     int32_t truncateFd = dup(STDOUT_FILENO);
     ASSERT_GE(truncateFd, 0);
-    expectOpenPlaceholder(truncateFd, 1);
+    expectOpenPlaceholder(truncateFd, 2);
+    EXPECT_CALL(*insMock_, fsetxattr(truncateFd, StrEq(PLACEHOLDER_TEST_XATTR), _, sizeof(uint8_t), 0))
+        .WillOnce(Return(0));
     EXPECT_CALL(*insMock_, ftruncate(truncateFd, 0)).WillOnce(Invoke([](int, off_t) {
         errno = ENOSPC;
         return -1;
@@ -4512,9 +4622,10 @@ HWTEST_F(CloudDiskServiceStaticTest, ConvertPlaceholderToEmptyFileMutationFailur
 
     int32_t stateFd = dup(STDOUT_FILENO);
     ASSERT_GE(stateFd, 0);
-    expectOpenPlaceholder(stateFd, 2);
+    expectOpenPlaceholder(stateFd, 3);
     EXPECT_CALL(*insMock_, ftruncate(stateFd, 0)).WillOnce(Return(0));
     EXPECT_CALL(*insMock_, fsetxattr(stateFd, StrEq(PLACEHOLDER_TEST_XATTR), _, sizeof(uint8_t), 0))
+        .WillOnce(Return(0))
         .WillOnce(Invoke([](int, const char *, const void *, size_t, int) {
             errno = EIO;
             return -1;

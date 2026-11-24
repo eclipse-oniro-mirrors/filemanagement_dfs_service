@@ -186,6 +186,7 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationComplete_FullDelivery_001,
     int32_t taskFd = ActivateTask(manager, key);
     ASSERT_GE(taskFd, 0);
     task->totalSize = 8192;
+    task->logicalSize = 8192;
     Assistant::mockFsyncApi = true;
 
     uint8_t stateByte = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
@@ -351,6 +352,42 @@ HWTEST_F(PlaceholderHydrationCompletionTest, HydrationSetStateWriteFail_001, Tes
     EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
                              MakeRequest(key, 0, {1, 2, 3, 4}, 4, true)),
               E_NO_SPACE_LEFT);
+}
+
+/**
+ * @tc.name: HydrationMetadataFailureKeepsCompletion_001
+ * @tc.desc: A phcount/dentry update failure is reported and repaired through a recount, but does not
+ *           reopen the already published fully hydrated state.
+ * @tc.type: RELI
+ * @tc.require: NA
+ */
+HWTEST_F(PlaceholderHydrationCompletionTest, HydrationMetadataFailureKeepsCompletion_001, TestSize.Level2)
+{
+    auto &manager = PlaceholderTaskManager::GetInstance();
+    PlaceholderTaskManager::RequestKey key;
+    ASSERT_EQ(manager.CreateHydrateTask(TEST_SYNC_FOLDER, "file.txt", TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                                        CLOUD_DISK_HYDRATE_PRIORITY_NORMAL, OpenTaskFd(), key),
+              E_OK);
+    auto task = manager.taskMap_.at(key);
+    int32_t taskFd = ActivateTask(manager, key);
+    ASSERT_GE(taskFd, 0);
+    task->totalSize = 4;
+    task->mountSyncFolder = "/nonexistent-cloud-disk-root";
+    task->hmdfsPath = "/nonexistent-cloud-disk-root/file.txt";
+    task->userId = 100;
+    Assistant::mockFsyncApi = true;
+
+    uint8_t stateByte = MakeFileSyncState(PLACEHOLDER_STATE_UNHYDRATED, 0);
+    ExpectStateTransitions(taskFd, stateByte);
+    EXPECT_CALL(*mock_, Fsync(taskFd)).WillOnce(Return(0));
+
+    // Both metadata updates fail on the nonexistent root; the task must still complete and the
+    // recount path must swallow the repair failure.
+    EXPECT_EQ(manager.Execute(TEST_BUNDLE_NAME, TEST_SYNC_FOLDER_INDEX,
+                              MakeRequest(key, 0, {1, 2, 3, 4}, 4, true)),
+              E_OK);
+    EXPECT_EQ(GetPlaceholderStateFromFileSyncState(stateByte), PLACEHOLDER_STATE_FULLY_HYDRATED);
+    EXPECT_TRUE(WaitTaskErased(manager, key));
 }
 
 } // namespace OHOS::FileManagement::CloudDiskService::Test

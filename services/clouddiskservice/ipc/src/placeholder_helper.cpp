@@ -399,6 +399,12 @@ int32_t GetFileSyncStateByte(const std::string &path, uint8_t &state, bool missi
     return ReadFileSyncStateByteNoLock(path, state, missingAsZero);
 }
 
+int32_t GetFileSyncStateByte(int32_t fd, uint8_t &state, bool missingAsZero)
+{
+    std::lock_guard<std::mutex> lock(GetPlaceholderStateMutex());
+    return ReadFileSyncStateByteNoLock(fd, state, missingAsZero);
+}
+
 int32_t GetFilePlaceholderState(const std::string &path, uint8_t &placeholderState)
 {
     uint8_t state = 0;

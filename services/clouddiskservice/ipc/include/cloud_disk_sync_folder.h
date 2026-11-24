@@ -16,6 +16,7 @@
 #ifndef CLOUD_DISK_SYNC_FOLDER_H
 #define CLOUD_DISK_SYNC_FOLDER_H
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -30,6 +31,17 @@ struct SyncFolderValue {
     std::string bundleName;
     std::string path;
 };
+
+struct PlaceholderCleanupStats {
+    uint32_t removed = 0;
+    uint32_t kept = 0;
+    uint32_t skippedLinks = 0;
+    uint32_t hardLinks = 0;
+    uint32_t inconsistent = 0;
+    uint32_t failed = 0;
+    int32_t firstError = 0;
+};
+
 class CloudDiskSyncFolder {
 public:
     static CloudDiskSyncFolder &GetInstance();
@@ -40,9 +52,7 @@ public:
     bool GetSyncFolderByIndex(const uint32_t syncFolderIndex, std::string &path);
     bool GetSyncFolderValueByIndex(const uint32_t syncFolderIndex, SyncFolderValue &syncFolderValue);
     bool GetIndexBySyncFolder(uint32_t &syncFolderIndex, const std::string &path);
-    void RemoveXattr(std::string &path, const std::string &attrName);
-    void RemovePlaceholderFilesSingle(const std::string &path);
-    void RemovePlaceholderFilesBatch(const std::string &path);
+    PlaceholderCleanupStats RemovePlaceholderFilesBatch(const std::string &path);
     int32_t PathToPhysicalPath(const std::string &path, const std::string &userId, std::string &physicalPath);
     int32_t PathToMntPathBySandboxPath(const std::string &path, const std::string &userId, std::string &realPath);
     bool PathToMntPathByPhysicalPath(const std::string &path, const std::string &userId, std::string &realPath);

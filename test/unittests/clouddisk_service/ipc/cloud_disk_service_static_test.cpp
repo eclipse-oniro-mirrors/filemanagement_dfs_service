@@ -864,9 +864,16 @@ HWTEST_F(CloudDiskServiceStaticTest, ConvertPlaceholderToEmptyFile_SetXattrFail_
                     return static_cast<ssize_t>(size);
                 }));
             EXPECT_CALL(*insMock_, ftruncate(_, _)).WillOnce(Return(0));
-            EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _)).WillOnce(Return(-1));
+            EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _))
+                .WillOnce(Return(0))
+                .WillOnce(Invoke([](int, const char *, const void *, size_t, int) {
+                    errno = EIO;
+                    return -1;
+                }));
             int32_t ret = ConvertPlaceholderToEmptyFile(testFilePath);
-            EXPECT_EQ(ret, 0);
+            // State 1 is published first; failing to publish state 0 after truncation must be
+            // reported instead of returning success.
+            EXPECT_NE(ret, 0);
             unlink(testFilePath.c_str());
         }
     } catch (...) {
@@ -944,7 +951,11 @@ HWTEST_F(CloudDiskServiceStaticTest, ConvertPlaceholderToEmptyFile_SetXattrFail_
                     return static_cast<ssize_t>(size);
                 }));
             EXPECT_CALL(*insMock_, ftruncate(_, _)).WillRepeatedly(Return(0));
-            EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _)).WillOnce(Return(-1));
+            EXPECT_CALL(*insMock_, fsetxattr(_, _, _, _, _))
+                .WillOnce(Invoke([](int, const char *, const void *, size_t, int) {
+                    errno = EIO;
+                    return -1;
+                }));
 
             int32_t ret = ConvertPlaceholderToEmptyFile(testFilePath);
             EXPECT_NE(ret, 0);

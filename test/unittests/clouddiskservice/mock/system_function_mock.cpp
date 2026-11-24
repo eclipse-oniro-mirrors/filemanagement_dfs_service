@@ -22,7 +22,9 @@
 #include <sys/fanotify.h>
 #include <sys/ioctl.h>
 #include <sys/sendfile.h>
+#include <sys/xattr.h>
 
+#include "cloud_disk_sync_folder_system_mock.h"
 #include "file_utils.h"
 
 using namespace OHOS::FileManagement::CloudDiskService;
@@ -193,6 +195,20 @@ ssize_t fgetxattr(int fd, const char *name, void *value, size_t size)
     return realFgetxattr(fd, name, value, size);
 }
 
+int fremovexattr(int fd, const char *name)
+{
+    if (Assistant::ins != nullptr) {
+        return Assistant::ins->fremovexattr(fd, name);
+    }
+    static auto realFremovexattr =
+        reinterpret_cast<int (*)(int, const char *)>(dlsym(RTLD_NEXT, "fremovexattr"));
+    if (realFremovexattr == nullptr) {
+        errno = EIO;
+        return -1;
+    }
+    return realFremovexattr(fd, name);
+}
+
 int access(const char *name, int type)
 {
     if (Assistant::ins != nullptr) {
@@ -286,6 +302,9 @@ int unlink(const char *path)
 
 int unlinkat(int dirfd, const char *path, int flags)
 {
+    if (SyncFolderAssistant::ins != nullptr) {
+        return SyncFolderAssistant::ins->unlinkat(dirfd, path, flags);
+    }
     if (Assistant::mockFdApi) {
         if (Assistant::ins == nullptr) {
             errno = ENOENT;

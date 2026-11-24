@@ -26,6 +26,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -108,6 +109,17 @@ struct PlaceholderTaskRecord {
     bool terminalProgressSent = false;
     uint64_t totalSize = 0;
     bool totalSizeInitialized = false;
+    // Logical size captured for this task. Completion only promotes the placeholder state when
+    // the received ranges cover the whole logical size.
+    uint64_t logicalSize = 0;
+    // Merged half-open ranges that were successfully written to the temp file. Ranges are capped
+    // to bound memory for a provider that keeps sending disjoint tiny chunks.
+    std::map<uint64_t, uint64_t> receivedRanges;
+    bool receivedRangesOverflow = false;
+    // Set before the task enters COMPLETED/CANCELLED and released when EraseTaskLocked removes the
+    // record. Keeps HasOutstandingTask true while fds and the temp file are still being cleaned up,
+    // so dehydrate/unmark/convert/update cannot race the teardown.
+    std::atomic<bool> cleanupPending{false};
     bool fetchDispatched = false;
     bool cancelCallbackAttempted = false;
     uint64_t createSeq = 0;
@@ -139,6 +151,10 @@ public:
     void CancelTasksBySyncFolder(const std::string &bundleName,
                                  uint32_t syncFolderIndex,
                                  PlaceholderTaskCancelReason reason = PlaceholderTaskCancelReason::UNREGISTER);
+    // Stop hydration for a sync folder before unregister cleanup and reject new tasks until
+    // EndUnregisterSyncFolder is called.
+    void BeginUnregisterSyncFolder(uint32_t syncFolderIndex);
+    void EndUnregisterSyncFolder(uint32_t syncFolderIndex);
     void CancelAllTasks(PlaceholderTaskCancelReason reason);
     void ClearCancellationRecords();
     int32_t
@@ -208,6 +224,8 @@ private:
     std::map<RequestKey, CancelledTaskRecord> cancellationRecordMap_;
     std::deque<std::pair<RequestKey, uint64_t>> cancellationOrder_;
     std::map<RequestKey, std::chrono::steady_clock::time_point> deadlineMap_;
+    // Sync folders whose unregister cleanup is in progress; new hydration is rejected.
+    std::set<uint32_t> unregisteringFolders_;
     std::vector<ffrt::task_handle> monitorHandles_;
     uint64_t nextReqKeyValue_ = 1;
     uint64_t nextCreateSeq_ = 1;
