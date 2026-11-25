@@ -71,8 +71,10 @@ impl FolderCache {
         let end = start_line.wrapping_add(count);
         let mut next_usn = end;
         let mut ret = E_OK;
+        // The caller holds the per-root cache lock throughout this history read.
+        let mut last_parent = None;
         for line in start_line..end {
-            match self.parse_log(line) {
+            match self.parse_log(line, &mut last_parent) {
                 Ok(Some(change)) => {
                     info!("[ParseLog] line={}, operation={}, relative_path={}, size={}, mtime={}, timestamp={}",
                         @public(change.update_sequence_number), @public(change.operation_type),
@@ -99,25 +101,49 @@ impl FolderCache {
         ret
     }
 
-    fn parse_log(&self, line: u64) -> Result<Option<ChangeData>, i32> {
+    fn parse_log(
+        &self,
+        line: u64,
+        last_parent: &mut Option<HistoryParent>,
+    ) -> Result<Option<ChangeData>, i32> {
         let Some(log) = self.history.read_log(line)? else {
             return Ok(None);
         };
-        let parent = CloudDiskServiceMetaFile::open(&self.directory, log.parent_inode)
-            .map_err(|err| err.raw_os_error().unwrap_or(libc::EIO))?;
-        let relative_path = parent.get_relative_path(&self.directory).unwrap_or_else(|err| {
-            // C++ keeps the basename when a deleted parent cannot be resolved.
-            warn!("[ParseLog] get relative path failed, parent_inode={}, error={}", @public(log.parent_inode), @public(err));
-            String::new()
-        });
+        let parent = match last_parent {
+            Some(parent) if parent.inode == log.parent_inode => parent,
+            slot => slot.insert(HistoryParent {
+                inode: log.parent_inode,
+                meta: CloudDiskServiceMetaFile::open(&self.directory, log.parent_inode)
+                    .map_err(|err| err.raw_os_error().unwrap_or(libc::EIO))?,
+                path: None,
+            }),
+        };
+        if parent.path.is_none() {
+            match parent.meta.get_relative_path(&self.directory) {
+                Ok(path) => parent.path = Some(path),
+                Err(err) => {
+                    // Keep the basename for this record and retry resolution for the next.
+                    warn!("[ParseLog] get relative path failed, parent_inode={}, error={}", @public(log.parent_inode), @public(err));
+                }
+            }
+        }
         let entry = parent
+            .meta
             .lookup_by_offset(log.position)
             .map_err(|err| err.raw_os_error().unwrap_or(libc::EIO))?;
         Ok(Some(ChangeData {
             update_sequence_number: log.line,
             file_id: entry.record_id.to_vec(),
             parent_file_id: log.parent_record_id.to_vec(),
-            relative_path: relative_path + &entry.name,
+            relative_path: match &parent.path {
+                Some(prefix) => {
+                    let mut path = String::with_capacity(prefix.len() + entry.name.len());
+                    path.push_str(prefix);
+                    path.push_str(&entry.name);
+                    path
+                }
+                None => entry.name,
+            },
             operation_type: log.operation,
             size: entry.size,
             mtime: entry.mtime,
@@ -159,16 +185,22 @@ impl FolderCache {
         self.take_change_batches()
     }
 
-    pub(super) fn create(&mut self, root: &Path, path: &Path) -> io::Result<bool> {
+    pub(super) fn create(
+        &mut self,
+        root: &Path,
+        path: &Path,
+        last_parent: &mut Option<Directory>,
+    ) -> io::Result<bool> {
         let stat = fs::metadata(path)?;
         let state = file_state::state(path).unwrap_or_default();
-        let (parent, _) = self.parent_and_name(root, path)?;
+        let (parent, _) = self.parent_and_name(root, path, last_parent.take())?;
         self.store(root, path, &parent, &stat, state, None)?;
+        *last_parent = Some(parent);
         Ok(stat.is_dir())
     }
 
     pub(super) fn delete(&mut self, root: &Path, path: &Path) -> io::Result<()> {
-        let (parent, _) = self.parent_and_name(root, path)?;
+        let (parent, _) = self.parent_and_name(root, path, None)?;
         let dentry = self.invalidate(root, path, &parent, Operation::Delete)?;
         if file_state::is_counted(dentry.old_placeholder) {
             file_state::adjust_ancestors(root, path, false);
@@ -178,13 +210,13 @@ impl FolderCache {
 
     pub(super) fn move_within(&mut self, root: &Path, from: &Path, to: &Path) -> io::Result<()> {
         let stat = fs::metadata(to)?;
-        let (old_parent, _) = self.parent_and_name(root, from)?;
+        let (old_parent, _) = self.parent_and_name(root, from, None)?;
         let old = self.invalidate(root, from, &old_parent, Operation::MoveFrom)?;
         if file_state::is_counted(old.old_placeholder) {
             file_state::adjust_ancestors(root, from, false);
         }
 
-        let (new_parent, _) = self.parent_and_name(root, to)?;
+        let (new_parent, _) = self.parent_and_name(root, to, None)?;
         let state = file_state::state(to).unwrap_or(old.old_placeholder);
         let new = self.store(root, to, &new_parent, &stat, state, Some(old.record_id))?;
         if file_state::is_counted(new.old_placeholder) {
@@ -217,7 +249,7 @@ impl FolderCache {
         modified: bool,
     ) -> io::Result<()> {
         let stat = fs::metadata(path)?;
-        let (parent, name) = self.parent_and_name(root, path)?;
+        let (parent, name) = self.parent_and_name(root, path, None)?;
         let hash = sync_folder_manager::dentry_hash(name);
         let dentry = parent.meta.update(name, hash, &stat)?;
         if modified {
@@ -230,6 +262,7 @@ impl FolderCache {
         &mut self,
         root: &Path,
         path: &'a Path,
+        last_parent: Option<Directory>,
     ) -> io::Result<(Directory, &'a [u8])> {
         let name = path
             .file_name()
@@ -238,10 +271,18 @@ impl FolderCache {
             .parent()
             .filter(|dir| dir.starts_with(root))
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EINVAL))?;
-        Ok((self.ensure_directory(root, parent)?, name.as_bytes()))
+        Ok((
+            self.ensure_directory(root, parent, last_parent)?,
+            name.as_bytes(),
+        ))
     }
 
-    fn ensure_directory(&mut self, root: &Path, mut path: &Path) -> io::Result<Directory> {
+    fn ensure_directory(
+        &mut self,
+        root: &Path,
+        mut path: &Path,
+        mut last_parent: Option<Directory>,
+    ) -> io::Result<Directory> {
         // A live event can arrive before the initial scan reaches its parent.
         let mut missing = Vec::new();
         let mut parent = loop {
@@ -250,7 +291,12 @@ impl FolderCache {
                 return Err(io::Error::from_raw_os_error(libc::ENOTDIR));
             }
             let inode = stat.ino();
-            let meta = CloudDiskServiceMetaFile::open(&self.directory, inode)?;
+            // The scan releases the cache lock between entries. Recheck the
+            // physical directory and read its current header even on a handle hit.
+            let meta = match last_parent.take() {
+                Some(parent) if parent.inode == inode => parent.meta,
+                _ => CloudDiskServiceMetaFile::open(&self.directory, inode)?,
+            };
             match meta.record_id() {
                 Ok(id) => break Directory { inode, id, meta },
                 Err(err) if err.raw_os_error() == Some(libc::ENOENT) && path != root => {
@@ -327,7 +373,9 @@ impl FolderCache {
             .ok_or_else(|| io::Error::from_raw_os_error(libc::EINVAL))?
             .as_bytes();
         let hash = sync_folder_manager::dentry_hash(name);
-        let dentry = parent.meta.invalidate(name, hash)?;
+        let dentry = parent
+            .meta
+            .invalidate(name, hash, matches!(operation, Operation::Delete))?;
         self.append_change(root, path, parent, &dentry, operation)?;
         Ok(dentry)
     }
@@ -391,7 +439,13 @@ impl FolderCache {
     }
 }
 
-struct Directory {
+struct HistoryParent {
+    inode: u64,
+    meta: CloudDiskServiceMetaFile,
+    path: Option<String>,
+}
+
+pub(super) struct Directory {
     inode: u64,
     id: RecordId,
     meta: CloudDiskServiceMetaFile,
@@ -418,6 +472,42 @@ pub(super) fn open_cache_file(path: &Path) -> io::Result<File> {
         })?;
     debug!("[CacheFile] open completed, path={}, fd={}", @private(path.display()), @public(file.as_raw_fd()));
     Ok(file)
+}
+
+pub(super) fn remove_cache_directory(path: &Path) -> io::Result<()> {
+    let log_error = |operation: &str, err: io::Error| {
+        warn!("[CacheDirectory] cleanup failed, operation={}, path={}, errno={:?}, error={}",
+            @public(operation), @private(path.display()), @public(err.raw_os_error()), @public(&err));
+        err
+    };
+    // The cache policy allows directory traversal and rmdir. remove_dir_all
+    // also requests directory getattr, which is not granted on this path.
+    let (operation, result) = match File::options()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
+        .open(path)
+    {
+        Ok(directory) => {
+            // Pin the directory while walking its entries. opendir through the
+            // descriptor avoids fdopendir's fstat and never follows a replaced child.
+            let entries = fs::read_dir(format!("/proc/self/fd/{}", directory.as_raw_fd()))
+                .map_err(|err| log_error("opendir", err))?;
+            for entry in entries {
+                let entry = entry.map_err(|err| log_error("readdir", err))?;
+                remove_cache_directory(&entry.path())?;
+            }
+            ("rmdir", fs::remove_dir(path))
+        }
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(err) if matches!(err.raw_os_error(), Some(libc::ENOTDIR | libc::ELOOP)) => {
+            ("unlink", fs::remove_file(path))
+        }
+        Err(err) => return Err(log_error("open", err)),
+    };
+    match result {
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+        other => other.map_err(|err| log_error(operation, err)),
+    }
 }
 
 fn create_cache_directory(path: &Path) -> io::Result<()> {

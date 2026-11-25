@@ -20,11 +20,17 @@
 #include "accesstoken_kit.h"
 #include "errors.h"
 #include "os_account_manager.h"
+#include "tokenid_kit.h"
 
 namespace OHOS::FileManagement::CloudDiskService {
 int32_t GetTokenTypeFlag(uint32_t tokenId)
 {
     return static_cast<int32_t>(Security::AccessToken::AccessTokenKit::GetTokenTypeFlag(tokenId));
+}
+
+bool IsSystemAppByFullTokenId(uint64_t fullTokenId)
+{
+    return Security::AccessToken::TokenIdKit::IsSystemAppByFullTokenID(fullTokenId);
 }
 
 int32_t VerifyAccessToken(uint32_t tokenId, const std::string &permissionName)

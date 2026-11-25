@@ -14,6 +14,22 @@
  */
 
 pub(crate) mod account;
+pub(crate) mod callback_remote;
 pub(crate) mod ffrt;
+#[cfg(feature = "cloud_disk")]
 pub(crate) mod sync_folder_manager;
 pub(crate) mod utils;
+
+#[cfg(not(feature = "cloud_disk"))]
+pub(crate) mod sync_folder_manager {
+    use crate::common::error_codes::E_NOT_SUPPORTED;
+    use crate::sync_folder_manager::SyncFolderValue;
+
+    pub(crate) fn get_all_sync_folders_for_sa() -> Result<Vec<SyncFolderValue>, i32> {
+        Err(E_NOT_SUPPORTED)
+    }
+
+    pub(crate) fn unregister_for_sa(_path: &str) -> i32 {
+        E_NOT_SUPPORTED
+    }
+}

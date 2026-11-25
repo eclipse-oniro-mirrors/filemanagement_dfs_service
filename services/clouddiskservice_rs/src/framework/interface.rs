@@ -25,6 +25,7 @@ use crate::common::types::{
     CallbackExecuteRequest, ChangesResult, FailedList, FileSyncState, PlaceholderCustomInfo,
     PlaceholderInfo, ResultList,
 };
+use crate::ffi::callback_remote::CallbackRemote;
 
 pub(super) const DESCRIPTOR: &str = "OHOS.FileManagement.CloudDiskService.ICloudDiskService";
 
@@ -99,7 +100,7 @@ impl TryFrom<u32> for CloudDiskServiceIpcCode {
 pub(crate) trait ICloudDiskService {
     fn register_sync_folder_changes_inner(&self, sync_folder: &str, remote: &RemoteObj) -> i32;
     fn unregister_sync_folder_changes_inner(&self, sync_folder: &str) -> i32;
-    fn register_callback_table_inner(&self, sync_folder: &str, remote: &RemoteObj) -> i32;
+    fn register_callback_table_inner(&self, sync_folder: &str, remote: CallbackRemote) -> i32;
     fn unregister_callback_table_inner(&self, sync_folder: &str) -> i32;
     fn get_sync_folder_changes_inner(
         &self,
@@ -159,7 +160,7 @@ pub(crate) trait ICloudDiskService {
         accessor_id: u64,
     ) -> i32;
     fn dehydrate_file_by_path_inner(&self, path: &str) -> i32;
-    fn register_progress_callback_inner(&self, accessor_id: u64, remote: &RemoteObj) -> i32;
+    fn register_progress_callback_inner(&self, accessor_id: u64, remote: CallbackRemote) -> i32;
     fn unregister_progress_callback_inner(&self, accessor_id: u64) -> i32;
     fn get_placeholder_state_inner(
         &self,

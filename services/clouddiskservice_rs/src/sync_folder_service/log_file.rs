@@ -24,10 +24,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use cxx::UniquePtr;
 
-use super::cache::FolderCache;
+use super::cache::{remove_cache_directory, FolderCache};
 use super::metafile::CloudDiskServiceMetaFile;
 use super::CloudDiskServiceCallbackManager;
-use crate::common::error_codes::E_OK;
+use crate::common::error_codes::{E_OK, E_REGISTER_SYNC_FOLDER_FAILED, E_TRY_AGAIN};
 use crate::common::types::ChangesResult;
 use crate::ffi::ffrt;
 use crate::sync_folder_manager::CloudDiskSyncFolder;
@@ -42,12 +42,18 @@ struct LogFileState {
 pub(crate) struct CloudDiskServiceLogFile {
     user_id: i32,
     index: u32,
+    explicitly_registered: bool,
     active: AtomicBool,
     state: Mutex<LogFileState>,
 }
 
 impl CloudDiskServiceLogFile {
-    fn open(user_id: i32, index: u32, path: &Path) -> io::Result<Self> {
+    fn open(
+        user_id: i32,
+        index: u32,
+        path: &Path,
+        explicitly_registered: bool,
+    ) -> io::Result<Self> {
         let directory = cache_dir(user_id, index);
         info!("[LogFileMgr] open, user_id={}, index={}, cache_path={}",
             @public(user_id), @public(index), @private(directory.display()));
@@ -58,6 +64,7 @@ impl CloudDiskServiceLogFile {
         Ok(Self {
             user_id,
             index,
+            explicitly_registered,
             active: AtomicBool::new(true),
             state: Mutex::new(LogFileState {
                 path: path.to_path_buf(),
@@ -222,6 +229,7 @@ impl CloudDiskServiceLogFile {
                     continue;
                 }
             };
+            let mut last_parent = None;
             for entry in entries {
                 if !self.active.load(Ordering::Acquire) {
                     cancelled = true;
@@ -235,7 +243,7 @@ impl CloudDiskServiceLogFile {
                         continue;
                     }
                 };
-                match self.with_cache(|cache, root| cache.create(root, &child)) {
+                match self.with_cache(|cache, root| cache.create(root, &child, &mut last_parent)) {
                     Ok(is_dir) => {
                         entry_count += 1;
                         debug!("[FillChildForDir] entry processed, user_id={}, index={}, path={}, is_dir={}, entries={}",
@@ -259,7 +267,7 @@ impl CloudDiskServiceLogFile {
     }
 
     pub(crate) fn record_create(&self, path: &Path) {
-        match self.with_cache(|cache, root| cache.create(root, path)) {
+        match self.with_cache(|cache, root| cache.create(root, path, &mut None)) {
             Ok(true) => self.fill_child_for_dir(path),
             Ok(false) => {}
             Err(err) => self.log_error("event_create", path, &err),
@@ -307,12 +315,63 @@ struct LogFiles {
     files: HashMap<(i32, u32), Arc<CloudDiskServiceLogFile>>,
     scans: Vec<ffrt::Task>,
     listeners: HashSet<(i32, u32)>,
+    invalidating: HashMap<(i32, u32), Arc<CloudDiskServiceLogFile>>,
     timer: Option<UniquePtr<ffrt::FfrtTimer>>,
+}
+
+impl LogFiles {
+    fn retire_cache(&mut self, user_id: i32, index: u32) -> io::Result<()> {
+        // stop() waits for an in-flight cache operation and prevents old scan
+        // and monitor handles from writing while the manager removes the tree.
+        if let Some(file) = self.files.remove(&(user_id, index)) {
+            file.stop();
+        }
+        let directory = cache_dir(user_id, index);
+        remove_cache_directory(&directory)?;
+
+        // Older versions may have left a detached cache from a previous registration.
+        let retired = directory.with_extension("removed");
+        if let Err(err) = remove_cache_directory(&retired) {
+            warn!("[LogFileMgr] remove retired cache failed, path={}, error={}",
+                @private(retired.display()), @public(err));
+        }
+        Ok(())
+    }
 }
 
 pub(crate) struct LogFileMgr {
     files: Mutex<LogFiles>,
     callback_task: Mutex<Option<ffrt::Task>>,
+}
+
+pub(crate) struct InvalidRootGuard<'a> {
+    manager: &'a LogFileMgr,
+    file: &'a Arc<CloudDiskServiceLogFile>,
+}
+
+impl InvalidRootGuard<'_> {
+    pub(crate) fn retire_cache(&self) -> i32 {
+        self.manager
+            .unregister(self.file.user_id, self.file.index, Some(self.file))
+    }
+}
+
+impl Drop for InvalidRootGuard<'_> {
+    fn drop(&mut self) {
+        let mut files = self
+            .manager
+            .files
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let key = (self.file.user_id, self.file.index);
+        if files
+            .invalidating
+            .get(&key)
+            .is_some_and(|file| Arc::ptr_eq(file, self.file))
+        {
+            files.invalidating.remove(&key);
+        }
+    }
 }
 
 impl LogFileMgr {
@@ -329,14 +388,33 @@ impl LogFileMgr {
             @public(user_id), @public(index), @private(path));
         let path = PathBuf::from(path);
         let mut files = self.files.lock().unwrap_or_else(|err| err.into_inner());
-        let result = match files.files.get(&(user_id, index)) {
-            Some(file) => {
-                info!("[RegisterSyncFolder] reuse in-memory log file, user_id={}, index={}", @public(user_id), @public(index));
-                Ok(Arc::clone(file))
+        if files.invalidating.contains_key(&(user_id, index)) {
+            return E_TRY_AGAIN;
+        }
+        let registry = CloudDiskSyncFolder::get_instance();
+        if let Some(folder) = registry.get_sync_folder_value_by_index(index) {
+            if Path::new(&folder.path) != path.as_path() {
+                error!("[RegisterSyncFolder] index already belongs to another path, user_id={}, index={}",
+                    @public(user_id), @public(index));
+                return E_REGISTER_SYNC_FOLDER_FAILED;
             }
-            None => CloudDiskServiceLogFile::open(user_id, index, &path).map(Arc::new),
-        };
-        let file = match result {
+            if files
+                .files
+                .get(&(user_id, index))
+                .is_some_and(|file| file.explicitly_registered)
+            {
+                return E_OK;
+            }
+            // OnStart may have seen FileAccess's provisional DB row. Publish it
+            // again only after initialization succeeds; FileAccess rolls it back on error.
+            registry.delete_sync_folder(index);
+        }
+        // An OnStart handle may still be in use by the monitor. Stop its writes
+        // before opening the same history and dentry files for this registration.
+        if let Some(previous) = files.files.remove(&(user_id, index)) {
+            previous.stop();
+        }
+        let file = match CloudDiskServiceLogFile::open(user_id, index, &path, true).map(Arc::new) {
             Ok(file) => file,
             Err(err) => {
                 let ret = err.raw_os_error().unwrap_or(libc::EIO);
@@ -352,6 +430,9 @@ impl LogFileMgr {
                 @public(user_id), @public(index), @private(path.display()),
                 @public(err.raw_os_error()), @public(err), @public(ret));
             return ret;
+        }
+        if files.listeners.contains(&(user_id, index)) {
+            file.start_callback();
         }
         files.files.insert((user_id, index), Arc::clone(&file));
         files.scans.retain(|task| !task.is_finished());
@@ -376,7 +457,7 @@ impl LogFileMgr {
         }
         // OnStart restores the registry without registering/scanning the roots again.
         let folder = CloudDiskSyncFolder::get_instance().get_sync_folder_value_by_index(index)?;
-        match CloudDiskServiceLogFile::open(user_id, index, Path::new(&folder.path)) {
+        match CloudDiskServiceLogFile::open(user_id, index, Path::new(&folder.path), false) {
             Ok(file) => {
                 let file = Arc::new(file);
                 files.files.insert((user_id, index), Arc::clone(&file));
@@ -474,12 +555,58 @@ impl LogFileMgr {
         }
     }
 
-    pub(crate) fn unregister_sync_folder(&self, user_id: i32, index: u32) -> i32 {
-        info!("[UnregisterSyncFolder] user_id={}, index={}", @public(user_id), @public(index));
-        // Keep cache removal serialized with registration, as in C++ LogFileMgr.
+    // Serialize this root's invalidation with explicit registration without
+    // holding the manager mutex across calls back into FileAccess.
+    pub(crate) fn begin_invalid_root<'a>(
+        &'a self,
+        old: &'a Arc<CloudDiskServiceLogFile>,
+    ) -> Option<InvalidRootGuard<'a>> {
         let mut files = self.files.lock().unwrap_or_else(|err| err.into_inner());
-        if let Some(file) = files.files.remove(&(user_id, index)) {
-            file.stop();
+        let key = (old.user_id, old.index);
+        if !files
+            .files
+            .get(&key)
+            .is_some_and(|file| Arc::ptr_eq(file, old))
+            || files.invalidating.contains_key(&key)
+        {
+            return None;
+        }
+        files.invalidating.insert(key, Arc::clone(old));
+        Some(InvalidRootGuard {
+            manager: self,
+            file: old,
+        })
+    }
+
+    pub(crate) fn unregister_sync_folder(&self, user_id: i32, index: u32) -> i32 {
+        self.unregister(user_id, index, None)
+    }
+
+    fn unregister(
+        &self,
+        user_id: i32,
+        index: u32,
+        invalid: Option<&Arc<CloudDiskServiceLogFile>>,
+    ) -> i32 {
+        info!("[UnregisterSyncFolder] user_id={}, index={}", @public(user_id), @public(index));
+        let mut files = self.files.lock().unwrap_or_else(|err| err.into_inner());
+        if let Some(old) = invalid {
+            if !files
+                .files
+                .get(&(user_id, index))
+                .is_some_and(|file| Arc::ptr_eq(file, old))
+            {
+                return E_OK;
+            }
+        }
+        if let Err(err) = files.retire_cache(user_id, index) {
+            // Like C++, unregister the root even if removing its on-disk cache fails.
+            warn!("[UnregisterSyncFolder] remove cache failed, user_id={}, index={}, errno={:?}, error={}",
+                @public(user_id), @public(index), @public(err.raw_os_error()), @public(&err));
+        }
+        if invalid.is_none() {
+            // get_log_file must not lazily reopen a root during unregistration.
+            CloudDiskSyncFolder::get_instance().delete_sync_folder(index);
         }
         files.listeners.remove(&(user_id, index));
         let timer = if files.listeners.is_empty() {
@@ -487,16 +614,8 @@ impl LogFileMgr {
         } else {
             None
         };
-        let directory = cache_dir(user_id, index);
-        if let Err(err) = fs::remove_dir_all(&directory) {
-            if err.kind() != io::ErrorKind::NotFound {
-                warn!("[LogFileMgr] remove cache failed, path={}, error={}",
-                    @private(directory.display()), @public(err));
-            }
-        }
         drop(files);
         drop(timer);
-        // C++ logs cache-removal failures but still completes unregistration.
         E_OK
     }
 

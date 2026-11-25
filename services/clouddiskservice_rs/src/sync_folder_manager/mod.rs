@@ -20,10 +20,7 @@ mod hash;
 mod path_utils;
 mod sync_folder;
 
-pub(crate) use cleanup::{
-    remove_placeholder_files_batch, remove_xattr, CLOUD_DISK_FILE_SYNC_STATE_XATTR,
-    CLOUD_DISK_PLACEHOLDER_COUNT_XATTR,
-};
+pub(crate) use cleanup::remove_placeholder_files_batch;
 pub(crate) use hash::dentry_hash;
 pub(crate) use path_utils::{
     path_to_mnt_path_by_physical_path, path_to_mnt_path_by_sandbox_path, path_to_physical_path,

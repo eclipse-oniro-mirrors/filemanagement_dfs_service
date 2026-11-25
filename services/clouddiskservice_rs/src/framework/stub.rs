@@ -63,8 +63,8 @@ impl CloudDiskService {
             }
             RegisterCallbackTableInner => {
                 let folder = data.read_string16()?;
-                let remote = data.read_remote()?;
-                write_status(reply, self.register_callback_table_inner(&folder, &remote))
+                let remote = data.read()?;
+                write_status(reply, self.register_callback_table_inner(&folder, remote))
             }
             UnregisterCallbackTableInner => {
                 let folder = data.read_string16()?;
@@ -227,10 +227,10 @@ impl CloudDiskService {
             }
             RegisterProgressCallbackInner => {
                 let accessor_id = data.read()?;
-                let remote = data.read_remote()?;
+                let remote = data.read()?;
                 write_status(
                     reply,
-                    self.register_progress_callback_inner(accessor_id, &remote),
+                    self.register_progress_callback_inner(accessor_id, remote),
                 )
             }
             UnregisterProgressCallbackInner => {

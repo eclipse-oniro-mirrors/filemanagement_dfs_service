@@ -28,6 +28,9 @@ mod bridge {
         #[rust_name = "get_token_type_flag"]
         fn GetTokenTypeFlag(token_id: u32) -> i32;
 
+        #[rust_name = "is_system_app_by_full_token_id"]
+        fn IsSystemAppByFullTokenId(full_token_id: u64) -> bool;
+
         #[rust_name = "verify_access_token"]
         fn VerifyAccessToken(token_id: u32, permission_name: &CxxString) -> i32;
 
@@ -105,6 +108,14 @@ pub(crate) fn check_permission(token_id: u32, permission_name: &str) -> bool {
         return false;
     }
     true
+}
+
+pub(crate) fn is_system_app() -> bool {
+    match bridge::get_token_type_flag(Skeleton::calling_token_id()) {
+        TOKEN_NATIVE => true,
+        TOKEN_HAP => bridge::is_system_app_by_full_token_id(Skeleton::calling_full_token_id()),
+        _ => false,
+    }
 }
 
 pub(crate) fn get_user_id() -> i32 {

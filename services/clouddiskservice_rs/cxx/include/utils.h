@@ -21,6 +21,7 @@
 
 namespace OHOS::FileManagement::CloudDiskService {
 int32_t GetTokenTypeFlag(uint32_t tokenId);
+bool IsSystemAppByFullTokenId(uint64_t fullTokenId);
 int32_t VerifyAccessToken(uint32_t tokenId, const std::string &permissionName);
 int32_t GetHapBundleName(uint32_t tokenId, std::string &bundleName, int32_t &instIndex);
 int32_t GetNativeProcessName(uint32_t tokenId, std::string &processName);

@@ -63,7 +63,10 @@ impl Ability for CloudDiskService {
 }
 
 pub(crate) fn register_cloud_disk_service() {
-    match CloudDiskService::new().build_system_ability(CLOUD_DISK_SERVICE_SA_ID, false) {
+    match CloudDiskService::get_instance()
+        .clone()
+        .build_system_ability(CLOUD_DISK_SERVICE_SA_ID, false)
+    {
         Some(ability) => {
             ability.register();
             info!(

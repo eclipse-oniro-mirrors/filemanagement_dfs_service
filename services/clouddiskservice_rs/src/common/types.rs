@@ -79,3 +79,20 @@ pub(crate) struct CallbackExecuteRequest {
     pub data: Vec<u8>,
     pub is_complete: bool,
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub(crate) enum HydrateProgressState {
+    Pending = 0,
+    InProgress = 1,
+    Completed = 2,
+    Cancelled = 3,
+}
+
+pub(crate) struct HydrateProgress {
+    pub(crate) file_path: String,
+    pub(crate) state: HydrateProgressState,
+    pub(crate) processed_size: u64,
+    pub(crate) total_size: u64,
+    pub(crate) accessor_id: u64,
+}

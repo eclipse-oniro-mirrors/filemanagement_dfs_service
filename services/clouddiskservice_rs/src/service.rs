@@ -21,7 +21,7 @@
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use cxx::UniquePtr;
@@ -31,20 +31,22 @@ use system_ability_fwk::ability::Handler;
 
 use crate::account_status_listener::AccountStatusListener;
 use crate::common::error_codes::{
-    error_reason, E_INVALID_ARG, E_INVALID_PLACEHOLDER_STATE, E_IPC_FAILED,
-    E_LISTENER_ALREADY_REGISTERED, E_LISTENER_NOT_REGISTERED, E_OK, E_PERMISSION_DENIED,
-    E_SYNC_FOLDER_NOT_REGISTERED, E_SYNC_FOLDER_PATH_UNAUTHORIZED, E_TRY_AGAIN,
+    error_reason, E_CALLBACK_NOT_REGISTERED, E_INVALID_ARG, E_INVALID_PLACEHOLDER_STATE,
+    E_IPC_FAILED, E_LISTENER_ALREADY_REGISTERED, E_LISTENER_NOT_REGISTERED, E_OK,
+    E_PERMISSION_DENIED, E_PERMISSION_SYSTEM, E_SYNC_FOLDER_NOT_REGISTERED,
+    E_SYNC_FOLDER_PATH_UNAUTHORIZED, E_TRY_AGAIN,
 };
 use crate::common::types::{
     CallbackExecuteRequest, ChangesResult, FailedList, FileSyncState, PlaceholderCustomInfo,
     PlaceholderInfo, ResultList,
 };
+use crate::ffi::callback_remote::CallbackRemote;
 use crate::ffi::{self, ffrt, utils};
 use crate::framework::{AbilityHandler, ICloudDiskService, CLOUD_DISK_SERVICE_SA_ID};
 use crate::monitor::DiskMonitor;
 use crate::placeholder::{
-    file as placeholder_file, PlaceholderCallbackManager, PlaceholderProgressManager,
-    PlaceholderTaskManager,
+    file as placeholder_file, system_accessor, HydrateProgressOwner, PlaceholderCallbackManager,
+    PlaceholderProgressManager, PlaceholderTaskManager,
 };
 use crate::sync_folder_manager::{self, CloudDiskSyncFolder, SyncFolderValue};
 use crate::sync_folder_service::{
@@ -91,13 +93,14 @@ pub(crate) struct CloudDiskService {
 }
 
 impl CloudDiskService {
-    pub(crate) fn new() -> Self {
-        Self {
+    pub(crate) fn get_instance() -> &'static Self {
+        static INSTANCE: OnceLock<CloudDiskService> = OnceLock::new();
+        INSTANCE.get_or_init(|| Self {
             init_task: Arc::new(Mutex::new(InitTask::default())),
             ability_handler: Arc::new(Mutex::new(None)),
             account_status_listener: Arc::new(AccountStatusListener::new()),
             unload_task_handle: Arc::new(Mutex::new(UniquePtr::null())),
-        }
+        })
     }
 
     pub(crate) fn start(&self, handler: Handler, reason_name: String, reason_value: String) {
@@ -175,6 +178,7 @@ impl CloudDiskService {
         }
 
         PlaceholderTaskManager::get_instance().start_scheduler();
+        crate::placeholder::clean_orphan_hydration_files(user_id);
         self.account_status_listener.prepare(user_id);
         if let Some(handler) = self
             .ability_handler
@@ -251,6 +255,8 @@ impl CloudDiskService {
         CloudDiskSyncFolder::get_instance().clear_map();
         CloudDiskServiceSyncFolder::cloud_disk_service_clear_all();
         DiskMonitor::get_instance().stop_monitor();
+        // An in-flight invalid-root event may have scheduled one last unload.
+        self.cancel_pending_unload();
         info!("[OnStop] completed");
     }
 
@@ -273,16 +279,45 @@ impl CloudDiskService {
         }
     }
 
+    pub(crate) fn unregister_for_sa(&self, path: &str, user_id: i32) -> i32 {
+        let user = user_id.to_string();
+        let sandbox_path =
+            match sync_folder_manager::path_to_sandbox_path_by_physical_path(path, &user) {
+                Ok(path) => path,
+                Err(ret) => return ret,
+            };
+        info!("[UnregisterForSa] user_id={}, sandbox_path={}", @public(user_id), @private(&sandbox_path));
+        let ret = ffi::sync_folder_manager::unregister_for_sa(&sandbox_path);
+        if ret != E_OK {
+            error!("[UnregisterForSa] manager unregister failed, ret={}", @public(ret));
+            return ret;
+        }
+        let mnt_path = match sync_folder_manager::path_to_mnt_path_by_physical_path(path, &user) {
+            Ok(path) => path,
+            Err(ret) => return ret,
+        };
+        sync_folder_manager::remove_placeholder_files_batch(&mnt_path);
+        let index = sync_folder_manager::dentry_hash(path);
+        let Some(value) = CloudDiskSyncFolder::get_instance().get_sync_folder_value_by_index(index)
+        else {
+            error!("[UnregisterForSa] sync folder not registered, index={}", @public(index));
+            return E_SYNC_FOLDER_NOT_REGISTERED;
+        };
+        CloudDiskSyncFolder::get_instance().delete_sync_folder(index);
+        CloudDiskServiceCallbackManager::get_instance()
+            .unregister_sync_folder_map(&value.bundle_name, index);
+        PlaceholderCallbackManager::get_instance().clear_by_sync_folder(&value.bundle_name, index);
+        info!("[UnregisterForSa] finished, index={}, bundle_name={}", @public(index), @private(&value.bundle_name));
+        E_OK
+    }
+
     fn unload_sa(&self) {
-        let count = CloudDiskSyncFolder::get_instance().get_sync_folder_size();
-        info!("[UnloadSa] sync_folder_count={}", @public(count));
-        if count == 0 {
-            DiskMonitor::get_instance().stop_monitor();
+        if DiskMonitor::get_instance().stop_if_idle() {
             self.delay_unload_sa();
         }
     }
 
-    fn delay_unload_sa(&self) {
+    pub(crate) fn delay_unload_sa(&self) {
         self.cancel_pending_unload();
         let mut handle = self
             .unload_task_handle
@@ -486,6 +521,14 @@ fn check_placeholder_owner(physical_path: &str, bundle: &str) -> Result<u32, i32
     Ok(index)
 }
 
+fn resolve_owned_sync_folder(sync_folder: &str) -> Result<(String, u32), i32> {
+    let user_id = utils::get_user_id();
+    let physical = sync_folder_manager::path_to_physical_path(sync_folder, &user_id.to_string())?;
+    let bundle = utils::get_caller_bundle_name().map_err(|_| E_TRY_AGAIN)?;
+    let index = check_placeholder_owner(&physical, &bundle)?;
+    Ok((bundle, index))
+}
+
 fn query_placeholder_state(sync_folder: &str, relative_path: &str) -> Result<u8, i32> {
     if sync_folder.is_empty() || relative_path.is_empty() {
         return Err(E_INVALID_ARG);
@@ -498,6 +541,25 @@ fn query_placeholder_state(sync_folder: &str, relative_path: &str) -> Result<u8,
     placeholder_file::query_state(&mount_root, relative_path)
 }
 
+fn check_system_accessor_permission() -> Result<(), i32> {
+    let ret = check_permissions(utils::PERM_CLOUD_DISK_SERVICE, true);
+    if ret != E_OK {
+        return Err(ret);
+    }
+    if !utils::is_system_app() {
+        return Err(E_PERMISSION_SYSTEM);
+    }
+    Ok(())
+}
+
+fn resolve_placeholder_owner(sync_folder: &str) -> Result<(i32, String, u32), i32> {
+    let user_id = placeholder_user_id();
+    let bundle = utils::get_caller_bundle_name().map_err(|_| E_TRY_AGAIN)?;
+    let physical = sync_folder_manager::path_to_physical_path(sync_folder, &user_id.to_string())?;
+    let index = check_placeholder_owner(&physical, &bundle)?;
+    Ok((user_id, bundle, index))
+}
+
 fn resolve_existing_placeholder_file(
     sync_folder: &str,
     relative_path: &str,
@@ -505,11 +567,8 @@ fn resolve_existing_placeholder_file(
     if sync_folder.is_empty() || relative_path.is_empty() {
         return Err(E_INVALID_ARG);
     }
-    let user_id = placeholder_user_id();
-    let bundle = utils::get_caller_bundle_name().map_err(|_| E_TRY_AGAIN)?;
-    let physical = sync_folder_manager::path_to_physical_path(sync_folder, &user_id.to_string())?;
-    let index = check_placeholder_owner(&physical, &bundle)?;
-    placeholder_file::ExistingFile::resolve(sync_folder, relative_path, user_id, index)
+    let (user_id, bundle, index) = resolve_placeholder_owner(sync_folder)?;
+    placeholder_file::ExistingFile::resolve(sync_folder, relative_path, user_id, index, bundle)
 }
 
 fn log_placeholder_result<T>(operation: &str, result: Result<T, i32>) -> Result<T, i32> {
@@ -603,22 +662,30 @@ impl ICloudDiskService for CloudDiskService {
         E_OK
     }
 
-    fn register_callback_table_inner(&self, sync_folder: &str, remote: &RemoteObj) -> i32 {
-        info!(
-            "[register_callback_table_inner] sync_folder={}, remote.is_proxy={}, remote.is_dead={}",
-            @public(sync_folder),
-            @public(remote.is_proxy()),
-            @public(remote.is_dead()),
-        );
-        E_OK
+    fn register_callback_table_inner(&self, sync_folder: &str, remote: CallbackRemote) -> i32 {
+        info!("[RegisterCallbackTableInner] sync_folder={}", @private(sync_folder));
+        let (bundle, index) = match resolve_owned_sync_folder(sync_folder) {
+            Ok(owner) => owner,
+            Err(ret) => return ret,
+        };
+        let ret = PlaceholderCallbackManager::get_instance()
+            .register_callback_table(&bundle, index, remote);
+        info!("[RegisterCallbackTableInner] bundle_name={}, index={}, ret={}",
+            @private(&bundle), @public(index), @public(ret));
+        ret
     }
 
     fn unregister_callback_table_inner(&self, sync_folder: &str) -> i32 {
-        info!(
-            "[unregister_callback_table_inner] sync_folder={}",
-            @public(sync_folder),
-        );
-        E_OK
+        info!("[UnregisterCallbackTableInner] sync_folder={}", @private(sync_folder));
+        let (bundle, index) = match resolve_owned_sync_folder(sync_folder) {
+            Ok(owner) => owner,
+            Err(ret) => return ret,
+        };
+        let ret =
+            PlaceholderCallbackManager::get_instance().unregister_callback_table(&bundle, index);
+        info!("[UnregisterCallbackTableInner] bundle_name={}, index={}, ret={}",
+            @private(&bundle), @public(index), @public(ret));
+        ret
     }
 
     fn get_sync_folder_changes_inner(
@@ -853,23 +920,20 @@ impl ICloudDiskService for CloudDiskService {
         if ret != E_OK {
             error!("[register_sync_folder_inner] stage=register-cache, user_id={}, index={}, ret={}",
                 @public(user_id), @public(sync_folder_index), @public(ret));
+            // Re-arm the idle unload if rolling back this registration left the SA empty.
+            if CloudDiskSyncFolder::get_instance().get_sync_folder_size() == 0 {
+                self.delay_unload_sa();
+            }
             return ret;
-        }
-        let folder_count = CloudDiskSyncFolder::get_instance().get_sync_folder_size();
-        info!("[register_sync_folder_inner] cache ready, user_id={}, index={}, registered_roots={}",
-            @public(user_id), @public(sync_folder_index), @public(folder_count));
-        if folder_count == 0 {
-            // C++ logs monitor setup failures but keeps the registration successful.
-            let started = DiskMonitor::get_instance().start_monitor(user_id);
-            info!("[register_sync_folder_inner] monitor start result={}, user_id={}", @public(started), @public(user_id));
-        } else {
-            info!("[register_sync_folder_inner] monitor already requested for existing roots, count={}", @public(folder_count));
         }
         let value = SyncFolderValue {
             bundle_name: bundle_name.to_owned(),
             path: register_sync_folder,
         };
         CloudDiskSyncFolder::get_instance().add_sync_folder(sync_folder_index, value);
+        // Publish the root before checking the worker, so a concurrent last-root removal
+        // either sees this root or stops the old worker before we request monitoring.
+        DiskMonitor::get_instance().start_monitor(user_id);
         info!("[register_sync_folder_inner] finished, user_id={}, index={}, ret={}",
             @public(user_id), @public(sync_folder_index), @public(E_OK));
         E_OK
@@ -909,19 +973,10 @@ impl ICloudDiskService for CloudDiskService {
             error!("[unregister_sync_folder_inner] unregister cache failed, ret={}", @public(ret));
             return ret;
         }
-        CloudDiskSyncFolder::get_instance().delete_sync_folder(index);
         CloudDiskServiceCallbackManager::get_instance()
             .unregister_sync_folder_map(bundle_name, index);
         PlaceholderCallbackManager::get_instance().clear_by_sync_folder(bundle_name, index);
         sync_folder_manager::remove_placeholder_files_batch(&mnt_path);
-        sync_folder_manager::remove_xattr(
-            &mnt_path,
-            sync_folder_manager::CLOUD_DISK_FILE_SYNC_STATE_XATTR,
-        );
-        sync_folder_manager::remove_xattr(
-            &mnt_path,
-            sync_folder_manager::CLOUD_DISK_PLACEHOLDER_COUNT_XATTR,
-        );
         self.unload_sa();
         info!("[unregister_sync_folder_inner] finished, index={}", @public(index));
         E_OK
@@ -937,45 +992,11 @@ impl ICloudDiskService for CloudDiskService {
             // C++ uses the output user ID without propagating GetAccountId's status.
             let _ = utils::get_account_id(&mut user_id);
         }
-        let user = user_id.to_string();
-        let sandbox_path =
-            match sync_folder_manager::path_to_sandbox_path_by_physical_path(path, &user) {
-                Ok(path) => path,
-                Err(ret) => return ret,
-            };
-        info!("[unregister_for_sa_inner] user_id={}, sandbox_path={}", @public(user_id), @private(&sandbox_path));
-        let ret = ffi::sync_folder_manager::unregister_for_sa(&sandbox_path);
-        if ret != E_OK {
-            error!("[unregister_for_sa_inner] manager unregister failed, ret={}", @public(ret));
-            return ret;
+        let ret = self.unregister_for_sa(path, user_id);
+        if ret == E_OK {
+            self.unload_sa();
         }
-        let mnt_path = match sync_folder_manager::path_to_mnt_path_by_physical_path(path, &user) {
-            Ok(path) => path,
-            Err(ret) => return ret,
-        };
-        sync_folder_manager::remove_placeholder_files_batch(&mnt_path);
-        sync_folder_manager::remove_xattr(
-            &mnt_path,
-            sync_folder_manager::CLOUD_DISK_FILE_SYNC_STATE_XATTR,
-        );
-        sync_folder_manager::remove_xattr(
-            &mnt_path,
-            sync_folder_manager::CLOUD_DISK_PLACEHOLDER_COUNT_XATTR,
-        );
-        let index = sync_folder_manager::dentry_hash(path);
-        let Some(value) = CloudDiskSyncFolder::get_instance().get_sync_folder_value_by_index(index)
-        else {
-            error!("[unregister_for_sa_inner] sync folder not registered, index={}", @public(index));
-            return E_SYNC_FOLDER_NOT_REGISTERED;
-        };
-        CloudDiskSyncFolder::get_instance().delete_sync_folder(index);
-        CloudDiskServiceCallbackManager::get_instance()
-            .unregister_sync_folder_map(&value.bundle_name, index);
-        PlaceholderCallbackManager::get_instance().clear_by_sync_folder(&value.bundle_name, index);
-        // As in C++, the invalid-root event caller handles log-cache removal.
-        self.unload_sa();
-        info!("[unregister_for_sa_inner] finished, index={}, bundle_name={}", @public(index), @private(&value.bundle_name));
-        E_OK
+        ret
     }
 
     fn convert_placeholder_to_file_inner(&self, sync_folder: &str, relative_path: &str) -> i32 {
@@ -1009,52 +1030,72 @@ impl ICloudDiskService for CloudDiskService {
     }
 
     fn start_hydration_inner(&self, sync_folder: &str, relative_path: &str, priority: i32) -> i32 {
-        info!(
-            "[start_hydration_inner] sync_folder={}, relative_path={}, priority={}",
-            @public(sync_folder),
-            @public(relative_path),
-            @public(priority),
-        );
-        E_OK
+        info!("[StartHydrationInner] sync_folder={}, relative_path={}, priority={}",
+            @private(sync_folder), @private(relative_path), @public(priority));
+        if !(0..=2).contains(&priority) {
+            return E_INVALID_ARG;
+        }
+        let result =
+            resolve_existing_placeholder_file(sync_folder, relative_path).and_then(|file| {
+                PlaceholderTaskManager::get_instance().create_task(file, priority, None)
+            });
+        log_placeholder_result("StartHydrationInner", result)
+            .err()
+            .unwrap_or(E_OK)
     }
 
     fn cancel_hydration_inner(&self, sync_folder: &str, relative_path: &str) -> i32 {
-        info!(
-            "[cancel_hydration_inner] sync_folder={}, relative_path={}",
-            @public(sync_folder),
-            @public(relative_path),
-        );
-        E_OK
+        info!("[CancelHydrationInner] sync_folder={}, relative_path={}",
+            @private(sync_folder), @private(relative_path));
+        if sync_folder.is_empty() || relative_path.is_empty() {
+            return E_INVALID_ARG;
+        }
+        // Cancellation still works after the target file has been moved or deleted.
+        let result = resolve_placeholder_owner(sync_folder).and_then(|(_, _, index)| {
+            placeholder_file::validate_relative_path(relative_path)?;
+            PlaceholderTaskManager::get_instance().cancel_task(
+                sync_folder,
+                relative_path,
+                index,
+                None,
+            )
+        });
+        log_placeholder_result("CancelHydrationInner", result)
+            .err()
+            .unwrap_or(E_OK)
     }
 
     fn execute_inner(&self, request: &CallbackExecuteRequest) -> i32 {
-        info!(
-            "[execute_inner] sync_folder={}, file_path={}, callback_type={}, offset={}, size={}, total_size={}, is_complete={}",
-            @public(&request.sync_folder),
-            @public(&request.file_path),
-            @public(request.callback_type),
-            @public(request.offset),
-            @public(request.size),
-            @public(request.total_size),
-            @public(request.is_complete),
-        );
-        info!(
-            "[execute_inner] req_key_len={}, req_key={:02x?}, data_len={}, data={:02x?}",
-            @public(request.req_key.len()),
-            @public(&request.req_key),
-            @public(request.data.len()),
-            @public(&request.data),
-        );
-        E_OK
+        debug!("[ExecuteInner] sync_folder={}, file_path={}, key={:02x?}, type={}, offset={}, size={}, total_size={}, complete={}",
+            @private(&request.sync_folder), @private(&request.file_path), @private(&request.req_key),
+            @public(request.callback_type), @public(request.offset), @public(request.size),
+            @public(request.total_size), @public(request.is_complete));
+        if request.req_key.is_empty() {
+            return E_INVALID_ARG;
+        }
+        let Ok((bundle, index)) = resolve_owned_sync_folder(&request.sync_folder) else {
+            return E_CALLBACK_NOT_REGISTERED;
+        };
+        if !PlaceholderCallbackManager::get_instance().is_callback_registered(&bundle, index) {
+            return E_CALLBACK_NOT_REGISTERED;
+        }
+        match PlaceholderTaskManager::get_instance().execute(&bundle, index, request) {
+            Ok(()) => E_OK,
+            Err(ret) => {
+                warn!("[ExecuteInner] failed, index={}, ret={}", @private(index), @public(ret));
+                ret
+            }
+        }
     }
 
     fn dehydrate_inner(&self, sync_folder: &str, relative_path: &str) -> i32 {
-        info!(
-            "[dehydrate_inner] sync_folder={}, relative_path={}",
-            @public(sync_folder),
-            @public(relative_path),
-        );
-        E_OK
+        info!("[DehydrateInner] sync_folder={}, relative_path={}",
+            @private(sync_folder), @private(relative_path));
+        let result = resolve_existing_placeholder_file(sync_folder, relative_path)
+            .and_then(|file| file.dehydrate());
+        log_placeholder_result("DehydrateInner", result)
+            .err()
+            .unwrap_or(E_OK)
     }
 
     fn update_placeholder_inner(
@@ -1104,40 +1145,51 @@ impl ICloudDiskService for CloudDiskService {
         priority: i32,
         accessor_id: u64,
     ) -> i32 {
-        info!(
-            "[start_hydration_by_path_inner] path={}, callback_type={}, priority={}, accessor_id={}",
-            @public(path),
-            @public(callback_type),
-            @public(priority),
-            @public(accessor_id),
-        );
-        E_OK
+        info!("[StartHydrationByPathInner] path={}, callback_type={}, priority={}, accessor_id={}",
+            @private(path), @public(callback_type), @public(priority), @private(accessor_id));
+        let result = check_system_accessor_permission()
+            .and_then(|()| HydrateProgressOwner::calling(accessor_id))
+            .and_then(|owner| {
+                system_accessor::start_hydration(path, callback_type, priority, owner)
+            });
+        log_placeholder_result("StartHydrationByPathInner", result)
+            .err()
+            .unwrap_or(E_OK)
     }
 
     fn dehydrate_file_by_path_inner(&self, path: &str) -> i32 {
-        info!(
-            "[dehydrate_file_by_path_inner] path={}",
-            @public(path),
-        );
-        E_OK
+        info!("[DehydrateFileByPathInner] path={}", @private(path));
+        let result =
+            check_system_accessor_permission().and_then(|()| system_accessor::dehydrate(path));
+        log_placeholder_result("DehydrateFileByPathInner", result)
+            .err()
+            .unwrap_or(E_OK)
     }
 
-    fn register_progress_callback_inner(&self, accessor_id: u64, remote: &RemoteObj) -> i32 {
-        info!(
-            "[register_progress_callback_inner] accessor_id={}, remote.is_proxy={}, remote.is_dead={}",
-            @public(accessor_id),
-            @public(remote.is_proxy()),
-            @public(remote.is_dead()),
-        );
-        E_OK
+    fn register_progress_callback_inner(&self, accessor_id: u64, remote: CallbackRemote) -> i32 {
+        info!("[RegisterProgressCallbackInner] accessor_id={}", @private(accessor_id));
+        let result = check_system_accessor_permission()
+            .and_then(|()| HydrateProgressOwner::calling(accessor_id))
+            .and_then(|owner| {
+                PlaceholderProgressManager::get_instance().register(
+                    owner,
+                    system_accessor::resolve_user()?,
+                    remote,
+                )
+            });
+        log_placeholder_result("RegisterProgressCallbackInner", result)
+            .err()
+            .unwrap_or(E_OK)
     }
 
     fn unregister_progress_callback_inner(&self, accessor_id: u64) -> i32 {
-        info!(
-            "[unregister_progress_callback_inner] accessor_id={}",
-            @public(accessor_id),
-        );
-        E_OK
+        info!("[UnregisterProgressCallbackInner] accessor_id={}", @private(accessor_id));
+        let result = check_system_accessor_permission()
+            .and_then(|()| HydrateProgressOwner::calling(accessor_id))
+            .and_then(|owner| PlaceholderProgressManager::get_instance().unregister(owner));
+        log_placeholder_result("UnregisterProgressCallbackInner", result)
+            .err()
+            .unwrap_or(E_OK)
     }
 
     fn get_placeholder_state_inner(

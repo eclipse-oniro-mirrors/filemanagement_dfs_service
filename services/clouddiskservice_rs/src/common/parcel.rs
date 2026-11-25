@@ -23,7 +23,7 @@ use ipc::parcel::{Deserialize, MsgParcel, Serialize};
 use ipc::{IpcResult, IpcStatusCode};
 
 use super::types::{
-    CallbackExecuteRequest, ChangeData, ChangesResult, FailedList, FileSyncState,
+    CallbackExecuteRequest, ChangeData, ChangesResult, FailedList, FileSyncState, HydrateProgress,
     PlaceholderCustomInfo, PlaceholderInfo, ResultList,
 };
 
@@ -31,8 +31,8 @@ use super::types::{
 pub(crate) const MAX_LIST_SIZE: i32 = 102_400;
 
 const INVALID: IpcStatusCode = IpcStatusCode::InvalidValue;
-const MAX_CALLBACK_REQUEST_KEY_SIZE: usize = 8;
-const MAX_EXECUTE_DATA_SIZE: usize = 128 * 1024;
+pub(crate) const MAX_CALLBACK_REQUEST_KEY_SIZE: usize = 8;
+pub(crate) const MAX_EXECUTE_DATA_SIZE: usize = 128 * 1024;
 
 trait ParcelFields: Sized {
     fn write_fields(&self, parcel: &mut MsgParcel) -> IpcResult<()>;
@@ -190,6 +190,18 @@ parcelable!(PlaceholderInfo);
 fields!(PlaceholderCustomInfo, data: Vec<u8>);
 parcelable!(PlaceholderCustomInfo);
 
+// Outbound ICloudDiskProgressCallback uses C++ WriteParcelable and a UTF-8 file path.
+impl Serialize for HydrateProgress {
+    fn serialize(&self, parcel: &mut MsgParcel) -> IpcResult<()> {
+        parcel.write(&1_i32)?;
+        parcel.write(&self.file_path)?;
+        parcel.write(&(self.state as i32))?;
+        parcel.write(&self.processed_size)?;
+        parcel.write(&self.total_size)?;
+        parcel.write(&self.accessor_id)
+    }
+}
+
 impl ParcelFields for CallbackExecuteRequest {
     fn write_fields(&self, parcel: &mut MsgParcel) -> IpcResult<()> {
         if self.req_key.is_empty()
@@ -230,11 +242,15 @@ impl ParcelFields for CallbackExecuteRequest {
 parcelable!(CallbackExecuteRequest);
 
 fn read_bounded_bytes(parcel: &mut MsgParcel, max_size: usize) -> IpcResult<Vec<u8>> {
-    let position = parcel.read_position();
-    let size = parcel.read::<i32>()?;
-    if size < 0 || size as usize > max_size {
+    let size = usize::try_from(parcel.read::<i32>()?).map_err(|_| INVALID)?;
+    if size > max_size {
         return Err(INVALID);
     }
-    parcel.set_read_position(position).map_err(|_| INVALID)?;
-    parcel.read()
+    // WriteUInt8Vector packs the bytes and pads them to four bytes. read_buffer
+    // consumes that padding and copies the payload without per-byte CXX calls.
+    let padded_size = (size + 3) & !3;
+    if parcel.readable() < padded_size {
+        return Err(IpcStatusCode::Failed);
+    }
+    parcel.read_buffer(size)
 }

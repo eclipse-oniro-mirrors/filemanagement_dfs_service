@@ -25,10 +25,11 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
+use super::PlaceholderTaskManager;
 use crate::common::error_codes::{
-    E_ACCES, E_FILE_ALREADY_EXISTS, E_FILE_NOT_EXIST, E_FILE_TOO_LARGE, E_INVALID_ARG,
-    E_INVALID_PLACEHOLDER_STATE, E_IS_A_PLACEHOLDER, E_NAME_TOO_LONG, E_NOT_A_DIRECTORY,
-    E_NOT_A_PLACEHOLDER, E_NOT_SUPPORTED, E_NO_SPACE_LEFT, E_PERM,
+    E_ACCES, E_FILE_ALREADY_EXISTS, E_FILE_NOT_EXIST, E_FILE_TOO_LARGE, E_HYDRATE_IN_PROGRESS,
+    E_INVALID_ARG, E_INVALID_PLACEHOLDER_STATE, E_IS_A_PLACEHOLDER, E_NAME_TOO_LONG,
+    E_NOT_A_DIRECTORY, E_NOT_A_PLACEHOLDER, E_NOT_SUPPORTED, E_NO_SPACE_LEFT, E_PERM,
     E_PLACEHOLDER_CUSTOM_INFO_NOT_FOUND, E_PLACEHOLDER_NOT_FULLY_HYDRATED,
     E_SYNC_FOLDER_PATH_NOT_EXIST, E_TRY_AGAIN,
 };
@@ -153,11 +154,11 @@ fn timespec(ms: u64) -> libc::timespec {
     }
 }
 
-fn file_error(stage: &str, err: &io::Error) -> i32 {
+pub(super) fn file_error(stage: &str, err: &io::Error) -> i32 {
     log_io_error(stage, err, convert_errno)
 }
 
-fn target_error(stage: &str, err: &io::Error) -> i32 {
+pub(super) fn target_error(stage: &str, err: &io::Error) -> i32 {
     log_io_error(stage, err, convert_target_errno)
 }
 
@@ -205,7 +206,7 @@ fn convert_errno(errno: i32) -> i32 {
     }
 }
 
-fn validate_relative_path(path: &str) -> Result<(), i32> {
+pub(crate) fn validate_relative_path(path: &str) -> Result<(), i32> {
     if path.is_empty()
         || path.as_bytes().contains(&0)
         || path.starts_with('/')
@@ -218,7 +219,7 @@ fn validate_relative_path(path: &str) -> Result<(), i32> {
     Ok(())
 }
 
-fn relative_to_root<'a>(root: &Path, path: &'a Path) -> Result<&'a Path, i32> {
+pub(super) fn relative_to_root<'a>(root: &Path, path: &'a Path) -> Result<&'a Path, i32> {
     match path.strip_prefix(root) {
         Ok(relative) if !relative.as_os_str().is_empty() => Ok(relative),
         _ => {
@@ -247,12 +248,45 @@ pub(crate) enum StateTransition {
     Unmark,
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub(super) struct TaskKey {
+    pub(super) index: u32,
+    pub(super) sync_folder: String,
+    pub(super) file_path: String,
+}
+
+impl TaskKey {
+    fn mounted_file(&self, user: &str) -> Result<PathBuf, i32> {
+        validate_relative_path(&self.file_path)?;
+        let path = Path::new(&self.sync_folder).join(&self.file_path);
+        let path = path.to_str().ok_or(E_INVALID_ARG)?;
+        sync_folder_manager::path_to_mnt_path_by_sandbox_path(path, user)
+            .map(PathBuf::from)
+            .map_err(|ret| {
+                if ret == E_SYNC_FOLDER_PATH_NOT_EXIST {
+                    E_FILE_NOT_EXIST
+                } else {
+                    ret
+                }
+            })
+    }
+
+    pub(super) fn new(index: u32, sync_folder: &str, file_path: &str) -> Self {
+        Self {
+            index,
+            sync_folder: sync_folder.to_owned(),
+            file_path: file_path.to_owned(),
+        }
+    }
+}
+
 pub(crate) struct ExistingFile {
-    mount_root: PathBuf,
-    path: PathBuf,
+    pub(super) mount_root: PathBuf,
+    pub(super) path: PathBuf,
     relative: PathBuf,
-    user_id: i32,
-    index: u32,
+    pub(super) user_id: i32,
+    pub(super) bundle: String,
+    pub(super) key: TaskKey,
 }
 
 impl ExistingFile {
@@ -261,35 +295,61 @@ impl ExistingFile {
         relative_path: &str,
         user_id: i32,
         index: u32,
+        bundle: String,
     ) -> Result<Self, i32> {
-        validate_relative_path(relative_path)?;
+        let key = TaskKey::new(index, sync_folder, relative_path);
         let user = user_id.to_string();
-        let sandbox_path = Path::new(sync_folder).join(relative_path);
-        let sandbox_path = sandbox_path.to_str().ok_or(E_INVALID_ARG)?;
-        let path = sync_folder_manager::path_to_mnt_path_by_sandbox_path(sandbox_path, &user)
-            .map_err(|ret| match ret {
-                E_SYNC_FOLDER_PATH_NOT_EXIST => E_FILE_NOT_EXIST,
-                _ => ret,
-            })?;
-        let mount_root = PathBuf::from(sync_folder_manager::path_to_mnt_path_by_sandbox_path(
-            sync_folder,
-            &user,
-        )?);
-        let path = PathBuf::from(path);
+        let path = key.mounted_file(&user)?;
+        let root = sync_folder_manager::path_to_mnt_path_by_sandbox_path(sync_folder, &user)?;
+        Self::from_mount_paths(key, user_id, bundle, root, path)
+    }
+
+    pub(super) fn resolve_for_accessor(
+        key: TaskKey,
+        user_id: i32,
+        bundle: String,
+    ) -> Result<Self, i32> {
+        let user = user_id.to_string();
+        let root = sync_folder_manager::path_to_mnt_path_by_sandbox_path(&key.sync_folder, &user)?;
+        let path = key.mounted_file(&user)?;
+        Self::from_mount_paths(key, user_id, bundle, root, path)
+    }
+
+    fn from_mount_paths(
+        key: TaskKey,
+        user_id: i32,
+        bundle: String,
+        root: String,
+        path: PathBuf,
+    ) -> Result<Self, i32> {
+        let mount_root = PathBuf::from(root);
         let relative = relative_to_root(&mount_root, &path)?.to_path_buf();
         info!("[PlaceholderFile] resolved, user_id={}, index={}, path={}",
-            @public(user_id), @public(index), @private(path.display()));
+            @public(user_id), @public(key.index), @private(path.display()));
         Ok(Self {
             mount_root,
             path,
             relative,
             user_id,
-            index,
+            bundle,
+            key,
         })
     }
 
+    pub(super) fn lock(&self) -> MutexGuard<'static, ()> {
+        lock_placeholder_file(&self.path)
+    }
+
+    pub(super) fn lock_idle(&self) -> Result<MutexGuard<'static, ()>, i32> {
+        let guard = self.lock();
+        if PlaceholderTaskManager::get_instance().has_outstanding(&self.key) {
+            return Err(E_HYDRATE_IN_PROGRESS);
+        }
+        Ok(guard)
+    }
+
     pub(crate) fn change_state(&self, transition: StateTransition) -> Result<(), i32> {
-        let _guard = lock_placeholder_file(&self.path);
+        let _guard = self.lock_idle()?;
         let file = self.open(true, target_error)?;
         let old = read_checked_state(&file)?;
         let new = match transition {
@@ -306,7 +366,7 @@ impl ExistingFile {
     }
 
     pub(crate) fn convert_to_file(&self) -> Result<(), i32> {
-        let _guard = lock_placeholder_file(&self.path);
+        let _guard = self.lock_idle()?;
         let file = self.open(true, file_error)?;
         require_placeholder(&file)?;
         file.set_len(0)
@@ -324,27 +384,33 @@ impl ExistingFile {
         info: &PlaceholderInfo,
         custom: &PlaceholderCustomInfo,
     ) -> Result<(), i32> {
-        let _guard = lock_placeholder_file(&self.path);
+        let _guard = self.lock_idle()?;
         let file = self.open(true, target_error)?;
         require_placeholder(&file)?;
-        set_custom_info(&file, &custom.data)?;
+        // Persist the lowered state before discarding any hydrated content.
+        let old = write_state(&file, UNHYDRATED)?;
+        if old > FULLY_HYDRATED {
+            error!("[PlaceholderFile] invalid previous state={}", @public(old));
+            return Err(E_INVALID_PLACEHOLDER_STATE);
+        }
+        if !file_state::is_counted(old) {
+            file_state::adjust_ancestors(&self.mount_root, &self.path, true);
+        }
+        if self.user_id >= 0 {
+            self.refresh_dentry(UNHYDRATED);
+        }
+        file.sync_all()
+            .map_err(|err| file_error("sync_state", &err))?;
+
         file.set_len(0)
             .map_err(|err| file_error("truncate", &err))?;
         file.set_len(info.logical_size)
             .map_err(|err| file_error("set_size", &err))?;
-        let old = write_state(&file, UNHYDRATED)?;
-        let times_result = set_times(&file, info);
-        if old > FULLY_HYDRATED {
-            times_result?;
-            error!("[PlaceholderFile] invalid previous state={}", @public(old));
-            return Err(E_INVALID_PLACEHOLDER_STATE);
-        }
-        // The state byte has changed even if setting timestamps fails.
-        if !file_state::is_counted(old) {
-            file_state::adjust_ancestors(&self.mount_root, &self.path, true);
-        }
-        self.refresh_dentry(UNHYDRATED);
-        times_result
+        file.sync_all()
+            .map_err(|err| file_error("sync_content", &err))?;
+
+        set_custom_info(&file, &custom.data)?;
+        set_times(&file, info)
     }
 
     pub(crate) fn custom_info(&self) -> Result<Vec<u8>, i32> {
@@ -370,7 +436,11 @@ impl ExistingFile {
         Ok(data)
     }
 
-    fn open(&self, write: bool, open_error: fn(&str, &io::Error) -> i32) -> Result<File, i32> {
+    pub(super) fn open(
+        &self,
+        write: bool,
+        open_error: fn(&str, &io::Error) -> i32,
+    ) -> Result<File, i32> {
         let stat = fs::metadata(&self.path).map_err(|err| target_error("stat", &err))?;
         if stat.is_dir() {
             return Err(E_INVALID_ARG);
@@ -383,20 +453,19 @@ impl ExistingFile {
             .map_err(|err| open_error("open", &err))
     }
 
-    fn refresh_dentry(&self, state: u8) {
-        let file = LogFileMgr::get_instance().get_log_file(self.user_id, self.index);
+    pub(super) fn refresh_dentry(&self, state: u8) {
+        let file = LogFileMgr::get_instance().get_log_file(self.user_id, self.key.index);
         let result = file
             .ok_or_else(|| io::Error::from_raw_os_error(libc::ENOENT))
             .and_then(|file| file.set_dentry_placeholder_state(&self.relative, state));
         if let Err(err) = result {
             warn!("[PlaceholderFile] dentry update failed, index={}, state={}, path={}, error={}",
-                @public(self.index), @public(state), @private(self.path.display()), @public(err));
+                @public(self.key.index), @public(state), @private(self.path.display()), @public(err));
         }
     }
 }
 
-// Matches GetPlaceholderFileMutex in C++. Once Rust hydration tasks are
-// implemented, check for an outstanding task under this lock before file I/O.
+// Matches the striped GetPlaceholderFileMutex used by placeholder mutations and activation.
 fn lock_placeholder_file(path: &Path) -> MutexGuard<'static, ()> {
     static LOCKS: OnceLock<[Mutex<()>; FILE_LOCK_BUCKETS]> = OnceLock::new();
     let locks = LOCKS.get_or_init(|| std::array::from_fn(|_| Mutex::new(())));
@@ -407,7 +476,7 @@ fn lock_placeholder_file(path: &Path) -> MutexGuard<'static, ()> {
         .unwrap_or_else(|err| err.into_inner())
 }
 
-fn read_checked_state(file: &File) -> Result<u8, i32> {
+pub(super) fn read_checked_state(file: &File) -> Result<u8, i32> {
     let state = file_state::placeholder_state(file.as_fd())
         .map_err(|err| state_error("read_state", &err))?;
     if state > FULLY_HYDRATED {
@@ -424,7 +493,7 @@ fn require_placeholder(file: &File) -> Result<(), i32> {
     Ok(())
 }
 
-fn write_state(file: &File, state: u8) -> Result<u8, i32> {
+pub(super) fn write_state(file: &File, state: u8) -> Result<u8, i32> {
     let old = file_state::set_placeholder_state(file.as_fd(), state)
         .map_err(|err| state_error("write_state", &err))?;
     debug!("[PlaceholderFile] state updated, old={}, new={}", @public(old), @public(state));
