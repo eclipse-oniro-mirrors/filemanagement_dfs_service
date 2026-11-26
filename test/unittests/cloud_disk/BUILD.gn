@@ -145,6 +145,10 @@ ohos_unittest("file_operations_cloud_test") {
     "LOG_TAG=\"CLOUD_DAEMON_API\"",
   ]
 
+  if (is_emulator) {
+    defines += [ "EMULATOR" ]
+  }
+
   if (cloudsync_service_hicollie_enable) {
     external_deps += [ "hicollie:libhicollie" ]
     defines += [ "HICOLLIE_ENABLE" ]
