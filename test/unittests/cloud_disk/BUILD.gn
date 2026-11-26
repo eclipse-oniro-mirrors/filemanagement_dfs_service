@@ -149,6 +149,10 @@ ohos_unittest("file_operations_cloud_test") {
     defines += [ "EMULATOR" ]
   }
 
+  if (dfs_service_feature_enable_cloud_adapter) {
+    defines += [ "CLOUD_ADAPTER_ENABLED" ]
+  }
+
   if (cloudsync_service_hicollie_enable) {
     external_deps += [ "hicollie:libhicollie" ]
     defines += [ "HICOLLIE_ENABLE" ]
