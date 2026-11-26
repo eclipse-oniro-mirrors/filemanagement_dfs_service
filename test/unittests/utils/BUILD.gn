@@ -116,6 +116,9 @@ ohos_unittest("cloud_file_utils_test") {
     "LOG_DOMAIN=0xD004307",
     "LOG_TAG=\"CLOUDSYNC_SA\"",
   ]
+  if (is_emulator) {
+    defines += [ "EMULATOR" ]
+  }
   if (dfs_service_feature_enable_cloud_adapter) {
     defines += [ "CLOUD_ADAPTER_ENABLED" ]
   }
