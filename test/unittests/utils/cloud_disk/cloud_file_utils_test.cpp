@@ -214,7 +214,9 @@ HWTEST_F(CloudFileUtilsTest, DfsService_CloudDisk_ClearCache_01, TestSize.Level1
     bool res = CloudFileUtils::ClearCache(dfsPath, cloudPath);
     EXPECT_EQ(res, true);
 }
+#endif
 
+#ifndef EMULATOR
 HWTEST_F(CloudFileUtilsTest, DfsService_CloudDisk_ClearCache_02, TestSize.Level1)
 {
     string dfsPath = "/mnt/hmdfs/100/cloud/data/" + system::GetParameter(FILEMANAGER_KEY, "");
