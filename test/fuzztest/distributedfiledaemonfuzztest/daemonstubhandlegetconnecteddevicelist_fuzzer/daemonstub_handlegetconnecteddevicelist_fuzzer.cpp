@@ -21,6 +21,7 @@
 
 #include "copy/ipc_wrapper.h"
 #include "daemon_stub.h"
+#include "dfsu_access_token_helper.h"
 #include "distributed_file_daemon_ipc_interface_code.h"
 #include "ipc_skeleton.h"
 #include "message_option.h"
@@ -41,6 +42,13 @@ pid_t IPCSkeleton::GetCallingAppUid()
     return APPUID;
 }
 }
+
+namespace OHOS::FileManagement {
+bool DfsuAccessTokenHelper::CheckCallerPermission(const std::string &permissionName)
+{
+    return true;
+}
+} // namespace OHOS::FileManagement
 
 namespace OHOS {
 using namespace OHOS::Storage::DistributedFile;
