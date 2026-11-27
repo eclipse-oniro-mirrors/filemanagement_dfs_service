@@ -774,7 +774,7 @@ HWTEST_F(FileOperationsCloudTest, ReadDirTest002, TestSize.Level1)
  * @tc.type: FUNC
  * @tc.require: issuesI91IOG
  */
-#if !defined(EMULATOR) && !defined(CLOUD_ADAPTER_ENABLED)
+#if !defined(EMULATOR) && defined(CLOUD_ADAPTER_ENABLED)
 HWTEST_F(FileOperationsCloudTest, ReadDirTest003, TestSize.Level1)
 {
     GTEST_LOG_(INFO) << "ReadDirTest003 Start";
